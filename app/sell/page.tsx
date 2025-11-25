@@ -1,0 +1,582 @@
+"use client"
+
+import type React from "react"
+
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { Upload, X, Plus, Coins, Package } from "lucide-react"
+import Navigation from "@/components/navigation"
+import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
+import Link from "next/link"
+import { useAuth } from "@/lib/auth-context"
+
+const itemCategories = ["Pets", "Limiteds", "Game Passes", "Accounts", "UGC", "Cross-Trading", "Other"]
+
+const games = ["Adopt Me", "Pet Simulator X", "Blox Fruits", "Roblox Limited", "Brookhaven RP", "Jailbreak", "Other"]
+
+const paymentMethods = ["GCash", "PayPal", "Robux Gift Cards", "Cross-Trade", "Venmo"]
+
+const currencyTypes = [
+  "Robux",
+  "Blox Fruits Money",
+  "Adopt Me Bucks",
+  "Pet Simulator X Gems",
+  "MeepCity Coins",
+  "Other",
+]
+
+export default function SellPage() {
+  const { user } = useAuth()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (!user) {
+      router.push("/auth/login?redirect=/sell")
+    }
+  }, [user, router])
+
+  const [listingType, setListingType] = useState<"item" | "currency">("item")
+
+  const [itemFormData, setItemFormData] = useState({
+    title: "",
+    description: "",
+    category: "",
+    game: "",
+    price: "",
+    images: [] as File[],
+    condition: "New",
+    paymentMethods: [] as string[],
+    hasProof: false,
+  })
+
+  const [currencyFormData, setCurrencyFormData] = useState({
+    currencyType: "",
+    ratePerPeso: "",
+    stock: "",
+    minOrder: "",
+    maxOrder: "",
+    description: "",
+    paymentMethods: [] as string[],
+  })
+
+  const [imagePreview, setImagePreview] = useState<string[]>([])
+
+  if (!user) {
+    return null
+  }
+
+  const handleItemChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value, type } = e.target
+    const checked = (e.target as HTMLInputElement).checked
+    setItemFormData({
+      ...itemFormData,
+      [name]: type === "checkbox" ? checked : value,
+    })
+  }
+
+  const handleCurrencyChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target
+    setCurrencyFormData({
+      ...currencyFormData,
+      [name]: value,
+    })
+  }
+
+  const handleItemPaymentChange = (method: string) => {
+    setItemFormData({
+      ...itemFormData,
+      paymentMethods: itemFormData.paymentMethods.includes(method)
+        ? itemFormData.paymentMethods.filter((m) => m !== method)
+        : [...itemFormData.paymentMethods, method],
+    })
+  }
+
+  const handleCurrencyPaymentChange = (method: string) => {
+    setCurrencyFormData({
+      ...currencyFormData,
+      paymentMethods: currencyFormData.paymentMethods.includes(method)
+        ? currencyFormData.paymentMethods.filter((m) => m !== method)
+        : [...currencyFormData.paymentMethods, method],
+    })
+  }
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    setImagePreview([...imagePreview, ...files.map((file) => URL.createObjectURL(file))])
+  }
+
+  const removeImage = (index: number) => {
+    setImagePreview(imagePreview.filter((_, i) => i !== index))
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (listingType === "item") {
+      console.log("Item listing created:", itemFormData)
+    } else {
+      console.log("Currency listing created:", currencyFormData)
+    }
+  }
+
+  return (
+    <main className="min-h-screen bg-background">
+      <Navigation />
+
+      <div className="container mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold mb-2">Create a Listing</h1>
+          <p className="text-muted-foreground">Share your item or currency with the community and start trading</p>
+        </div>
+
+        <Card className="p-2 mb-8 inline-flex gap-2">
+          <Button
+            variant={listingType === "item" ? "default" : "ghost"}
+            onClick={() => setListingType("item")}
+            className="gap-2"
+          >
+            <Package className="w-4 h-4" />
+            Item Listing
+          </Button>
+          <Button
+            variant={listingType === "currency" ? "default" : "ghost"}
+            onClick={() => setListingType("currency")}
+            className="gap-2"
+          >
+            <Coins className="w-4 h-4" />
+            Currency Listing
+          </Button>
+        </Card>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Main Form */}
+          <div className="lg:col-span-2">
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {listingType === "item" ? (
+                <>
+                  {/* Item Form */}
+                  <Card className="p-6">
+                    <h2 className="text-xl font-bold mb-4">Item Details</h2>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-sm font-semibold mb-2 block">Item Title *</label>
+                        <Input
+                          type="text"
+                          name="title"
+                          placeholder="Golden Dragon Pet - Mint Condition"
+                          value={itemFormData.title}
+                          onChange={handleItemChange}
+                          maxLength={100}
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">{itemFormData.title.length}/100</p>
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-semibold mb-2 block">Description *</label>
+                        <textarea
+                          name="description"
+                          placeholder="Describe the item in detail. Include any special features, condition, etc."
+                          value={itemFormData.description}
+                          onChange={handleItemChange}
+                          maxLength={2000}
+                          className="w-full px-3 py-2 border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                          rows={6}
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">{itemFormData.description.length}/2000</p>
+                      </div>
+                    </div>
+                  </Card>
+
+                  <Card className="p-6">
+                    <h2 className="text-xl font-bold mb-4">Category</h2>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm font-semibold mb-2 block">Item Type *</label>
+                        <select
+                          name="category"
+                          value={itemFormData.category}
+                          onChange={handleItemChange}
+                          className="w-full px-3 py-2 border border-border rounded-lg bg-background"
+                        >
+                          <option value="">Select category</option>
+                          {itemCategories.map((cat) => (
+                            <option key={cat} value={cat}>
+                              {cat}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-semibold mb-2 block">Game *</label>
+                        <select
+                          name="game"
+                          value={itemFormData.game}
+                          onChange={handleItemChange}
+                          className="w-full px-3 py-2 border border-border rounded-lg bg-background"
+                        >
+                          <option value="">Select game</option>
+                          {games.map((g) => (
+                            <option key={g} value={g}>
+                              {g}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-semibold mb-2 block">Condition *</label>
+                        <select
+                          name="condition"
+                          value={itemFormData.condition}
+                          onChange={handleItemChange}
+                          className="w-full px-3 py-2 border border-border rounded-lg bg-background"
+                        >
+                          <option value="New">New</option>
+                          <option value="Mint">Mint</option>
+                          <option value="Used">Used</option>
+                          <option value="Damaged">Damaged</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-semibold mb-2 block">Price (PHP) *</label>
+                        <Input
+                          type="number"
+                          name="price"
+                          placeholder="2500"
+                          value={itemFormData.price}
+                          onChange={handleItemChange}
+                          min="0"
+                        />
+                      </div>
+                    </div>
+                  </Card>
+
+                  <Card className="p-6">
+                    <h2 className="text-xl font-bold mb-4">Images</h2>
+                    <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
+                      <Upload className="w-8 h-8 mx-auto mb-3 text-muted-foreground" />
+                      <p className="font-semibold mb-1">Upload images of your item</p>
+                      <p className="text-sm text-muted-foreground mb-4">Add up to 5 images (JPG, PNG)</p>
+                      <input
+                        type="file"
+                        multiple
+                        accept="image/*"
+                        onChange={handleImageUpload}
+                        className="hidden"
+                        id="image-upload"
+                      />
+                      <label htmlFor="image-upload">
+                        <Button type="button" variant="outline" asChild>
+                          <span>Select Images</span>
+                        </Button>
+                      </label>
+                    </div>
+
+                    {imagePreview.length > 0 && (
+                      <div className="mt-4 grid grid-cols-3 md:grid-cols-4 gap-4">
+                        {imagePreview.map((img, idx) => (
+                          <div key={idx} className="relative">
+                            <img
+                              src={img || "/placeholder.svg"}
+                              alt={`Preview ${idx + 1}`}
+                              className="w-full h-24 object-cover rounded-lg"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeImage(idx)}
+                              className="absolute top-1 right-1 p-1 bg-destructive text-white rounded-full hover:bg-destructive/90"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </Card>
+
+                  <Card className="p-6">
+                    <h2 className="text-xl font-bold mb-4">Payment & Proof</h2>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-sm font-semibold mb-3 block">Accept Payment Via *</label>
+                        <div className="flex flex-wrap gap-2">
+                          {paymentMethods.map((method) => (
+                            <button
+                              key={method}
+                              type="button"
+                              onClick={() => handleItemPaymentChange(method)}
+                              className={`px-4 py-2 rounded-lg border transition ${
+                                itemFormData.paymentMethods.includes(method)
+                                  ? "bg-primary text-primary-foreground border-primary"
+                                  : "border-border hover:border-primary/50"
+                              }`}
+                            >
+                              {method}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <label className="flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          name="hasProof"
+                          checked={itemFormData.hasProof}
+                          onChange={handleItemChange}
+                          className="mt-1"
+                        />
+                        <span className="text-sm">I have screenshots/video proof of this item</span>
+                      </label>
+                    </div>
+                  </Card>
+                </>
+              ) : (
+                <>
+                  <Card className="p-6">
+                    <h2 className="text-xl font-bold mb-4">Currency Details</h2>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-sm font-semibold mb-2 block">Currency Type *</label>
+                        <select
+                          name="currencyType"
+                          value={currencyFormData.currencyType}
+                          onChange={handleCurrencyChange}
+                          className="w-full px-3 py-2 border border-border rounded-lg bg-background"
+                        >
+                          <option value="">Select currency type</option>
+                          {currencyTypes.map((type) => (
+                            <option key={type} value={type}>
+                              {type}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-sm font-semibold mb-2 block">Rate per PHP *</label>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="number"
+                              name="ratePerPeso"
+                              placeholder="3"
+                              value={currencyFormData.ratePerPeso}
+                              onChange={handleCurrencyChange}
+                              min="0"
+                              step="0.1"
+                            />
+                            <span className="text-sm text-muted-foreground whitespace-nowrap">per PHP 1</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Example: 3 means 3 {currencyFormData.currencyType || "currency"} per PHP 1
+                          </p>
+                        </div>
+
+                        <div>
+                          <label className="text-sm font-semibold mb-2 block">Stock Available *</label>
+                          <Input
+                            type="number"
+                            name="stock"
+                            placeholder="10000"
+                            value={currencyFormData.stock}
+                            onChange={handleCurrencyChange}
+                            min="0"
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Total {currencyFormData.currencyType || "currency"} you have for sale
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-sm font-semibold mb-2 block">Minimum Order (PHP)</label>
+                          <Input
+                            type="number"
+                            name="minOrder"
+                            placeholder="100"
+                            value={currencyFormData.minOrder}
+                            onChange={handleCurrencyChange}
+                            min="0"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-sm font-semibold mb-2 block">Maximum Order (PHP)</label>
+                          <Input
+                            type="number"
+                            name="maxOrder"
+                            placeholder="5000"
+                            value={currencyFormData.maxOrder}
+                            onChange={handleCurrencyChange}
+                            min="0"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-semibold mb-2 block">Additional Notes</label>
+                        <textarea
+                          name="description"
+                          placeholder="Any additional information about your currency listing (delivery time, restrictions, etc.)"
+                          value={currencyFormData.description}
+                          onChange={handleCurrencyChange}
+                          maxLength={500}
+                          className="w-full px-3 py-2 border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                          rows={4}
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">{currencyFormData.description.length}/500</p>
+                      </div>
+                    </div>
+                  </Card>
+
+                  <Card className="p-6">
+                    <h2 className="text-xl font-bold mb-4">Payment Methods</h2>
+                    <div>
+                      <label className="text-sm font-semibold mb-3 block">Accept Payment Via *</label>
+                      <div className="flex flex-wrap gap-2">
+                        {paymentMethods.map((method) => (
+                          <button
+                            key={method}
+                            type="button"
+                            onClick={() => handleCurrencyPaymentChange(method)}
+                            className={`px-4 py-2 rounded-lg border transition ${
+                              currencyFormData.paymentMethods.includes(method)
+                                ? "bg-primary text-primary-foreground border-primary"
+                                : "border-border hover:border-primary/50"
+                            }`}
+                          >
+                            {method}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </Card>
+                </>
+              )}
+
+              {/* Actions */}
+              <div className="flex gap-2">
+                <Link href={listingType === "item" ? "/marketplace" : "/currency"} className="flex-1">
+                  <Button variant="outline" size="lg" className="w-full bg-transparent">
+                    Cancel
+                  </Button>
+                </Link>
+                <Button type="submit" size="lg" className="flex-1">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create {listingType === "item" ? "Item" : "Currency"} Listing
+                </Button>
+              </div>
+            </form>
+          </div>
+
+          {/* Preview & Tips */}
+          <div className="space-y-6">
+            {/* Preview */}
+            <Card className="p-6">
+              <h2 className="text-xl font-bold mb-4">Listing Preview</h2>
+              {listingType === "item" ? (
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="aspect-video bg-muted flex items-center justify-center">
+                    {imagePreview.length > 0 ? (
+                      <img
+                        src={imagePreview[0] || "/placeholder.svg"}
+                        alt="Preview"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <p className="text-muted-foreground text-sm">No image</p>
+                    )}
+                  </div>
+                  <div className="p-4">
+                    <p className="font-semibold truncate">{itemFormData.title || "Item Title"}</p>
+                    <p className="text-primary font-bold mt-1">
+                      {itemFormData.price ? `₱${Number(itemFormData.price).toLocaleString()}` : "₱0"}
+                    </p>
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {itemFormData.game && (
+                        <Badge variant="secondary" className="text-xs">
+                          {itemFormData.game}
+                        </Badge>
+                      )}
+                      {itemFormData.category && (
+                        <Badge variant="outline" className="text-xs">
+                          {itemFormData.category}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="border rounded-lg p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
+                      <Coins className="w-6 h-6 text-primary" />
+                    </div>
+                    <div>
+                      <p className="font-semibold">{currencyFormData.currencyType || "Currency Type"}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {currencyFormData.stock
+                          ? `${Number(currencyFormData.stock).toLocaleString()} in stock`
+                          : "No stock set"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="bg-muted rounded-lg p-3">
+                    <p className="text-sm text-muted-foreground">Rate</p>
+                    <p className="font-bold text-lg text-primary">
+                      {currencyFormData.ratePerPeso
+                        ? `${currencyFormData.ratePerPeso} ${currencyFormData.currencyType || "currency"} per ₱1`
+                        : "Set your rate"}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </Card>
+
+            {/* Tips */}
+            <Card className="p-6">
+              <h2 className="text-xl font-bold mb-4">Listing Tips</h2>
+              <ul className="space-y-3 text-sm text-muted-foreground">
+                <li className="flex items-start gap-2">
+                  <span className="text-primary">•</span>
+                  Use clear, high-quality images
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary">•</span>
+                  Write detailed descriptions
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary">•</span>
+                  Set competitive prices
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary">•</span>
+                  Respond quickly to inquiries
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary">•</span>
+                  Always provide proof of ownership
+                </li>
+              </ul>
+            </Card>
+
+            {/* Safety */}
+            <Card className="p-6 bg-primary/5 border-primary/20">
+              <h2 className="text-xl font-bold mb-4">Safety First</h2>
+              <p className="text-sm text-muted-foreground">
+                Never share your Roblox password or personal information. Use our secure messaging system for all
+                communications.
+              </p>
+            </Card>
+          </div>
+        </div>
+      </div>
+    </main>
+  )
+}
