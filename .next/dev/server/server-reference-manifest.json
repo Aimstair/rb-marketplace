@@ -1,0 +1,36 @@
+{
+  "node": {
+    "40fc12b29cad7f3b83501f2698d876b613877bb426": {
+      "workers": {
+        "app/marketplace/page": {
+          "moduleId": "[project]/rb-marketplace/.next-internal/server/app/marketplace/page/actions.js { ACTIONS_MODULE0 => \"[project]/rb-marketplace/app/actions/listings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "getListings",
+          "filename": "rb-marketplace/app/actions/listings.ts"
+        }
+      },
+      "layer": {
+        "app/marketplace/page": "action-browser"
+      },
+      "filename": "rb-marketplace/app/actions/listings.ts",
+      "exportedName": "getListings"
+    },
+    "40105282f300ef5022879b2c5d5a4bb918dc10c113": {
+      "workers": {
+        "app/marketplace/page": {
+          "moduleId": "[project]/rb-marketplace/.next-internal/server/app/marketplace/page/actions.js { ACTIONS_MODULE0 => \"[project]/rb-marketplace/app/actions/listings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "getAvailableGames",
+          "filename": "rb-marketplace/app/actions/listings.ts"
+        }
+      },
+      "layer": {
+        "app/marketplace/page": "action-browser"
+      },
+      "filename": "rb-marketplace/app/actions/listings.ts",
+      "exportedName": "getAvailableGames"
+    }
+  },
+  "edge": {},
+  "encryptionKey": "h8fJvcaecOvAkyfm5oitrMP+ub6zNc7xby8q5t9rzjs="
+}

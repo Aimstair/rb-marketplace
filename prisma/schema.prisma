@@ -1,0 +1,84 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String   @id @default(cuid())
+  username         String   @unique
+  email            String   @unique
+  password         String
+  role             String   @default("user") // "user" | "admin"
+  profilePicture   String?
+  banner           String?
+  bio              String?
+  joinDate         DateTime @default(now())
+  robloxProfile    String?
+  discordTag       String?
+  
+  // Relations
+  listings         Listing[]
+  vouchesReceived  Vouch[]   @relation("VouchesReceived")
+  vouchesSent      Vouch[]   @relation("VouchesSent")
+  
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@map("users")
+}
+
+model Listing {
+  id           String   @id @default(cuid())
+  title        String
+  description  String?
+  game         String
+  price        Int
+  image        String
+  category     String   // "Accessories" | "Games" | "Accounts"
+  itemType     String   // "Limited" | "UGC" | "In-Game Items" | "Gamepasses" | "Services" | "Account"
+  condition    String   // "Mint" | "New" | "Used"
+  status       String   @default("available") // "available" | "sold"
+  featured     Boolean  @default(false)
+  
+  // Engagement metrics
+  vouchCount   Int      @default(0)
+  upvotes      Int      @default(0)
+  downvotes    Int      @default(0)
+  
+  // Relations
+  sellerId     String
+  seller       User     @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([sellerId])
+  @@map("listings")
+}
+
+model Vouch {
+  id         String   @id @default(cuid())
+  
+  // Relations
+  fromUserId String
+  fromUser   User     @relation("VouchesSent", fields: [fromUserId], references: [id], onDelete: Cascade)
+  
+  toUserId   String
+  toUser     User     @relation("VouchesReceived", fields: [toUserId], references: [id], onDelete: Cascade)
+  
+  type       String   // "buyer" | "seller"
+  message    String?
+  
+  createdAt  DateTime @default(now())
+
+  @@unique([fromUserId, toUserId])
+  @@index([toUserId])
+  @@map("vouches")
+}

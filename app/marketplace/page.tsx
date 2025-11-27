@@ -10,274 +10,10 @@ import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { Star, MessageCircle } from "lucide-react"
 import { useSearchParams } from "next/navigation"
-
-const mockListings = [
-  // Accessories (Roblox Catalog Items)
-  {
-    id: 1,
-    title: "Dominus Astrorum",
-    game: "Roblox Catalog",
-    price: 8999,
-    image: "/dominus-astrorum-roblox-limited.jpg",
-    seller: "PixelVault",
-    vouch: 89,
-    status: "available",
-    category: "Accessories",
-    itemType: "Limited",
-    condition: "Mint",
-    upvotes: 124,
-    downvotes: 5,
-    featured: true,
-  },
-  {
-    id: 2,
-    title: "Party Hat",
-    game: "Roblox Catalog",
-    price: 4200,
-    image: "/roblox-party-hat-accessory.jpg",
-    seller: "LegitTrader",
-    vouch: 134,
-    status: "available",
-    category: "Accessories",
-    itemType: "Limited",
-    condition: "Mint",
-    upvotes: 98,
-    downvotes: 4,
-    featured: false,
-  },
-  {
-    id: 3,
-    title: "UGC Accessory Bundle",
-    game: "Roblox Catalog",
-    price: 890,
-    image: "/roblox-ugc-accessories-bundle.jpg",
-    seller: "UGCMaster",
-    vouch: 201,
-    status: "available",
-    category: "Accessories",
-    itemType: "UGC",
-    condition: "New",
-    upvotes: 145,
-    downvotes: 7,
-    featured: false,
-  },
-  {
-    id: 4,
-    title: "Sparkle Time Fedora",
-    game: "Roblox Catalog",
-    price: 3500,
-    image: "/roblox-sparkle-fedora-hat.jpg",
-    seller: "HatCollector",
-    vouch: 67,
-    status: "available",
-    category: "Accessories",
-    itemType: "Limited",
-    condition: "Mint",
-    upvotes: 76,
-    downvotes: 2,
-    featured: true,
-  },
-  // Games - In-Game Items
-  {
-    id: 5,
-    title: "Golden Dragon Pet",
-    game: "Adopt Me",
-    price: 2500,
-    image: "/golden-dragon-pet-roblox.jpg",
-    seller: "NinjaTrader",
-    vouch: 42,
-    status: "available",
-    category: "Games",
-    itemType: "In-Game Items",
-    condition: "New",
-    upvotes: 67,
-    downvotes: 3,
-    featured: true,
-  },
-  {
-    id: 6,
-    title: "Royal Winged Dragon",
-    game: "Adopt Me",
-    price: 5500,
-    image: "/adopt-me-royal-dragon-pet.jpg",
-    seller: "SafeTrader99",
-    vouch: 78,
-    status: "available",
-    category: "Games",
-    itemType: "In-Game Items",
-    condition: "New",
-    upvotes: 56,
-    downvotes: 2,
-    featured: false,
-  },
-  {
-    id: 7,
-    title: "Pet Simulator X Huge Pets Bundle",
-    game: "Pet Simulator X",
-    price: 3800,
-    image: "/pet-simulator-x-huge-pets-bundle.jpg",
-    seller: "CasualPlayer",
-    vouch: 23,
-    status: "available",
-    category: "Games",
-    itemType: "In-Game Items",
-    condition: "Used",
-    upvotes: 34,
-    downvotes: 8,
-    featured: false,
-  },
-  // Games - Gamepasses
-  {
-    id: 8,
-    title: "Blox Fruits Zoan Tier 3",
-    game: "Blox Fruits",
-    price: 1200,
-    image: "/blox-fruits-zoan-tier.jpg",
-    seller: "TradeMaster",
-    vouch: 156,
-    status: "available",
-    category: "Games",
-    itemType: "Gamepasses",
-    condition: "New",
-    upvotes: 89,
-    downvotes: 12,
-    featured: false,
-  },
-  {
-    id: 9,
-    title: "2x EXP Gamepass",
-    game: "Blox Fruits",
-    price: 800,
-    image: "/blox-fruits-gamepass-exp-boost.jpg",
-    seller: "GamepassKing",
-    vouch: 45,
-    status: "available",
-    category: "Games",
-    itemType: "Gamepasses",
-    condition: "New",
-    upvotes: 62,
-    downvotes: 4,
-    featured: false,
-  },
-  {
-    id: 10,
-    title: "VIP Gamepass",
-    game: "Pet Simulator X",
-    price: 650,
-    image: "/pet-simulator-vip-gamepass.jpg",
-    seller: "VIPSeller",
-    vouch: 89,
-    status: "available",
-    category: "Games",
-    itemType: "Gamepasses",
-    condition: "New",
-    upvotes: 78,
-    downvotes: 3,
-    featured: false,
-  },
-  // Games - Services
-  {
-    id: 11,
-    title: "Level Boosting Service",
-    game: "Blox Fruits",
-    price: 500,
-    image: "/blox-fruits-leveling-service.jpg",
-    seller: "BoostPro",
-    vouch: 234,
-    status: "available",
-    category: "Games",
-    itemType: "Services",
-    condition: "New",
-    upvotes: 156,
-    downvotes: 8,
-    featured: false,
-  },
-  {
-    id: 12,
-    title: "Account Recovery Help",
-    game: "Adopt Me",
-    price: 300,
-    image: "/account-help-service.jpg",
-    seller: "HelpDesk",
-    vouch: 112,
-    status: "available",
-    category: "Games",
-    itemType: "Services",
-    condition: "New",
-    upvotes: 89,
-    downvotes: 5,
-    featured: false,
-  },
-  // Accounts
-  {
-    id: 13,
-    title: "Starter Account - Pet Sim X",
-    game: "Pet Simulator X",
-    price: 2100,
-    image: "/pet-simulator-x-account.jpg",
-    seller: "AccountSeller",
-    vouch: 45,
-    status: "available",
-    category: "Accounts",
-    itemType: "Account",
-    condition: "New",
-    upvotes: 23,
-    downvotes: 6,
-    featured: false,
-  },
-  {
-    id: 14,
-    title: "Max Level Account",
-    game: "Blox Fruits",
-    price: 4500,
-    image: "/blox-fruits-max-level-account.jpg",
-    seller: "ProAccounts",
-    vouch: 67,
-    status: "available",
-    category: "Accounts",
-    itemType: "Account",
-    condition: "Used",
-    upvotes: 45,
-    downvotes: 3,
-    featured: true,
-  },
-  {
-    id: 15,
-    title: "Rich Adopt Me Account",
-    game: "Adopt Me",
-    price: 8000,
-    image: "/adopt-me-rich-account-pets.jpg",
-    seller: "PremiumAccs",
-    vouch: 156,
-    status: "available",
-    category: "Accounts",
-    itemType: "Account",
-    condition: "Used",
-    upvotes: 112,
-    downvotes: 7,
-    featured: false,
-  },
-  {
-    id: 16,
-    title: "Beginner Blox Fruits Account",
-    game: "Blox Fruits",
-    price: 1200,
-    image: "/blox-fruits-starter-account.jpg",
-    seller: "StarterAccs",
-    vouch: 34,
-    status: "available",
-    category: "Accounts",
-    itemType: "Account",
-    condition: "New",
-    upvotes: 28,
-    downvotes: 2,
-    featured: false,
-  },
-]
+import { getListings, getAvailableGames } from "@/app/actions/listings"
+import type { ListingResponse } from "@/app/actions/listings"
 
 const mainCategories = ["All", "Featured", "Accessories", "Games", "Accounts"]
-
-const gamesList = ["All Games", "Adopt Me", "Pet Simulator X", "Blox Fruits", "Murder Mystery 2", "Jailbreak"]
 
 const gameItemTypes = ["All", "In-Game Items", "Gamepasses", "Services"]
 
@@ -302,6 +38,10 @@ export default function MarketplacePage() {
   const [priceRange, setPriceRange] = useState({ min: 0, max: 1000000 })
   const [showFilters, setShowFilters] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
+  const [listings, setListings] = useState<ListingResponse[]>([])
+  const [totalListings, setTotalListings] = useState(0)
+  const [availableGames, setAvailableGames] = useState<string[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     const itemParam = searchParams.get("item")
@@ -319,67 +59,51 @@ export default function MarketplacePage() {
     setCurrentPage(1)
   }, [searchQuery, mainCategory, selectedGame, selectedItemType, sortBy, priceRange])
 
-  const filteredListings = useMemo(() => {
-    const results = mockListings.filter((listing) => {
-      const matchesSearch =
-        listing.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        listing.seller.toLowerCase().includes(searchQuery.toLowerCase())
-
-      let matchesMainCategory = true
-      if (mainCategory === "Featured") {
-        matchesMainCategory = listing.featured === true
-      } else if (mainCategory === "Accessories") {
-        matchesMainCategory = listing.category === "Accessories"
-      } else if (mainCategory === "Games") {
-        matchesMainCategory = listing.category === "Games"
-      } else if (mainCategory === "Accounts") {
-        matchesMainCategory = listing.category === "Accounts"
+  // Fetch listings from Server Action
+  useEffect(() => {
+    const fetchListings = async () => {
+      setIsLoading(true)
+      try {
+        const result = await getListings({
+          search: searchQuery,
+          mainCategory,
+          selectedGame,
+          selectedItemType,
+          sortBy,
+          priceRange,
+          page: currentPage,
+          itemsPerPage: ITEMS_PER_PAGE,
+        })
+        setListings(result.listings)
+        setTotalListings(result.total)
+      } catch (error) {
+        console.error("Error fetching listings:", error)
+        setListings([])
+      } finally {
+        setIsLoading(false)
       }
+    }
 
-      // Game filter (for Games and Accounts categories)
-      const matchesGame = selectedGame === "All Games" || listing.game === selectedGame
+    fetchListings()
+  }, [searchQuery, mainCategory, selectedGame, selectedItemType, sortBy, priceRange, currentPage])
 
-      // Item type filter (only for Games category)
-      const matchesItemType =
-        mainCategory !== "Games" || selectedItemType === "All" || listing.itemType === selectedItemType
-
-      const matchesPrice = listing.price >= priceRange.min && listing.price <= priceRange.max
-
-      return matchesSearch && matchesMainCategory && matchesGame && matchesItemType && matchesPrice
-    })
-
-    // Sort
-    results.sort((a, b) => {
-      switch (sortBy) {
-        case "price-asc":
-          return a.price - b.price
-        case "price-desc":
-          return b.price - a.price
-        case "vouch":
-          return b.vouch - a.vouch
-        case "upvotes":
-          return b.upvotes - a.upvotes
-        case "trending":
-          return Math.random() - 0.5
-        default:
-          return 0
+  // Fetch available games
+  useEffect(() => {
+    const fetchGames = async () => {
+      try {
+        const games = await getAvailableGames(mainCategory)
+        setAvailableGames(games)
+      } catch (error) {
+        console.error("Error fetching games:", error)
+        setAvailableGames(["All Games"])
       }
-    })
+    }
 
-    return results
-  }, [searchQuery, mainCategory, selectedGame, selectedItemType, sortBy, priceRange])
-
-  const totalPages = Math.ceil(filteredListings.length / ITEMS_PER_PAGE)
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
-  const paginatedListings = filteredListings.slice(startIndex, startIndex + ITEMS_PER_PAGE)
-
-  const availableGames = useMemo(() => {
-    if (mainCategory === "Accessories" || mainCategory === "Featured") return []
-    const gamesInCategory = mockListings
-      .filter((l) => l.category === mainCategory || mainCategory === "All")
-      .map((l) => l.game)
-    return ["All Games", ...Array.from(new Set(gamesInCategory.filter((g) => g !== "Roblox Catalog")))]
+    fetchGames()
   }, [mainCategory])
+
+  const totalPages = Math.ceil(totalListings / ITEMS_PER_PAGE)
+  const paginatedListings = listings
 
   const activeFilters = [
     mainCategory !== "All" ? { name: "Category", value: mainCategory } : null,
@@ -407,7 +131,7 @@ export default function MarketplacePage() {
         <div className="mb-8">
           <h1 className="text-4xl font-bold mb-2">Marketplace</h1>
           <p className="text-muted-foreground">
-            Browse {filteredListings.length} available listing{filteredListings.length !== 1 ? "s" : ""}
+            {isLoading ? "Loading..." : `Browse ${totalListings} available listing${totalListings !== 1 ? "s" : ""}`}
           </p>
         </div>
 
@@ -686,13 +410,25 @@ export default function MarketplacePage() {
             {/* Results count */}
             <div className="flex justify-between items-center mb-6">
               <p className="text-sm text-muted-foreground">
-                Showing {paginatedListings.length > 0 ? startIndex + 1 : 0}-
-                {Math.min(startIndex + ITEMS_PER_PAGE, filteredListings.length)} of {filteredListings.length} results
+                {isLoading ? "Loading..." : `Showing ${listings.length > 0 ? (currentPage - 1) * ITEMS_PER_PAGE + 1 : 0}-${Math.min(currentPage * ITEMS_PER_PAGE, totalListings)} of ${totalListings} results`}
               </p>
             </div>
 
             {/* Listings Grid */}
-            {paginatedListings.length > 0 ? (
+            {isLoading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {Array.from({ length: ITEMS_PER_PAGE }).map((_, i) => (
+                  <Card key={i} className="overflow-hidden animate-pulse h-96">
+                    <div className="h-48 bg-muted"></div>
+                    <div className="p-4 space-y-3">
+                      <div className="h-4 bg-muted rounded w-3/4"></div>
+                      <div className="h-3 bg-muted rounded w-1/2"></div>
+                      <div className="h-8 bg-muted rounded"></div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            ) : paginatedListings.length > 0 ? (
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {paginatedListings.map((listing) => (
@@ -743,7 +479,7 @@ export default function MarketplacePage() {
 
                           {/* Seller Info & Votes */}
                           <div className="flex items-center justify-between text-sm mb-4 pb-4 border-b mt-auto">
-                            <span className="text-muted-foreground">{listing.seller}</span>
+                            <span className="text-muted-foreground">{listing.seller.username}</span>
                             <div className="flex items-center gap-1">
                               <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
                               <span className="font-semibold text-sm">{listing.vouch}</span>
