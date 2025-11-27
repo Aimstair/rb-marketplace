@@ -1,7 +1,8 @@
 {
   "/_not-found/page": "app/_not-found/page.js",
   "/auth/login/page": "app/auth/login/page.js",
-  "/currency/page": "app/currency/page.js",
   "/marketplace/page": "app/marketplace/page.js",
-  "/messages/page": "app/messages/page.js"
+  "/my-listings/page": "app/my-listings/page.js",
+  "/sell/page": "app/sell/page.js",
+  "/trends/page": "app/trends/page.js"
 }

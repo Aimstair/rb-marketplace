@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
+import { createListing, createCurrencyListing } from "@/app/actions/listings"
 
 const itemCategories = ["Pets", "Limiteds", "Game Passes", "Accounts", "UGC", "Cross-Trading", "Other"]
 
@@ -46,6 +47,7 @@ export default function SellPage() {
     category: "",
     game: "",
     price: "",
+    image: "",
     images: [] as File[],
     condition: "New",
     paymentMethods: [] as string[],
@@ -63,6 +65,9 @@ export default function SellPage() {
   })
 
   const [imagePreview, setImagePreview] = useState<string[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
 
   if (!user) {
     return null
@@ -112,12 +117,86 @@ export default function SellPage() {
     setImagePreview(imagePreview.filter((_, i) => i !== index))
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (listingType === "item") {
-      console.log("Item listing created:", itemFormData)
-    } else {
-      console.log("Currency listing created:", currencyFormData)
+    setError(null)
+    setIsLoading(true)
+
+    try {
+      if (listingType === "item") {
+        // Validate that all required fields are filled
+        if (!itemFormData.title || !itemFormData.description || !itemFormData.category || !itemFormData.game || !itemFormData.price || !itemFormData.image) {
+          setError("Please fill in all required fields")
+          setIsLoading(false)
+          return
+        }
+
+        if (itemFormData.paymentMethods.length === 0) {
+          setError("Please select at least one payment method")
+          setIsLoading(false)
+          return
+        }
+
+        const result = await createListing({
+          title: itemFormData.title,
+          description: itemFormData.description,
+          category: itemFormData.category as "Accessories" | "Games" | "Accounts",
+          game: itemFormData.game,
+          itemType: itemFormData.category === "Accessories" ? "Limited" : "In-Game Items",
+          price: Number(itemFormData.price),
+          image: itemFormData.image,
+          condition: itemFormData.condition as "Mint" | "New" | "Used",
+          paymentMethods: itemFormData.paymentMethods,
+        })
+
+        if (result.success) {
+          setSuccess(true)
+          // Redirect to the new listing or marketplace
+          setTimeout(() => {
+            router.push(`/listing/${result.listingId}`)
+          }, 1500)
+        } else {
+          setError(result.error || "Failed to create listing")
+        }
+      } else {
+        // Currency listing
+        if (!currencyFormData.currencyType || !currencyFormData.ratePerPeso || !currencyFormData.stock || !currencyFormData.minOrder || !currencyFormData.maxOrder) {
+          setError("Please fill in all required fields")
+          setIsLoading(false)
+          return
+        }
+
+        if (currencyFormData.paymentMethods.length === 0) {
+          setError("Please select at least one payment method")
+          setIsLoading(false)
+          return
+        }
+
+        const result = await createCurrencyListing({
+          currencyType: currencyFormData.currencyType,
+          ratePerPeso: Number(currencyFormData.ratePerPeso),
+          stock: Number(currencyFormData.stock),
+          minOrder: Number(currencyFormData.minOrder),
+          maxOrder: Number(currencyFormData.maxOrder),
+          description: currencyFormData.description || undefined,
+          paymentMethods: currencyFormData.paymentMethods,
+        })
+
+        if (result.success) {
+          setSuccess(true)
+          // Redirect to the new listing or marketplace
+          setTimeout(() => {
+            router.push(`/listing/${result.listingId}`)
+          }, 1500)
+        } else {
+          setError(result.error || "Failed to create listing")
+        }
+      }
+    } catch (err) {
+      setError("An unexpected error occurred. Please try again.")
+      console.error("Submit error:", err)
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -154,6 +233,20 @@ export default function SellPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Form */}
           <div className="lg:col-span-2">
+            {/* Error Alert */}
+            {error && (
+              <Card className="p-4 mb-6 bg-destructive/10 border-destructive/20">
+                <p className="text-sm text-destructive">{error}</p>
+              </Card>
+            )}
+
+            {/* Success Alert */}
+            {success && (
+              <Card className="p-4 mb-6 bg-green-500/10 border-green-500/20">
+                <p className="text-sm text-green-700">Listing created successfully! Redirecting...</p>
+              </Card>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-6">
               {listingType === "item" ? (
                 <>
@@ -258,9 +351,28 @@ export default function SellPage() {
 
                   <Card className="p-6">
                     <h2 className="text-xl font-bold mb-4">Images</h2>
-                    <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-sm font-semibold mb-2 block">Image URL *</label>
+                        <Input
+                          type="url"
+                          name="image"
+                          placeholder="https://example.com/image.jpg"
+                          value={itemFormData.image}
+                          onChange={handleItemChange}
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">Provide a direct URL to the item image</p>
+                      </div>
+
+                      {itemFormData.image && (
+                        <div className="border rounded-lg overflow-hidden">
+                          <img src={itemFormData.image} alt="Preview" className="w-full h-48 object-cover" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="border-2 border-dashed border-border rounded-lg p-8 text-center mt-6">
                       <Upload className="w-8 h-8 mx-auto mb-3 text-muted-foreground" />
-                      <p className="font-semibold mb-1">Upload images of your item</p>
+                      <p className="font-semibold mb-1">Upload images of your item (optional)</p>
                       <p className="text-sm text-muted-foreground mb-4">Add up to 5 images (JPG, PNG)</p>
                       <input
                         type="file"
@@ -467,9 +579,18 @@ export default function SellPage() {
                     Cancel
                   </Button>
                 </Link>
-                <Button type="submit" size="lg" className="flex-1">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Create {listingType === "item" ? "Item" : "Currency"} Listing
+                <Button type="submit" size="lg" className="flex-1" disabled={isLoading}>
+                  {isLoading ? (
+                    <>
+                      <span className="w-4 h-4 mr-2 animate-spin inline-block border-2 border-current border-t-transparent rounded-full" />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4 mr-2" />
+                      Create {listingType === "item" ? "Item" : "Currency"} Listing
+                    </>
+                  )}
                 </Button>
               </div>
             </form>

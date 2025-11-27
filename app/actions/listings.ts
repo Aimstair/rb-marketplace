@@ -1,6 +1,7 @@
 "use server"
 
 import { prisma } from "@/lib/prisma"
+import { z } from "zod"
 
 export interface ListingFilters {
   search?: string
@@ -212,5 +213,148 @@ export async function getAvailableGames(mainCategory: string = "All"): Promise<s
   } catch (error) {
     console.error("Error fetching available games:", error)
     return ["All Games"]
+  }
+}
+
+// Validation schemas
+export const createItemListingSchema = z.object({
+  title: z.string().min(5, "Title must be at least 5 characters").max(100, "Title must be at most 100 characters"),
+  description: z.string().min(10, "Description must be at least 10 characters").max(2000, "Description must be at most 2000 characters"),
+  category: z.enum(["Accessories", "Games", "Accounts"]),
+  game: z.string().min(1, "Please select a game"),
+  itemType: z.string().min(1, "Please select an item type"),
+  price: z.number().min(1, "Price must be at least 1").max(1000000, "Price must be at most 1,000,000"),
+  image: z.string().url("Please provide a valid image URL"),
+  condition: z.enum(["Mint", "New", "Used"]),
+  paymentMethods: z.array(z.string()).min(1, "Select at least one payment method"),
+})
+
+export const createCurrencyListingSchema = z.object({
+  currencyType: z.string().min(1, "Please select a currency type"),
+  ratePerPeso: z.number().min(0.01, "Rate must be at least 0.01"),
+  stock: z.number().min(1, "Stock must be at least 1"),
+  minOrder: z.number().min(1, "Minimum order must be at least 1"),
+  maxOrder: z.number().min(1, "Maximum order must be at least 1"),
+  description: z.string().max(500, "Description must be at most 500 characters").optional(),
+  paymentMethods: z.array(z.string()).min(1, "Select at least one payment method"),
+})
+
+export type CreateItemListingInput = z.infer<typeof createItemListingSchema>
+export type CreateCurrencyListingInput = z.infer<typeof createCurrencyListingSchema>
+
+export interface CreateListingResult {
+  success: boolean
+  listingId?: string
+  error?: string
+}
+
+export async function createListing(input: CreateItemListingInput): Promise<CreateListingResult> {
+  try {
+    // Validate input
+    const validatedData = createItemListingSchema.parse(input)
+
+    // Get the first user from the database (for now, since real auth isn't fully active)
+    const seller = await prisma.user.findFirst({
+      where: { role: "user" },
+    })
+
+    if (!seller) {
+      return {
+        success: false,
+        error: "No seller account found. Please contact support.",
+      }
+    }
+
+    // Create the listing
+    const listing = await prisma.listing.create({
+      data: {
+        title: validatedData.title,
+        description: validatedData.description,
+        game: validatedData.game,
+        price: validatedData.price,
+        image: validatedData.image,
+        category: validatedData.category,
+        itemType: validatedData.itemType,
+        condition: validatedData.condition,
+        sellerId: seller.id,
+        status: "available",
+      },
+    })
+
+    return {
+      success: true,
+      listingId: listing.id,
+    }
+  } catch (error) {
+    console.error("Error creating listing:", error)
+    if (error instanceof z.ZodError) {
+      return {
+        success: false,
+        error: error.errors[0]?.message || "Validation error",
+      }
+    }
+    return {
+      success: false,
+      error: "Failed to create listing. Please try again.",
+    }
+  }
+}
+
+export async function createCurrencyListing(input: CreateCurrencyListingInput): Promise<CreateListingResult> {
+  try {
+    // Validate input
+    const validatedData = createCurrencyListingSchema.parse(input)
+
+    // Get the first user from the database (for now, since real auth isn't fully active)
+    const seller = await prisma.user.findFirst({
+      where: { role: "user" },
+    })
+
+    if (!seller) {
+      return {
+        success: false,
+        error: "No seller account found. Please contact support.",
+      }
+    }
+
+    // Create the listing with currency-specific fields in description
+    const currencyDescription = `Currency: ${validatedData.currencyType}
+Rate: ₱${validatedData.ratePerPeso} per unit
+Stock: ${validatedData.stock}
+Min Order: ${validatedData.minOrder}
+Max Order: ${validatedData.maxOrder}
+${validatedData.description ? `Notes: ${validatedData.description}` : ""}`
+
+    const listing = await prisma.listing.create({
+      data: {
+        title: `${validatedData.currencyType} - ₱${validatedData.ratePerPeso}/unit`,
+        description: currencyDescription,
+        game: "Currency Exchange",
+        price: Math.round(validatedData.ratePerPeso * 100),
+        image: "/currency-placeholder.svg",
+        category: "Games",
+        itemType: "Services",
+        condition: "New",
+        sellerId: seller.id,
+        status: "available",
+      },
+    })
+
+    return {
+      success: true,
+      listingId: listing.id,
+    }
+  } catch (error) {
+    console.error("Error creating currency listing:", error)
+    if (error instanceof z.ZodError) {
+      return {
+        success: false,
+        error: error.errors[0]?.message || "Validation error",
+      }
+    }
+    return {
+      success: false,
+      error: "Failed to create currency listing. Please try again.",
+    }
   }
 }
