@@ -9,28 +9,42 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { AlertCircle, Eye, EyeOff } from "lucide-react"
-import { useAuth } from "@/lib/auth-context"
+import { signIn } from "next-auth/react"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
+  const [loading, setLoading] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { login, isLoading } = useAuth()
 
   const redirectUrl = searchParams.get("redirect") || "/marketplace"
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
+    setLoading(true)
 
     try {
-      await login(email, password)
-      router.push(redirectUrl)
+      // Use NextAuth signIn with credentials provider
+      const result = await signIn("credentials", {
+        email,
+        password,
+        redirect: false,
+      })
+
+      if (result?.error) {
+        setError(result.error)
+      } else if (result?.ok) {
+        // Redirect to the desired page
+        router.push(redirectUrl)
+      }
     } catch (err: any) {
       setError(err.message || "Login failed. Please try again.")
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -65,6 +79,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full"
+                disabled={loading}
               />
               <p className="text-xs text-muted-foreground mt-1">Demo: user@test.com / admin@test.com</p>
             </div>
@@ -79,11 +94,13 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full pr-12"
+                  disabled={loading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  disabled={loading}
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
@@ -94,7 +111,7 @@ export default function LoginPage() {
             {/* Remember & Forgot */}
             <div className="flex items-center justify-between text-sm">
               <label className="flex items-center gap-2">
-                <input type="checkbox" className="rounded" />
+                <input type="checkbox" className="rounded" disabled={loading} />
                 <span>Remember me</span>
               </label>
               <Link href="/auth/forgot-password" className="text-primary hover:underline">
@@ -103,12 +120,12 @@ export default function LoginPage() {
             </div>
 
             {/* Login Button */}
-            <Button type="submit" size="lg" className="w-full mt-6" disabled={isLoading}>
-              {isLoading ? "Signing in..." : "Sign In"}
+            <Button type="submit" size="lg" className="w-full mt-6" disabled={loading}>
+              {loading ? "Signing in..." : "Sign In"}
             </Button>
           </form>
 
-          {/* Sign Up Link - removed Discord and Google login buttons */}
+          {/* Sign Up Link */}
           <p className="text-center text-sm text-muted-foreground mt-6">
             Don't have an account?{" "}
             <Link href="/auth/signup" className="text-primary font-semibold hover:underline">

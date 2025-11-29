@@ -2,12 +2,15 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { AlertCircle, CheckCircle, Eye, EyeOff } from "lucide-react"
+import { signUp } from "@/app/actions/auth"
 
 export default function SignupPage() {
+  const router = useRouter()
   const [step, setStep] = useState("account") // account, email-verify, seller
   const [formData, setFormData] = useState({
     username: "",
@@ -60,13 +63,34 @@ export default function SignupPage() {
     return true
   }
 
-  const handleNext = (e) => {
+  const handleNext = async (e) => {
     e.preventDefault()
     setError("")
 
     if (step === "account") {
       if (validateStep1()) {
-        setStep("email-verify")
+        // Call server action to create account
+        setLoading(true)
+        try {
+          const result = await signUp({
+            username: formData.username,
+            email: formData.email,
+            password: formData.password,
+            confirmPassword: formData.confirmPassword,
+            agreeTerms: formData.agreeTerms,
+          })
+
+          if (result.success) {
+            setStep("email-verify")
+          } else {
+            setError(result.error || "Failed to create account")
+          }
+        } catch (err) {
+          setError("An unexpected error occurred. Please try again.")
+          console.error(err)
+        } finally {
+          setLoading(false)
+        }
       }
     }
   }
@@ -84,12 +108,14 @@ export default function SignupPage() {
     e.preventDefault()
     setLoading(true)
 
-    // Simulate signup
-    setTimeout(() => {
-      console.log("Signup complete:", { formData, sellerData })
+    try {
+      // Redirect to login after successful signup
+      router.push("/auth/login?signup=success")
+    } catch (err) {
+      setError("An error occurred. Please try again.")
+      console.error(err)
       setLoading(false)
-      window.location.href = "/marketplace"
-    }, 1000)
+    }
   }
 
   return (
@@ -203,8 +229,8 @@ export default function SignupPage() {
               </label>
 
               {/* Button */}
-              <Button type="submit" size="lg" className="w-full mt-6">
-                Continue
+              <Button type="submit" size="lg" className="w-full mt-6" disabled={loading}>
+                {loading ? "Creating account..." : "Continue"}
               </Button>
             </form>
           )}

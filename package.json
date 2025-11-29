@@ -13,6 +13,7 @@
     "db:seed": "prisma db seed"
   },
   "dependencies": {
+    "@auth/prisma-adapter": "^2.11.1",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "latest",
     "@radix-ui/react-alert-dialog": "latest",
@@ -45,6 +46,7 @@
     "@uploadthing/shared": "^7.1.10",
     "@vercel/analytics": "latest",
     "autoprefixer": "^10.4.20",
+    "bcrypt": "^6.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "latest",
@@ -53,6 +55,7 @@
     "input-otp": "latest",
     "lucide-react": "^0.454.0",
     "next": "16.0.3",
+    "next-auth": "^5.0.0-beta.30",
     "next-themes": "latest",
     "react": "19.2.0",
     "react-day-picker": "latest",

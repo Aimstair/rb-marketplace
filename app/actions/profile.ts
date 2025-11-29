@@ -1,6 +1,7 @@
 "use server"
 
 import { prisma } from "@/lib/prisma"
+import { auth } from "@/auth"
 
 export interface UserProfileData {
   id: string
@@ -122,8 +123,26 @@ export async function getProfile(usernameOrId: string): Promise<GetProfileResult
  */
 export async function updateProfile(data: Partial<UserProfileData>): Promise<UpdateProfileResult> {
   try {
-    // TODO: Get current user from auth context
-    const currentUserId = "placeholder-user-id"
+    // Get current authenticated user
+    const session = await auth()
+    if (!session?.user?.email) {
+      return {
+        success: false,
+        error: "You must be logged in to update your profile",
+      }
+    }
+
+    // Find the current user by email from session
+    const currentUser = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    })
+
+    if (!currentUser) {
+      return {
+        success: false,
+        error: "User account not found",
+      }
+    }
 
     const updateData: any = {}
 
@@ -138,7 +157,7 @@ export async function updateProfile(data: Partial<UserProfileData>): Promise<Upd
     }
 
     const updatedUser = await prisma.user.update({
-      where: { id: currentUserId },
+      where: { id: currentUser.id },
       data: updateData,
       include: {
         listings: { where: { status: "available" } },

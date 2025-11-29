@@ -1,6 +1,7 @@
 "use server"
 
 import { prisma } from "@/lib/prisma"
+import { auth } from "@/auth"
 import { createNotification } from "./notifications"
 
 export interface ConversationWithLatestMessage {
@@ -67,15 +68,24 @@ export interface SendMessageResult {
  */
 export async function getConversations(): Promise<GetConversationsResult> {
   try {
-    // Get the current user (placeholder - first user in DB)
-    const currentUser = await prisma.user.findFirst({
-      where: { role: "user" },
+    // Get the current authenticated user
+    const session = await auth()
+    if (!session?.user?.email) {
+      return {
+        success: false,
+        error: "You must be logged in to view conversations",
+      }
+    }
+
+    // Find the current user by email from session
+    const currentUser = await prisma.user.findUnique({
+      where: { email: session.user.email },
     })
 
     if (!currentUser) {
       return {
         success: false,
-        error: "No user found. Please contact support.",
+        error: "User account not found",
       }
     }
 
@@ -215,15 +225,24 @@ export async function sendMessage(
       }
     }
 
-    // Get the current user (placeholder - first user in DB)
-    const currentUser = await prisma.user.findFirst({
-      where: { role: "user" },
+    // Get the current authenticated user
+    const session = await auth()
+    if (!session?.user?.email) {
+      return {
+        success: false,
+        error: "You must be logged in to send messages",
+      }
+    }
+
+    // Find the current user by email from session
+    const currentUser = await prisma.user.findUnique({
+      where: { email: session.user.email },
     })
 
     if (!currentUser) {
       return {
         success: false,
-        error: "No user found. Please contact support.",
+        error: "User account not found",
       }
     }
 
@@ -349,15 +368,24 @@ export async function sendMessage(
  */
 export async function markMessagesAsRead(conversationId: string): Promise<{ success: boolean; error?: string }> {
   try {
-    // Get the current user (placeholder)
-    const currentUser = await prisma.user.findFirst({
-      where: { role: "user" },
+    // Get the current authenticated user
+    const session = await auth()
+    if (!session?.user?.email) {
+      return {
+        success: false,
+        error: "You must be logged in",
+      }
+    }
+
+    // Find the current user by email from session
+    const currentUser = await prisma.user.findUnique({
+      where: { email: session.user.email },
     })
 
     if (!currentUser) {
       return {
         success: false,
-        error: "No user found",
+        error: "User account not found",
       }
     }
 
@@ -389,15 +417,24 @@ export async function getOrCreateListingConversation(
   listingId: string
 ): Promise<{ success: boolean; conversationId?: string; error?: string }> {
   try {
-    // Get the current user (placeholder)
-    const currentUser = await prisma.user.findFirst({
-      where: { role: "user" },
+    // Get the current authenticated user
+    const session = await auth()
+    if (!session?.user?.email) {
+      return {
+        success: false,
+        error: "You must be logged in",
+      }
+    }
+
+    // Find the current user by email from session
+    const currentUser = await prisma.user.findUnique({
+      where: { email: session.user.email },
     })
 
     if (!currentUser) {
       return {
         success: false,
-        error: "No user found",
+        error: "User account not found",
       }
     }
 

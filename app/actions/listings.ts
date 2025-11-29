@@ -1,48 +1,18 @@
 "use server"
 
 import { prisma } from "@/lib/prisma"
+import { auth } from "@/auth"
 import { z } from "zod"
-
-export interface ListingFilters {
-  search?: string
-  mainCategory?: string
-  selectedGame?: string
-  selectedItemType?: string
-  sortBy?: string
-  priceRange?: {
-    min: number
-    max: number
-  }
-  page?: number
-  itemsPerPage?: number
-}
-
-export interface ListingResponse {
-  id: string
-  title: string
-  game: string
-  price: number
-  image: string
-  seller: {
-    id: string
-    username: string
-  }
-  vouch: number
-  status: string
-  category: string
-  itemType: string
-  condition: string
-  upvotes: number
-  downvotes: number
-  featured: boolean
-}
-
-export interface GetListingsResult {
-  listings: ListingResponse[]
-  total: number
-  totalPages: number
-  currentPage: number
-}
+import {
+  createItemListingSchema,
+  createCurrencyListingSchema,
+  type CreateItemListingInput,
+  type CreateCurrencyListingInput,
+  type ListingFilters,
+  type ListingResponse,
+  type GetListingsResult,
+  type CreateListingResult,
+} from "@/lib/schemas"
 
 export async function getListings(
   filters: ListingFilters = {}
@@ -216,54 +186,31 @@ export async function getAvailableGames(mainCategory: string = "All"): Promise<s
   }
 }
 
-// Validation schemas
-export const createItemListingSchema = z.object({
-  title: z.string().min(5, "Title must be at least 5 characters").max(100, "Title must be at most 100 characters"),
-  description: z.string().min(10, "Description must be at least 10 characters").max(2000, "Description must be at most 2000 characters"),
-  category: z.enum(["Accessories", "Games", "Accounts"]),
-  game: z.string().min(1, "Please select a game"),
-  itemType: z.string().min(1, "Please select an item type"),
-  price: z.number().min(1, "Price must be at least 1").max(1000000, "Price must be at most 1,000,000"),
-  image: z.string().url("Please provide a valid image URL"),
-  condition: z.enum(["Mint", "New", "Used"]),
-  paymentMethods: z.array(z.string()).min(1, "Select at least one payment method"),
-})
-
-export const createCurrencyListingSchema = z.object({
-  currencyType: z.string().min(1, "Please select a currency type"),
-  ratePerPeso: z.number().min(0.01, "Rate must be at least 0.01"),
-  stock: z.number().min(1, "Stock must be at least 1"),
-  minOrder: z.number().min(1, "Minimum order must be at least 1"),
-  maxOrder: z.number().min(1, "Maximum order must be at least 1"),
-  description: z.string().max(500, "Description must be at most 500 characters").optional(),
-  paymentMethods: z.array(z.string()).min(1, "Select at least one payment method"),
-})
-
-export type CreateItemListingInput = z.infer<typeof createItemListingSchema>
-export type CreateCurrencyListingInput = z.infer<typeof createCurrencyListingSchema>
-
-export interface CreateListingResult {
-  success: boolean
-  listingId?: string
-  error?: string
-}
-
 export async function createListing(input: CreateItemListingInput): Promise<CreateListingResult> {
   try {
-    // Validate input
-    const validatedData = createItemListingSchema.parse(input)
+    // Get current authenticated user
+    const session = await auth()
+    if (!session?.user?.email) {
+      return {
+        success: false,
+        error: "You must be logged in to create a listing",
+      }
+    }
 
-    // Get the first user from the database (for now, since real auth isn't fully active)
-    const seller = await prisma.user.findFirst({
-      where: { role: "user" },
+    // Find the seller by email from session
+    const seller = await prisma.user.findUnique({
+      where: { email: session.user.email },
     })
 
     if (!seller) {
       return {
         success: false,
-        error: "No seller account found. Please contact support.",
+        error: "User account not found",
       }
     }
+
+    // Validate input
+    const validatedData = createItemListingSchema.parse(input)
 
     // Create the listing
     const listing = await prisma.listing.create({
@@ -302,20 +249,29 @@ export async function createListing(input: CreateItemListingInput): Promise<Crea
 
 export async function createCurrencyListing(input: CreateCurrencyListingInput): Promise<CreateListingResult> {
   try {
-    // Validate input
-    const validatedData = createCurrencyListingSchema.parse(input)
+    // Get current authenticated user
+    const session = await auth()
+    if (!session?.user?.email) {
+      return {
+        success: false,
+        error: "You must be logged in to create a listing",
+      }
+    }
 
-    // Get the first user from the database (for now, since real auth isn't fully active)
-    const seller = await prisma.user.findFirst({
-      where: { role: "user" },
+    // Find the seller by email from session
+    const seller = await prisma.user.findUnique({
+      where: { email: session.user.email },
     })
 
     if (!seller) {
       return {
         success: false,
-        error: "No seller account found. Please contact support.",
+        error: "User account not found",
       }
     }
+
+    // Validate input
+    const validatedData = createCurrencyListingSchema.parse(input)
 
     // Create the listing with currency-specific fields in description
     const currencyDescription = `Currency: ${validatedData.currencyType}
