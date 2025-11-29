@@ -1,5 +1,35 @@
 {
   "node": {
+    "40e3f0a30eb66fcccce58b89097ebd3a5b6f4d4599": {
+      "workers": {
+        "app/sell/page": {
+          "moduleId": "[project]/rb-marketplace/.next-internal/server/app/sell/page/actions.js { ACTIONS_MODULE0 => \"[project]/rb-marketplace/app/actions/listings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "createListing",
+          "filename": "rb-marketplace/app/actions/listings.ts"
+        }
+      },
+      "layer": {
+        "app/sell/page": "action-browser"
+      },
+      "filename": "rb-marketplace/app/actions/listings.ts",
+      "exportedName": "createListing"
+    },
+    "40737d8182b1247dbde2cc6c7e6521af9bb2b3eadb": {
+      "workers": {
+        "app/sell/page": {
+          "moduleId": "[project]/rb-marketplace/.next-internal/server/app/sell/page/actions.js { ACTIONS_MODULE0 => \"[project]/rb-marketplace/app/actions/listings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "createCurrencyListing",
+          "filename": "rb-marketplace/app/actions/listings.ts"
+        }
+      },
+      "layer": {
+        "app/sell/page": "action-browser"
+      },
+      "filename": "rb-marketplace/app/actions/listings.ts",
+      "exportedName": "createCurrencyListing"
+    },
     "40fc12b29cad7f3b83501f2698d876b613877bb426": {
       "workers": {
         "app/marketplace/page": {

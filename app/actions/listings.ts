@@ -2,7 +2,6 @@
 
 import { prisma } from "@/lib/prisma"
 import { z } from "zod"
-import { auth } from "@/auth"
 
 export interface ListingFilters {
   search?: string
@@ -251,30 +250,20 @@ export interface CreateListingResult {
 
 export async function createListing(input: CreateItemListingInput): Promise<CreateListingResult> {
   try {
-    // Get current user from auth session
-    const session = await auth()
+    // Validate input
+    const validatedData = createItemListingSchema.parse(input)
 
-    if (!session?.user?.email) {
-      return {
-        success: false,
-        error: "You must be logged in to create a listing.",
-      }
-    }
-
-    // Get the user from database by email
-    const seller = await prisma.user.findUnique({
-      where: { email: session.user.email },
+    // Get the first user from the database (for now, since real auth isn't fully active)
+    const seller = await prisma.user.findFirst({
+      where: { role: "user" },
     })
 
     if (!seller) {
       return {
         success: false,
-        error: "User account not found. Please contact support.",
+        error: "No seller account found. Please contact support.",
       }
     }
-
-    // Validate input
-    const validatedData = createItemListingSchema.parse(input)
 
     // Create the listing
     const listing = await prisma.listing.create({
@@ -313,30 +302,20 @@ export async function createListing(input: CreateItemListingInput): Promise<Crea
 
 export async function createCurrencyListing(input: CreateCurrencyListingInput): Promise<CreateListingResult> {
   try {
-    // Get current user from auth session
-    const session = await auth()
+    // Validate input
+    const validatedData = createCurrencyListingSchema.parse(input)
 
-    if (!session?.user?.email) {
-      return {
-        success: false,
-        error: "You must be logged in to create a listing.",
-      }
-    }
-
-    // Get the user from database by email
-    const seller = await prisma.user.findUnique({
-      where: { email: session.user.email },
+    // Get the first user from the database (for now, since real auth isn't fully active)
+    const seller = await prisma.user.findFirst({
+      where: { role: "user" },
     })
 
     if (!seller) {
       return {
         success: false,
-        error: "User account not found. Please contact support.",
+        error: "No seller account found. Please contact support.",
       }
     }
-
-    // Validate input
-    const validatedData = createCurrencyListingSchema.parse(input)
 
     // Create the listing with currency-specific fields in description
     const currencyDescription = `Currency: ${validatedData.currencyType}
