@@ -1,63 +1,33 @@
 {
   "node": {
-    "40e3f0a30eb66fcccce58b89097ebd3a5b6f4d4599": {
-      "workers": {
-        "app/sell/page": {
-          "moduleId": "[project]/rb-marketplace/.next-internal/server/app/sell/page/actions.js { ACTIONS_MODULE0 => \"[project]/rb-marketplace/app/actions/listings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
-          "async": false,
-          "exportedName": "createListing",
-          "filename": "rb-marketplace/app/actions/listings.ts"
-        }
-      },
-      "layer": {
-        "app/sell/page": "action-browser"
-      },
-      "filename": "rb-marketplace/app/actions/listings.ts",
-      "exportedName": "createListing"
-    },
-    "40737d8182b1247dbde2cc6c7e6521af9bb2b3eadb": {
-      "workers": {
-        "app/sell/page": {
-          "moduleId": "[project]/rb-marketplace/.next-internal/server/app/sell/page/actions.js { ACTIONS_MODULE0 => \"[project]/rb-marketplace/app/actions/listings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
-          "async": false,
-          "exportedName": "createCurrencyListing",
-          "filename": "rb-marketplace/app/actions/listings.ts"
-        }
-      },
-      "layer": {
-        "app/sell/page": "action-browser"
-      },
-      "filename": "rb-marketplace/app/actions/listings.ts",
-      "exportedName": "createCurrencyListing"
-    },
-    "40fc12b29cad7f3b83501f2698d876b613877bb426": {
+    "40c75c86225dae4dbf46c3f1c3b22233bcb60ddc3f": {
       "workers": {
         "app/marketplace/page": {
-          "moduleId": "[project]/rb-marketplace/.next-internal/server/app/marketplace/page/actions.js { ACTIONS_MODULE0 => \"[project]/rb-marketplace/app/actions/listings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "moduleId": "[project]/v2/rb-marketplace/.next-internal/server/app/marketplace/page/actions.js { ACTIONS_MODULE0 => \"[project]/v2/rb-marketplace/app/actions/listings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
           "async": false,
           "exportedName": "getListings",
-          "filename": "rb-marketplace/app/actions/listings.ts"
+          "filename": "v2/rb-marketplace/app/actions/listings.ts"
         }
       },
       "layer": {
         "app/marketplace/page": "action-browser"
       },
-      "filename": "rb-marketplace/app/actions/listings.ts",
+      "filename": "v2/rb-marketplace/app/actions/listings.ts",
       "exportedName": "getListings"
     },
-    "40105282f300ef5022879b2c5d5a4bb918dc10c113": {
+    "4034acd788a601bf1105c5f985e5fcf3b62e3fde20": {
       "workers": {
         "app/marketplace/page": {
-          "moduleId": "[project]/rb-marketplace/.next-internal/server/app/marketplace/page/actions.js { ACTIONS_MODULE0 => \"[project]/rb-marketplace/app/actions/listings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "moduleId": "[project]/v2/rb-marketplace/.next-internal/server/app/marketplace/page/actions.js { ACTIONS_MODULE0 => \"[project]/v2/rb-marketplace/app/actions/listings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
           "async": false,
           "exportedName": "getAvailableGames",
-          "filename": "rb-marketplace/app/actions/listings.ts"
+          "filename": "v2/rb-marketplace/app/actions/listings.ts"
         }
       },
       "layer": {
         "app/marketplace/page": "action-browser"
       },
-      "filename": "rb-marketplace/app/actions/listings.ts",
+      "filename": "v2/rb-marketplace/app/actions/listings.ts",
       "exportedName": "getAvailableGames"
     }
   },
