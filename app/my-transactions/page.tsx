@@ -9,138 +9,60 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Search, ChevronLeft, ChevronRight } from "lucide-react"
-
-const MY_TRANSACTIONS = [
-  {
-    id: 1,
-    type: "sold",
-    item: "Golden Dragon Pet",
-    buyer: "FastBuyer123",
-    amount: 2500,
-    date: "2024-11-20",
-    status: "completed",
-  },
-  {
-    id: 2,
-    type: "bought",
-    item: "Blox Fruits Sword",
-    seller: "CurrencyKing",
-    amount: 1800,
-    date: "2024-11-18",
-    status: "completed",
-  },
-  {
-    id: 3,
-    type: "sold",
-    item: "UGC Bundle Pack",
-    buyer: "LimitedHunter",
-    amount: 890,
-    date: "2024-11-15",
-    status: "completed",
-  },
-  {
-    id: 4,
-    type: "bought",
-    item: "Pet Simulator Tokens",
-    seller: "SafeTrader99",
-    amount: 1200,
-    date: "2024-11-10",
-    status: "completed",
-  },
-  {
-    id: 5,
-    type: "sold",
-    item: "5000 Robux",
-    buyer: "NewPlayer456",
-    amount: 4500,
-    date: "2024-11-05",
-    status: "pending_payment",
-  },
-  {
-    id: 6,
-    type: "bought",
-    item: "Mega Neon Unicorn",
-    seller: "TradeMaster",
-    amount: 3200,
-    date: "2024-11-03",
-    status: "completed",
-  },
-  {
-    id: 7,
-    type: "sold",
-    item: "Godly Knife Set",
-    buyer: "ProCollector",
-    amount: 1500,
-    date: "2024-10-28",
-    status: "completed",
-  },
-  {
-    id: 8,
-    type: "bought",
-    item: "Limited Hat",
-    seller: "RareFinds",
-    amount: 2800,
-    date: "2024-10-25",
-    status: "completed",
-  },
-  {
-    id: 9,
-    type: "sold",
-    item: "Dragon Fruit",
-    buyer: "FruitHunter",
-    amount: 950,
-    date: "2024-10-20",
-    status: "completed",
-  },
-  {
-    id: 10,
-    type: "bought",
-    item: "Shadow Dragon",
-    seller: "PetKing99",
-    amount: 5500,
-    date: "2024-10-15",
-    status: "completed",
-  },
-  {
-    id: 11,
-    type: "sold",
-    item: "Leopard Fruit",
-    buyer: "BloxMaster",
-    amount: 1100,
-    date: "2024-10-10",
-    status: "completed",
-  },
-  {
-    id: 12,
-    type: "bought",
-    item: "Dominus Replica",
-    seller: "UGCKing",
-    amount: 750,
-    date: "2024-10-05",
-    status: "completed",
-  },
-]
+import { Search, ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
+import { getTransactions } from "@/app/actions/transactions"
+import type { TransactionData } from "@/app/actions/transactions"
 
 const ITEMS_PER_PAGE = 5
 
 export default function MyTransactionsPage() {
-  const { user } = useAuth()
+  const { user, isLoading: isAuthLoading } = useAuth()
   const router = useRouter()
+  const [transactions, setTransactions] = useState<TransactionData[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [typeFilter, setTypeFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
   const [currentPage, setCurrentPage] = useState(1)
+  const [loading, setLoading] = useState(true)
 
-  // Filter transactions
-  const filteredTransactions = MY_TRANSACTIONS.filter((tx) => {
+  // Load transactions on mount
+  useEffect(() => {
+    if (isAuthLoading) return
+    if (!user) {
+      router.push("/auth/login")
+      return
+    }
+
+    const loadTransactions = async () => {
+      setLoading(true)
+      try {
+        // Determine role filter based on typeFilter
+        let roleFilter: "buyer" | "seller" | undefined = undefined
+        if (typeFilter === "sold") roleFilter = "seller"
+        else if (typeFilter === "bought") roleFilter = "buyer"
+
+        const result = await getTransactions(roleFilter)
+        if (result.success && result.transactions) {
+          setTransactions(result.transactions)
+        }
+      } catch (error) {
+        console.error("Error loading transactions:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadTransactions()
+  }, [user, isAuthLoading, router, typeFilter])
+
+  // Filter transactions based on search and status
+  const filteredTransactions = transactions.filter((tx) => {
     const matchesSearch =
-      tx.item.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (tx.buyer?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false) ||
-      (tx.seller?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false)
-    const matchesType = typeFilter === "all" || tx.type === typeFilter
-    const matchesStatus = statusFilter === "all" || tx.status === statusFilter
-    return matchesSearch && matchesType && matchesStatus
+      tx.listing.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      tx.buyer.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      tx.seller.username.toLowerCase().includes(searchQuery.toLowerCase())
+    const matchesStatus = statusFilter === "all" || tx.status.toLowerCase() === statusFilter.toLowerCase()
+    return matchesSearch && matchesStatus
   })
 
   // Pagination
@@ -150,21 +72,37 @@ export default function MyTransactionsPage() {
 
   // Reset to page 1 when filters change
   useEffect(() => {
-    if (!user) {
-      router.push("/auth/login")
-    }
-  }, [user, router])
-
-  useEffect(() => {
     setCurrentPage(1)
-  }, [searchQuery, typeFilter, statusFilter])
+  }, [searchQuery, statusFilter])
+
+  if (isAuthLoading) {
+    return (
+      <>
+        <Navigation />
+        <main className="container mx-auto px-4 py-8">
+          <div className="flex items-center justify-center h-96">
+            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+          </div>
+        </main>
+      </>
+    )
+  }
 
   if (!user) return null
 
   const getStatusColor = (status: string) => {
-    if (status === "completed") return "bg-green-100 text-green-800"
-    if (status === "pending_payment") return "bg-yellow-100 text-yellow-800"
+    if (status === "COMPLETED") return "bg-green-100 text-green-800"
+    if (status === "PENDING") return "bg-yellow-100 text-yellow-800"
+    if (status === "CANCELLED") return "bg-red-100 text-red-800"
     return "bg-blue-100 text-blue-800"
+  }
+
+  const getTransactionType = (tx: TransactionData) => {
+    return tx.buyerId === user.id ? "bought" : "sold"
+  }
+
+  const getCounterparty = (tx: TransactionData) => {
+    return tx.buyerId === user.id ? tx.seller.username : tx.buyer.username
   }
 
   return (
@@ -199,8 +137,9 @@ export default function MyTransactionsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
               <SelectItem value="completed">Completed</SelectItem>
-              <SelectItem value="pending_payment">Pending</SelectItem>
+              <SelectItem value="cancelled">Cancelled</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -219,30 +158,43 @@ export default function MyTransactionsPage() {
                 </tr>
               </thead>
               <tbody>
-                {paginatedTransactions.map((tx) => (
-                  <tr key={tx.id} className="border-b hover:bg-muted/50">
-                    <td className="px-6 py-4">
-                      <Badge variant={tx.type === "sold" ? "default" : "secondary"}>
-                        {tx.type === "sold" ? "Sold" : "Bought"}
-                      </Badge>
-                    </td>
-                    <td className="px-6 py-4 font-medium">{tx.item}</td>
-                    <td className="px-6 py-4 text-sm">{tx.type === "sold" ? tx.buyer : tx.seller}</td>
-                    <td className="px-6 py-4 font-bold text-primary">₱{tx.amount.toLocaleString()}</td>
-                    <td className="px-6 py-4 text-sm text-muted-foreground">{tx.date}</td>
-                    <td className="px-6 py-4">
-                      <Badge className={getStatusColor(tx.status)}>
-                        {tx.status === "completed" ? "Completed" : "Pending"}
-                      </Badge>
+                {loading ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-8 text-center">
+                      <Loader2 className="w-5 h-5 animate-spin mx-auto text-muted-foreground" />
                     </td>
                   </tr>
-                ))}
-                {paginatedTransactions.length === 0 && (
+                ) : paginatedTransactions.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">
                       No transactions found
                     </td>
                   </tr>
+                ) : (
+                  paginatedTransactions.map((tx) => (
+                    <tr key={tx.id} className="border-b hover:bg-muted/50">
+                      <td className="px-6 py-4">
+                        <Badge variant={getTransactionType(tx) === "sold" ? "default" : "secondary"}>
+                          {getTransactionType(tx) === "sold" ? "Sold" : "Bought"}
+                        </Badge>
+                      </td>
+                      <td className="px-6 py-4 font-medium">{tx.listing.title}</td>
+                      <td className="px-6 py-4 text-sm">{getCounterparty(tx)}</td>
+                      <td className="px-6 py-4 font-bold text-primary">₱{tx.price.toLocaleString()}</td>
+                      <td className="px-6 py-4 text-sm text-muted-foreground">
+                        {new Date(tx.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4">
+                        <Badge className={getStatusColor(tx.status)}>
+                          {tx.status === "PENDING"
+                            ? "Pending"
+                            : tx.status === "COMPLETED"
+                              ? "Completed"
+                              : "Cancelled"}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))
                 )}
               </tbody>
             </table>
@@ -280,7 +232,7 @@ export default function MyTransactionsPage() {
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
                 >
-                  <ChevronRight className="h-4 w-4" />
+                  <ChevronRight className="h-4 h-4" />
                 </Button>
               </div>
             </div>

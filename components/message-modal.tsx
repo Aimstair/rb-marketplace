@@ -1,18 +1,22 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { X, Send, Paperclip } from "lucide-react"
+import { X, Send, Paperclip, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
+import { sendMessage } from "@/app/actions/messages"
+import { useRouter } from "next/navigation"
 
 interface MessageModalProps {
   seller: {
+    id: string
     username: string
     avatar: string
     lastActive?: string
   }
   listing: {
+    id: string
     title: string
     price: number
     image: string
@@ -25,45 +29,61 @@ interface MessageModalProps {
   currencyType?: string
 }
 
-export default function MessageModal({ seller, listing, onClose, purchaseDetails, currencyType }: MessageModalProps) {
-  const initialMessages = purchaseDetails
-    ? [
+interface Message {
+  id: string
+  sender: "buyer" | "seller"
+  text: string
+  timestamp: string
+  avatar: string
+  isPurchaseRequest?: boolean
+}
+
+export default function MessageModal({
+  seller,
+  listing,
+  onClose,
+  purchaseDetails,
+  currencyType,
+}: MessageModalProps) {
+  const router = useRouter()
+  const [messages, setMessages] = useState<Message[]>([])
+  const [inputValue, setInputValue] = useState("")
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const [sending, setSending] = useState(false)
+  const [conversationId, setConversationId] = useState<string | null>(null)
+
+  // Initialize messages
+  useEffect(() => {
+    if (purchaseDetails) {
+      setMessages([
         {
-          id: 1,
+          id: "initial-1",
           sender: "buyer",
           text: `Hi! I'd like to buy ${purchaseDetails.amount.toLocaleString()} ${currencyType || "currency"} for ₱${purchaseDetails.cost.toLocaleString()}`,
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
           avatar: "/user-avatar-profile.png",
           isPurchaseRequest: true,
         },
-      ]
-    : [
+      ])
+    } else {
+      setMessages([
         {
-          id: 1,
+          id: "example-1",
           sender: "seller",
-          text: "Hi! Is this pet still available?",
+          text: "Hi! Is this item still available?",
           timestamp: "10:30 AM",
-          avatar: "/user-avatar-master-trader.jpg",
+          avatar: seller.avatar || "/placeholder.svg",
         },
         {
-          id: 2,
+          id: "example-2",
           sender: "buyer",
           text: "Yes, it is! Are you interested?",
           timestamp: "10:32 AM",
           avatar: "/user-avatar-profile.png",
         },
-        {
-          id: 3,
-          sender: "seller",
-          text: "I am! Can you provide more proof?",
-          timestamp: "10:33 AM",
-          avatar: "/user-avatar-master-trader.jpg",
-        },
-      ]
-
-  const [messages, setMessages] = useState(initialMessages)
-  const [inputValue, setInputValue] = useState("")
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+      ])
+    }
+  }, [purchaseDetails, currencyType, seller.avatar])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -73,21 +93,54 @@ export default function MessageModal({ seller, listing, onClose, purchaseDetails
     scrollToBottom()
   }, [messages])
 
-  const handleSendMessage = () => {
-    if (inputValue.trim()) {
-      const newMessage = {
-        id: messages.length + 1,
-        sender: "buyer",
-        text: inputValue,
-        timestamp: new Date().toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-        avatar: "/user-avatar-profile.png",
+  const handleSendMessage = async () => {
+    if (!inputValue.trim()) return
+
+    setSending(true)
+    try {
+      // Send message via server action
+      const result = await sendMessage(inputValue, {
+        conversationId: conversationId || undefined,
+        otherUserId: seller.id,
+        listingId: listing.id,
+      })
+
+      if (result.success) {
+        // Store conversation ID for future messages
+        if (result.conversationId && !conversationId) {
+          setConversationId(result.conversationId)
+        }
+
+        // Add message to UI
+        const newMessage: Message = {
+          id: result.messageId || `temp-${Date.now()}`,
+          sender: "buyer",
+          text: inputValue,
+          timestamp: new Date().toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          avatar: "/user-avatar-profile.png",
+        }
+        setMessages([...messages, newMessage])
+        setInputValue("")
+      } else {
+        console.error("Error sending message:", result.error)
+        alert("Failed to send message. Please try again.")
       }
-      setMessages([...messages, newMessage])
-      setInputValue("")
+    } catch (error) {
+      console.error("Error sending message:", error)
+      alert("Failed to send message. Please try again.")
+    } finally {
+      setSending(false)
     }
+  }
+
+  const handleGoToMessaging = () => {
+    if (conversationId) {
+      router.push(`/messages?conversationId=${conversationId}`)
+    }
+    onClose()
   }
 
   return (
@@ -164,7 +217,7 @@ export default function MessageModal({ seller, listing, onClose, purchaseDetails
 
           {/* Input */}
           <div className="p-6 border-t flex gap-2">
-            <Button size="icon" variant="outline">
+            <Button size="icon" variant="outline" disabled={sending}>
               <Paperclip className="w-4 h-4" />
             </Button>
             <Input
@@ -173,15 +226,25 @@ export default function MessageModal({ seller, listing, onClose, purchaseDetails
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyPress={(e) => {
-                if (e.key === "Enter") {
+                if (e.key === "Enter" && !sending) {
                   handleSendMessage()
                 }
               }}
               className="flex-1"
+              disabled={sending}
             />
-            <Button onClick={handleSendMessage}>
-              <Send className="w-4 h-4" />
+            <Button onClick={handleSendMessage} disabled={sending}>
+              {sending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
             </Button>
+            {conversationId && (
+              <Button variant="outline" onClick={handleGoToMessaging}>
+                Open Chat
+              </Button>
+            )}
           </div>
         </Card>
       </div>

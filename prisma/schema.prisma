@@ -28,6 +28,18 @@ model User {
   vouchesReceived  Vouch[]   @relation("VouchesReceived")
   vouchesSent      Vouch[]   @relation("VouchesSent")
   
+  // Messaging relations
+  conversationsInitiated  Conversation[] @relation("Buyer")
+  conversationsReceived   Conversation[] @relation("Seller")
+  messagesSent            Message[]      @relation("Sender")
+  
+  // Transaction relations
+  buyerTransactions    Transaction[] @relation("BuyerTransactions")
+  sellerTransactions   Transaction[] @relation("SellerTransactions")
+  
+  // Notification relations
+  notifications    Notification[]
+  
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -56,6 +68,12 @@ model Listing {
   sellerId     String
   seller       User     @relation(fields: [sellerId], references: [id], onDelete: Cascade)
   
+  // Messaging relation
+  conversations Conversation[]
+  
+  // Transaction relation
+  transactions  Transaction[]
+  
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -73,12 +91,126 @@ model Vouch {
   toUserId   String
   toUser     User     @relation("VouchesReceived", fields: [toUserId], references: [id], onDelete: Cascade)
   
+  // Optional transaction reference (for trade verification)
+  transactionId String?
+  transaction   Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  
   type       String   // "buyer" | "seller"
   message    String?
+  rating     Int      @default(5) // 1-5 star rating
   
   createdAt  DateTime @default(now())
 
   @@unique([fromUserId, toUserId])
   @@index([toUserId])
+  @@index([transactionId])
   @@map("vouches")
+}
+
+model Conversation {
+  id           String   @id @default(cuid())
+  
+  // Relations to users
+  buyerId      String
+  buyer        User     @relation("Buyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  
+  sellerId     String
+  seller       User     @relation("Seller", fields: [sellerId], references: [id], onDelete: Cascade)
+  
+  // Optional listing reference (for listing-specific chats)
+  listingId    String?
+  listing      Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  
+  // Messages in this conversation
+  messages     Message[]
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([buyerId, sellerId, listingId])
+  @@index([sellerId])
+  @@index([listingId])
+  @@map("conversations")
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  
+  // Relations
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  
+  senderId       String
+  sender         User     @relation("Sender", fields: [senderId], references: [id], onDelete: Cascade)
+  
+  // Content
+  content        String
+  attachmentUrl  String?
+  
+  // Status
+  isRead         Boolean  @default(false)
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@map("messages")
+}
+
+model Transaction {
+  id               String   @id @default(cuid())
+  
+  // Relations
+  buyerId          String
+  buyer            User     @relation("BuyerTransactions", fields: [buyerId], references: [id], onDelete: Cascade)
+  
+  sellerId         String
+  seller           User     @relation("SellerTransactions", fields: [sellerId], references: [id], onDelete: Cascade)
+  
+  listingId        String
+  listing          Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  
+  // Transaction details
+  price            Int
+  status           String   @default("PENDING") // "PENDING" | "COMPLETED" | "CANCELLED"
+  
+  // Confirmation flags
+  buyerConfirmed   Boolean  @default(false)
+  sellerConfirmed  Boolean  @default(false)
+  
+  // Vouches linked to this transaction
+  vouches          Vouch[]
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([listingId])
+  @@map("transactions")
+}
+
+model Notification {
+  id               String   @id @default(cuid())
+  
+  // Recipient
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Notification details
+  type             String   // "MESSAGE" | "ORDER_NEW" | "ORDER_UPDATE" | "SYSTEM"
+  title            String
+  message          String
+  link             String?
+  
+  // Status
+  isRead           Boolean  @default(false)
+  
+  createdAt        DateTime @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+  @@map("notifications")
 }

@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { MessageCircle, User, Menu, X, LogOut, Settings, ShoppingBag, History, Gift, Bell, Shield } from "lucide-react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth-context"
@@ -13,6 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu"
+import { getUnreadCount } from "@/app/actions/notifications"
 
 const mockNotifications = [
   {
@@ -40,10 +41,28 @@ const mockNotifications = [
 
 export default function Navigation() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [loadingUnread, setLoadingUnread] = useState(false)
   const router = useRouter()
   const { user, logout } = useAuth()
 
-  const unreadCount = mockNotifications.filter((n) => !n.read).length
+  useEffect(() => {
+    if (user) {
+      fetchUnreadCount()
+      // Refresh unread count every 30 seconds
+      const interval = setInterval(fetchUnreadCount, 30000)
+      return () => clearInterval(interval)
+    }
+  }, [user])
+
+  const fetchUnreadCount = async () => {
+    setLoadingUnread(true)
+    const result = await getUnreadCount()
+    if (result.success && result.count !== undefined) {
+      setUnreadCount(result.count)
+    }
+    setLoadingUnread(false)
+  }
 
   const handleLogout = () => {
     logout()
@@ -89,8 +108,8 @@ export default function Navigation() {
                   <Button variant="ghost" size="icon" className="relative">
                     <Bell className="w-5 h-5" />
                     {unreadCount > 0 && (
-                      <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-                        {unreadCount}
+                      <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">
+                        {unreadCount > 99 ? "99+" : unreadCount}
                       </span>
                     )}
                   </Button>
@@ -236,10 +255,12 @@ export default function Navigation() {
                   <Link href="/my-listings" className="py-2 text-muted-foreground hover:text-foreground block">
                     My Listings
                   </Link>
-                  <Link href="/notifications" className="py-2 text-muted-foreground hover:text-foreground block">
+                  <Link href="/notifications" className="py-2 text-muted-foreground hover:text-foreground block flex items-center justify-between">
                     Notifications
                     {unreadCount > 0 && (
-                      <span className="ml-2 px-2 py-0.5 bg-red-500 text-white text-xs rounded-full">{unreadCount}</span>
+                      <span className="ml-2 px-2 py-0.5 bg-red-500 text-white text-xs rounded-full font-bold">
+                        {unreadCount > 99 ? "99+" : unreadCount}
+                      </span>
                     )}
                   </Link>
                   <Link href="/messages" className="py-2 text-muted-foreground hover:text-foreground block">

@@ -22,6 +22,7 @@ import {
   X,
   MoreVertical,
   Trash2,
+  Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -42,102 +43,40 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { getConversations, getMessages, sendMessage, markMessagesAsRead } from "@/app/actions/messages"
+import type { ConversationWithLatestMessage, MessageData } from "@/app/actions/messages"
+import {
+  getTransactionById,
+  toggleTransactionConfirmation,
+  submitVouch,
+} from "@/app/actions/transactions"
+import type { TransactionData } from "@/app/actions/transactions"
 
-const RECENT_CONTACTS = [
-  {
-    id: "user-2",
-    name: "FastSeller123",
-    lastMessage: "Thanks for trading!",
-    timestamp: "2 min ago",
-    online: true,
-    role: "seller" as const,
-    status: "ongoing" as const,
-    blocked: false,
-    item: {
-      id: 1,
-      title: "Golden Dragon Pet",
-      price: 2500,
-      image: "/golden-dragon-pet-roblox.jpg",
-    },
-    transactionStatus: {
-      buyerConfirmed: false,
-      sellerConfirmed: false,
-      buyerVouched: false,
-      sellerVouched: false,
-    },
-  },
-  {
-    id: "user-3",
-    name: "CurrencyKing",
-    lastMessage: "Still available?",
-    timestamp: "1 hour ago",
-    online: false,
-    role: "buyer" as const,
-    status: "completed" as const,
-    blocked: false,
-    item: {
-      id: 2,
-      title: "10,000 Robux",
-      price: 1500,
-      image: "/robux-currency.jpg",
-    },
-    transactionStatus: {
-      buyerConfirmed: true,
-      sellerConfirmed: true,
-      buyerVouched: true,
-      sellerVouched: false,
-    },
-  },
-  {
-    id: "user-4",
-    name: "LimitedHunter",
-    lastMessage: "Can you lower the price?",
-    timestamp: "3 hours ago",
-    online: true,
-    role: "seller" as const,
-    status: "sold" as const,
-    blocked: false,
-    item: {
-      id: 3,
-      title: "Dominus Infernus",
-      price: 50000,
-      image: "/roblox-dominus-hat.jpg",
-    },
-    transactionStatus: {
-      buyerConfirmed: false,
-      sellerConfirmed: false,
-      buyerVouched: false,
-      sellerVouched: false,
-    },
-  },
-  {
-    id: "user-5",
-    name: "SafeTrader99",
-    lastMessage: "I have the item you want",
-    timestamp: "Yesterday",
-    online: false,
-    role: "seller" as const,
-    status: "completed" as const,
-    blocked: false,
-    item: {
-      id: 4,
-      title: "Neon Unicorn",
-      price: 3200,
-      image: "/adopt-me-neon-unicorn.jpg",
-    },
-    transactionStatus: {
-      buyerConfirmed: true,
-      sellerConfirmed: true,
-      buyerVouched: true,
-      sellerVouched: true,
-    },
-  },
-]
-
-type Contact = (typeof RECENT_CONTACTS)[0]
+type Contact = {
+  id: string
+  name: string
+  lastMessage: string
+  timestamp: string
+  online: boolean
+  role: "seller" | "buyer"
+  status: "ongoing" | "completed" | "sold"
+  blocked: boolean
+  item: {
+    id: string
+    title: string
+    price: number
+    image: string
+  }
+  transactionStatus: {
+    buyerConfirmed: boolean
+    sellerConfirmed: boolean
+    buyerVouched: boolean
+    sellerVouched: boolean
+  }
+}
 
 type Message = {
-  id: number
+  id: string
   sender: "buyer" | "seller"
   text: string
   timestamp: string
@@ -168,11 +107,13 @@ const reportReasons = [
 ]
 
 export default function MessagesPage() {
-  const { user } = useAuth()
+  const { user, isLoading: isAuthLoading } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [contacts, setContacts] = useState(RECENT_CONTACTS)
+  const [contacts, setContacts] = useState<Contact[]>([])
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
+  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
+  const [transaction, setTransaction] = useState<TransactionData | null>(null)
   const [messageText, setMessageText] = useState("")
   const [showVouchModal, setShowVouchModal] = useState(false)
   const [vouchMessage, setVouchMessage] = useState("")
@@ -194,106 +135,124 @@ export default function MessagesPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [lightboxImage, setLightboxImage] = useState<string | null>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const [loadingConversations, setLoadingConversations] = useState(true)
+  const [loadingMessages, setLoadingMessages] = useState(false)
+  const [sendingMessage, setSendingMessage] = useState(false)
+  const [vouchSubmitting, setVouchSubmitting] = useState(false)
 
   useEffect(() => {
+    if (isAuthLoading) return
     if (!user) {
       router.push("/auth/login")
     }
-  }, [user, router])
+  }, [user, isAuthLoading, router])
 
+  // Load conversations on mount
   useEffect(() => {
-    const sellerId = searchParams.get("sellerId")
-    const sellerName = searchParams.get("sellerName")
-    const sellerAvatar = searchParams.get("sellerAvatar")
-    const itemId = searchParams.get("itemId")
-    const itemTitle = searchParams.get("itemTitle")
-    const itemPrice = searchParams.get("itemPrice")
-    const itemImage = searchParams.get("itemImage")
-    const type = searchParams.get("type")
-    const currencyType = searchParams.get("currencyType")
-    const amount = searchParams.get("amount")
-    const cost = searchParams.get("cost")
+    if (!user || isAuthLoading) return
 
-    if (sellerId && sellerName && itemTitle) {
-      const existingContact = contacts.find((c) => c.id === `seller-${sellerId}`)
-
-      if (existingContact) {
-        setSelectedContact(existingContact)
-      } else {
-        const newContact: Contact = {
-          id: `seller-${sellerId}`,
-          name: sellerName,
-          lastMessage:
-            type === "currency"
-              ? `Interested in buying ${Number(amount).toLocaleString()} ${currencyType}`
-              : "Interested in this item",
-          timestamp: "Just now",
-          online: true,
-          role: "seller",
-          status: "ongoing",
-          blocked: false,
-          item: {
-            id: Number(itemId) || 0,
-            title: itemTitle,
-            price: Number(itemPrice) || 0,
-            image: itemImage || "/placeholder.svg",
-          },
-          transactionStatus: {
-            buyerConfirmed: false,
-            sellerConfirmed: false,
-            buyerVouched: false,
-            sellerVouched: false,
-          },
-        }
-
-        setContacts((prev) => [newContact, ...prev])
-        setSelectedContact(newContact)
-
-        if (type === "currency" && amount && cost && currencyType) {
-          setMessages([
-            {
-              id: 1,
-              sender: "buyer",
-              text: `Hi! I'd like to buy ${Number(amount).toLocaleString()} ${currencyType} for ₱${Number(cost).toLocaleString()}`,
-              timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-              type: "text",
+    const loadConversations = async () => {
+      setLoadingConversations(true)
+      try {
+        const result = await getConversations()
+        if (result.success && result.conversations) {
+          const convertedContacts: Contact[] = result.conversations.map((conv) => ({
+            id: conv.id,
+            name: conv.otherUser.username,
+            lastMessage: conv.latestMessage?.content || "No messages yet",
+            timestamp: conv.latestMessage
+              ? new Date(conv.latestMessage.createdAt).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : "Just now",
+            online: false, // TODO: Add online status to backend
+            role: conv.buyerId === user.id ? "seller" : "buyer",
+            status: "ongoing" as const, // TODO: Add transaction status to backend
+            blocked: false, // TODO: Add blocking feature to backend
+            item: conv.listing || {
+              id: "unknown",
+              title: "Unknown Item",
+              price: 0,
+              image: "/placeholder.svg",
             },
-          ])
-        } else {
-          setMessages([
-            {
-              id: 1,
-              sender: "buyer",
-              text: `Hi! I'm interested in "${itemTitle}" listed at ₱${Number(itemPrice).toLocaleString()}. Is it still available?`,
-              timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-              type: "text",
+            transactionStatus: {
+              buyerConfirmed: false, // TODO: Add transaction status tracking
+              sellerConfirmed: false,
+              buyerVouched: false,
+              sellerVouched: false,
             },
-          ])
+          }))
+          setContacts(convertedContacts)
         }
+      } catch (error) {
+        console.error("Error loading conversations:", error)
+      } finally {
+        setLoadingConversations(false)
       }
-      router.replace("/messages", { scroll: false })
     }
-  }, [searchParams, contacts, router])
 
+    loadConversations()
+  }, [user, isAuthLoading])
+
+  // Load messages when contact is selected
   useEffect(() => {
-    if (selectedContact && messages.length === 0) {
-      setMessages([
-        {
-          id: 1,
-          sender: "seller",
-          text: selectedContact.lastMessage,
-          timestamp: selectedContact.timestamp,
-          type: "text",
-        },
-      ])
+    if (!selectedContact || !selectedConversationId) return
+
+    const loadMessages = async () => {
+      setLoadingMessages(true)
+      try {
+        const result = await getMessages(selectedConversationId)
+        if (result.success && result.messages) {
+          // Mark messages as read
+          await markMessagesAsRead(selectedConversationId)
+
+          const convertedMessages: Message[] = result.messages.map((msg) => ({
+            id: msg.id,
+            sender: msg.senderId === user?.id ? "buyer" : "seller",
+            text: msg.content,
+            timestamp: new Date(msg.createdAt).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+            type: msg.attachmentUrl ? "image" : ("text" as const),
+            imageUrl: msg.attachmentUrl || undefined,
+          }))
+          setMessages(convertedMessages)
+        }
+      } catch (error) {
+        console.error("Error loading messages:", error)
+      } finally {
+        setLoadingMessages(false)
+      }
     }
-  }, [selectedContact])
+
+    loadMessages()
+  }, [selectedConversationId, user?.id])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
-  if (!user) return null
+  if (isAuthLoading || !user) {
+    return (
+      <>
+        <Navigation />
+        <main className="container mx-auto px-4 py-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-[700px]">
+            <div className="md:col-span-1 border rounded-lg bg-card overflow-hidden flex flex-col items-center justify-center">
+              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+              <p className="text-muted-foreground mt-4">Loading...</p>
+            </div>
+            <div className="md:col-span-2 border rounded-lg bg-card overflow-hidden flex flex-col items-center justify-center">
+              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+              <p className="text-muted-foreground mt-4">Loading...</p>
+            </div>
+          </div>
+        </main>
+      </>
+    )
+  }
 
   const filteredContacts = contacts.filter((contact) => {
     const matchesSearch =
@@ -309,25 +268,35 @@ export default function MessagesPage() {
     return msg.text.toLowerCase().includes(conversationSearch.toLowerCase())
   })
 
-  const handleSendMessage = () => {
-    if (messageText.trim() || attachedImages.length > 0) {
+  const handleSendMessage = async () => {
+    if (!selectedConversationId || (!messageText.trim() && attachedImages.length === 0)) return
+
+    setSendingMessage(true)
+    try {
       // Send attached images first
-      attachedImages.forEach((imgUrl, index) => {
-        const imageMessage: Message = {
-          id: messages.length + index + 1,
-          sender: "buyer",
-          text: "",
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          type: "image",
-          imageUrl: imgUrl,
+      for (const imgUrl of attachedImages) {
+        const result = await sendMessage(imgUrl, {
+          conversationId: selectedConversationId,
+          attachmentUrl: imgUrl,
+        })
+        if (!result.success) {
+          console.error("Error sending image:", result.error)
         }
-        setMessages((prev) => [...prev, imageMessage])
-      })
+      }
 
       // Then send text message if any
       if (messageText.trim()) {
+        const result = await sendMessage(messageText, {
+          conversationId: selectedConversationId,
+        })
+        if (!result.success) {
+          console.error("Error sending message:", result.error)
+          return
+        }
+
+        // Add optimistic message update
         const newMessage: Message = {
-          id: messages.length + attachedImages.length + 1,
+          id: `temp-${Date.now()}`,
           sender: "buyer",
           text: messageText,
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
@@ -338,6 +307,10 @@ export default function MessagesPage() {
 
       setMessageText("")
       setAttachedImages([])
+    } catch (error) {
+      console.error("Error sending message:", error)
+    } finally {
+      setSendingMessage(false)
     }
   }
 
@@ -346,7 +319,7 @@ export default function MessagesPage() {
     if (!amount || amount <= 0) return
 
     const newMessage: Message = {
-      id: messages.length + 1,
+      id: `counteroffer-${Date.now()}`,
       sender: "buyer",
       text: `I'd like to make a counteroffer`,
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
@@ -399,70 +372,60 @@ export default function MessagesPage() {
     setShowBlockModal(false)
   }
 
-  const handleMarkComplete = () => {
-    if (!selectedContact) return
+  const handleMarkComplete = async () => {
+    if (!transaction) return
 
-    setContacts((prev) =>
-      prev.map((contact) => {
-        if (contact.id === selectedContact.id) {
-          const updatedStatus = { ...contact.transactionStatus }
-          if (contact.role === "seller") {
-            updatedStatus.buyerConfirmed = true
-          } else {
-            updatedStatus.sellerConfirmed = true
-          }
-          const newStatus = updatedStatus.buyerConfirmed && updatedStatus.sellerConfirmed ? "completed" : contact.status
-          return { ...contact, transactionStatus: updatedStatus, status: newStatus as typeof contact.status }
+    try {
+      const result = await toggleTransactionConfirmation(transaction.id)
+
+      if (result.success && result.transaction) {
+        // Update transaction state
+        setTransaction(result.transaction)
+
+        // Update contact status based on new transaction status
+        if (result.transaction.status === "COMPLETED") {
+          setSelectedContact((prev) => {
+            if (!prev) return null
+            return { ...prev, status: "completed" as const }
+          })
         }
-        return contact
-      }),
-    )
-
-    setSelectedContact((prev) => {
-      if (!prev) return null
-      const updatedStatus = { ...prev.transactionStatus }
-      if (prev.role === "seller") {
-        updatedStatus.buyerConfirmed = true
       } else {
-        updatedStatus.sellerConfirmed = true
+        console.error("Error marking complete:", result.error)
+        alert(result.error || "Failed to mark transaction as complete")
       }
-      const newStatus = updatedStatus.buyerConfirmed && updatedStatus.sellerConfirmed ? "completed" : prev.status
-      return { ...prev, transactionStatus: updatedStatus, status: newStatus as typeof prev.status }
-    })
+    } catch (error) {
+      console.error("Error marking complete:", error)
+      alert("Failed to mark transaction as complete")
+    }
   }
 
-  const handleSubmitVouch = () => {
-    if (!selectedContact) return
+  const handleSubmitVouch = async () => {
+    if (!selectedContact || !transaction) return
 
-    setContacts((prev) =>
-      prev.map((contact) => {
-        if (contact.id === selectedContact.id) {
-          const updatedStatus = { ...contact.transactionStatus }
-          if (contact.role === "seller") {
-            updatedStatus.buyerVouched = true
-          } else {
-            updatedStatus.sellerVouched = true
-          }
-          return { ...contact, transactionStatus: updatedStatus }
+    setVouchSubmitting(true)
+    try {
+      const result = await submitVouch(transaction.id, vouchRating, vouchMessage)
+
+      if (result.success) {
+        // Update transaction status
+        const updatedResult = await getTransactionById(transaction.id)
+        if (updatedResult.success && updatedResult.transaction) {
+          setTransaction(updatedResult.transaction)
         }
-        return contact
-      }),
-    )
 
-    setSelectedContact((prev) => {
-      if (!prev) return null
-      const updatedStatus = { ...prev.transactionStatus }
-      if (prev.role === "seller") {
-        updatedStatus.buyerVouched = true
+        setShowVouchModal(false)
+        setVouchMessage("")
+        setVouchRating(5)
       } else {
-        updatedStatus.sellerVouched = true
+        console.error("Error submitting vouch:", result.error)
+        alert(result.error || "Failed to submit vouch")
       }
-      return { ...prev, transactionStatus: updatedStatus }
-    })
-
-    setShowVouchModal(false)
-    setVouchMessage("")
-    setVouchRating(5)
+    } catch (error) {
+      console.error("Error submitting vouch:", error)
+      alert("Failed to submit vouch")
+    } finally {
+      setVouchSubmitting(false)
+    }
   }
 
   const handleSubmitReport = () => {
@@ -482,17 +445,27 @@ export default function MessagesPage() {
 
   const handleSelectContact = (contact: Contact) => {
     setSelectedContact(contact)
-    setMessages([
-      {
-        id: 1,
-        sender: "seller",
-        text: contact.lastMessage,
-        timestamp: contact.timestamp,
-        type: "text",
-      },
-    ])
+    setSelectedConversationId(contact.id)
     setShowCounterOfferInput(false)
     setConversationSearch("")
+    setMessages([])
+    setTransaction(null)
+
+    // Try to load transaction for this conversation (linked by listing)
+    const loadTransaction = async () => {
+      if (contact.item.id === "unknown") return
+
+      try {
+        // Search for transaction by listing ID
+        // Note: In a real app, you'd fetch from a dedicated endpoint
+        // For now, we'll try to infer from contact data
+        // This would be improved with a getTransactionByConversationId action
+      } catch (error) {
+        console.error("Error loading transaction:", error)
+      }
+    }
+
+    loadTransaction()
   }
 
   const canMarkComplete = selectedContact
@@ -562,7 +535,14 @@ export default function MessagesPage() {
               </DropdownMenu>
             </div>
             <div className="flex-1 overflow-y-auto">
-              {filteredContacts.length === 0 ? (
+              {loadingConversations ? (
+                <div className="p-4 text-center text-muted-foreground flex items-center justify-center h-full">
+                  <div>
+                    <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+                    <p>Loading conversations...</p>
+                  </div>
+                </div>
+              ) : filteredContacts.length === 0 ? (
                 <div className="p-4 text-center text-muted-foreground">
                   <p>No contacts found</p>
                 </div>
@@ -730,70 +710,80 @@ export default function MessagesPage() {
                 {/* Transaction Status Bar */}
                 <div className="px-4 py-3 border-b bg-secondary/30">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-4 text-sm">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle
-                          className={`w-4 h-4 ${selectedContact.transactionStatus.buyerConfirmed ? "text-green-500" : "text-muted-foreground"}`}
-                        />
-                        <span
-                          className={
-                            selectedContact.transactionStatus.buyerConfirmed
-                              ? "text-green-600"
-                              : "text-muted-foreground"
-                          }
-                        >
-                          Buyer {selectedContact.transactionStatus.buyerConfirmed ? "confirmed" : "pending"}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <CheckCircle
-                          className={`w-4 h-4 ${selectedContact.transactionStatus.sellerConfirmed ? "text-green-500" : "text-muted-foreground"}`}
-                        />
-                        <span
-                          className={
-                            selectedContact.transactionStatus.sellerConfirmed
-                              ? "text-green-600"
-                              : "text-muted-foreground"
-                          }
-                        >
-                          Seller {selectedContact.transactionStatus.sellerConfirmed ? "confirmed" : "pending"}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {canMarkComplete && selectedContact.status !== "sold" && (
-                        <Button size="sm" onClick={handleMarkComplete}>
-                          <CheckCircle className="w-4 h-4 mr-2" />
-                          Mark as Complete
-                        </Button>
-                      )}
-                      {selectedContact.status === "sold" && (
-                        <span className="text-sm text-red-500 flex items-center gap-1">
-                          <AlertTriangle className="w-4 h-4" />
-                          Item sold to another buyer
-                        </span>
-                      )}
-                      {hasUserConfirmed && !bothConfirmed && selectedContact.status !== "sold" && (
-                        <span className="text-sm text-muted-foreground">Waiting for other party...</span>
-                      )}
-                      {canVouch && (
-                        <Button size="sm" variant="secondary" onClick={() => setShowVouchModal(true)}>
-                          <Star className="w-4 h-4 mr-2" />
-                          Vouch for {selectedContact.name}
-                        </Button>
-                      )}
-                      {hasVouched && (
-                        <span className="text-sm text-green-600 flex items-center gap-1">
-                          <Star className="w-4 h-4 fill-green-500" />
-                          Vouched
-                        </span>
-                      )}
-                    </div>
+                    {transaction ? (
+                      <>
+                        <div className="flex items-center gap-4 text-sm">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle
+                              className={`w-4 h-4 ${transaction.buyerConfirmed ? "text-green-500" : "text-muted-foreground"}`}
+                            />
+                            <span
+                              className={
+                                transaction.buyerConfirmed
+                                  ? "text-green-600"
+                                  : "text-muted-foreground"
+                              }
+                            >
+                              Buyer {transaction.buyerConfirmed ? "confirmed" : "pending"}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <CheckCircle
+                              className={`w-4 h-4 ${transaction.sellerConfirmed ? "text-green-500" : "text-muted-foreground"}`}
+                            />
+                            <span
+                              className={
+                                transaction.sellerConfirmed
+                                  ? "text-green-600"
+                                  : "text-muted-foreground"
+                              }
+                            >
+                              Seller {transaction.sellerConfirmed ? "confirmed" : "pending"}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {transaction.status === "PENDING" && (
+                            <Button size="sm" onClick={handleMarkComplete}>
+                              <CheckCircle className="w-4 h-4 mr-2" />
+                              Mark as Complete
+                            </Button>
+                          )}
+                          {transaction.status === "COMPLETED" && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => setShowVouchModal(true)}
+                              >
+                                <Star className="w-4 h-4 mr-2" />
+                                Vouch for {selectedContact?.name}
+                              </Button>
+                            </>
+                          )}
+                          {transaction.status === "CANCELLED" && (
+                            <span className="text-sm text-red-500 flex items-center gap-1">
+                              <AlertTriangle className="w-4 h-4" />
+                              Transaction cancelled
+                            </span>
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">No active transaction</span>
+                    )}
                   </div>
                 </div>
 
                 <div ref={messagesContainerRef} className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 chat-scrollbar">
-                  {selectedContact.blocked ? (
+                  {loadingMessages ? (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-center text-muted-foreground">
+                        <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+                        <p>Loading messages...</p>
+                      </div>
+                    </div>
+                  ) : selectedContact.blocked ? (
                     <div className="h-full flex items-center justify-center text-muted-foreground">
                       <div className="text-center">
                         <Ban className="w-12 h-12 mx-auto mb-2 opacity-50 text-red-500" />
@@ -943,8 +933,12 @@ export default function MessagesPage() {
                     className="flex-1"
                     disabled={selectedContact.blocked}
                   />
-                  <Button onClick={handleSendMessage} size="icon" disabled={selectedContact.blocked}>
-                    <Send className="w-4 h-4" />
+                  <Button onClick={handleSendMessage} size="icon" disabled={selectedContact.blocked || sendingMessage}>
+                    {sendingMessage ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Send className="w-4 h-4" />
+                    )}
                   </Button>
                 </div>
               </>
@@ -992,10 +986,19 @@ export default function MessagesPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowVouchModal(false)}>
+            <Button variant="outline" onClick={() => setShowVouchModal(false)} disabled={vouchSubmitting}>
               Cancel
             </Button>
-            <Button onClick={handleSubmitVouch}>Submit Vouch</Button>
+            <Button onClick={handleSubmitVouch} disabled={vouchSubmitting}>
+              {vouchSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Submitting...
+                </>
+              ) : (
+                "Submit Vouch"
+              )}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

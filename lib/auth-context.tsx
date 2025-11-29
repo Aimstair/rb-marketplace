@@ -68,6 +68,7 @@ const DUMMY_ACCOUNTS = {
     },
     badges: ["Verified Seller", "Elite", "Admin"],
     robloxProfile: "AdminMod_RobloxTrade",
+    discordTag: "Admin#0001",
   },
 }
 
@@ -80,7 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Simulate API call
     await new Promise((resolve) => setTimeout(resolve, 500))
 
-    let foundUser: typeof DUMMY_ACCOUNTS.user | null = null
+    let foundUser: (typeof DUMMY_ACCOUNTS.user) | (typeof DUMMY_ACCOUNTS.admin) | null = null
     if (email === DUMMY_ACCOUNTS.user.email && password === DUMMY_ACCOUNTS.user.password) {
       foundUser = DUMMY_ACCOUNTS.user
     } else if (email === DUMMY_ACCOUNTS.admin.email && password === DUMMY_ACCOUNTS.admin.password) {

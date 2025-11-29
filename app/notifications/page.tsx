@@ -1,115 +1,101 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Navigation from "@/components/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { useRouter } from "next/navigation"
-import { useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Bell, MessageCircle, ThumbsUp, Eye, Star, Check, Trash2 } from "lucide-react"
-
-interface Notification {
-  id: string
-  type: "message" | "vouch" | "view" | "upvote" | "transaction"
-  title: string
-  description: string
-  time: string
-  read: boolean
-  link?: string
-}
-
-const mockNotifications: Notification[] = [
-  {
-    id: "1",
-    type: "message",
-    title: "New message from TrustTrader",
-    description: "Hey, I'm interested in your listing...",
-    time: "5 minutes ago",
-    read: false,
-    link: "/messages",
-  },
-  {
-    id: "2",
-    type: "vouch",
-    title: "You received a vouch!",
-    description: "CoinMaster left you a positive vouch after your recent transaction.",
-    time: "1 hour ago",
-    read: false,
-  },
-  {
-    id: "3",
-    type: "upvote",
-    title: "Your listing got 10 upvotes",
-    description: "Golden Dragon Pet is getting popular!",
-    time: "3 hours ago",
-    read: true,
-    link: "/listing/1",
-  },
-  {
-    id: "4",
-    type: "view",
-    title: "50 new views on your listing",
-    description: "Dominus Astrorum has been viewed 50 times today.",
-    time: "5 hours ago",
-    read: true,
-  },
-  {
-    id: "5",
-    type: "transaction",
-    title: "Transaction completed",
-    description: "Your trade with FastDelivery has been marked as complete.",
-    time: "1 day ago",
-    read: true,
-  },
-]
+import { Bell, MessageCircle, ShoppingBag, AlertCircle, CheckCircle, Loader2, Trash2 } from "lucide-react"
+import { getNotifications, markAsRead, markAllAsRead } from "@/app/actions/notifications"
+import type { NotificationData } from "@/app/actions/notifications"
 
 export default function NotificationsPage() {
   const { user } = useAuth()
   const router = useRouter()
-  const [notifications, setNotifications] = useState(mockNotifications)
+  const [notifications, setNotifications] = useState<NotificationData[]>([])
   const [filter, setFilter] = useState<"all" | "unread">("all")
+  const [loading, setLoading] = useState(true)
+  const [deleting, setDeleting] = useState<string | null>(null)
 
   useEffect(() => {
     if (!user) {
       router.push("/auth/login")
+      return
     }
+
+    fetchNotifications()
   }, [user, router])
+
+  const fetchNotifications = async () => {
+    setLoading(true)
+    const result = await getNotifications()
+    if (result.success && result.notifications) {
+      setNotifications(result.notifications)
+    }
+    setLoading(false)
+  }
 
   if (!user) return null
 
-  const filteredNotifications = notifications.filter((n) => (filter === "all" ? true : !n.read))
+  const filteredNotifications = notifications.filter((n) => (filter === "all" ? true : !n.isRead))
+  const unreadCount = notifications.filter((n) => !n.isRead).length
 
-  const unreadCount = notifications.filter((n) => !n.read).length
-
-  const markAsRead = (id: string) => {
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)))
+  const handleMarkAsRead = async (notificationId: string, link?: string) => {
+    setDeleting(notificationId)
+    const result = await markAsRead(notificationId)
+    if (result.success) {
+      setNotifications((prev) => prev.map((n) => (n.id === notificationId ? { ...n, isRead: true } : n)))
+      if (link) {
+        router.push(link)
+      }
+    }
+    setDeleting(null)
   }
 
-  const markAllAsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
+  const handleMarkAllAsRead = async () => {
+    const result = await markAllAsRead()
+    if (result.success) {
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })))
+    }
   }
 
-  const deleteNotification = (id: string) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id))
+  const handleDeleteNotification = async (e: React.MouseEvent, notificationId: string) => {
+    e.stopPropagation()
+    setDeleting(notificationId)
+    // Mark as read to remove from unread
+    const result = await markAsRead(notificationId)
+    if (result.success) {
+      setNotifications((prev) => prev.filter((n) => n.id !== notificationId))
+    }
+    setDeleting(null)
   }
 
-  const getIcon = (type: Notification["type"]) => {
+  const getIcon = (type: string) => {
     switch (type) {
-      case "message":
+      case "MESSAGE":
         return <MessageCircle className="w-5 h-5 text-blue-500" />
-      case "vouch":
-        return <Star className="w-5 h-5 text-yellow-500" />
-      case "upvote":
-        return <ThumbsUp className="w-5 h-5 text-green-500" />
-      case "view":
-        return <Eye className="w-5 h-5 text-purple-500" />
-      case "transaction":
-        return <Check className="w-5 h-5 text-emerald-500" />
+      case "ORDER_NEW":
+        return <ShoppingBag className="w-5 h-5 text-purple-500" />
+      case "ORDER_UPDATE":
+        return <CheckCircle className="w-5 h-5 text-emerald-500" />
+      case "SYSTEM":
+        return <AlertCircle className="w-5 h-5 text-orange-500" />
       default:
         return <Bell className="w-5 h-5" />
     }
+  }
+
+  const formatTime = (date: Date) => {
+    const now = new Date()
+    const seconds = Math.floor((now.getTime() - new Date(date).getTime()) / 1000)
+
+    if (seconds < 60) return "just now"
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
+    if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`
+    return new Date(date).toLocaleDateString()
   }
 
   return (
@@ -126,7 +112,7 @@ export default function NotificationsPage() {
             </p>
           </div>
           {unreadCount > 0 && (
-            <Button variant="outline" onClick={markAllAsRead}>
+            <Button variant="outline" onClick={handleMarkAllAsRead}>
               Mark all as read
             </Button>
           )}
@@ -149,40 +135,42 @@ export default function NotificationsPage() {
 
         {/* Notifications List */}
         <div className="space-y-3">
-          {filteredNotifications.length > 0 ? (
+          {loading ? (
+            <Card className="p-12 text-center">
+              <Loader2 className="w-8 h-8 mx-auto text-muted-foreground mb-4 animate-spin" />
+              <p className="text-sm text-muted-foreground">Loading notifications...</p>
+            </Card>
+          ) : filteredNotifications.length > 0 ? (
             filteredNotifications.map((notification) => (
               <Card
                 key={notification.id}
                 className={`p-4 transition cursor-pointer hover:shadow-md ${
-                  !notification.read ? "border-l-4 border-l-primary bg-primary/5" : ""
+                  !notification.isRead ? "border-l-4 border-l-primary bg-primary/5" : ""
                 }`}
-                onClick={() => {
-                  markAsRead(notification.id)
-                  if (notification.link) {
-                    router.push(notification.link)
-                  }
-                }}
+                onClick={() => handleMarkAsRead(notification.id, notification.link)}
               >
                 <div className="flex items-start gap-4">
                   <div className="p-2 rounded-full bg-muted">{getIcon(notification.type)}</div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <h3 className="font-semibold">{notification.title}</h3>
-                      {!notification.read && <span className="w-2 h-2 bg-primary rounded-full" />}
+                      {!notification.isRead && <span className="w-2 h-2 bg-primary rounded-full" />}
                     </div>
-                    <p className="text-sm text-muted-foreground line-clamp-1">{notification.description}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{notification.time}</p>
+                    <p className="text-sm text-muted-foreground line-clamp-1">{notification.message}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{formatTime(notification.createdAt)}</p>
                   </div>
                   <Button
                     variant="ghost"
                     size="icon"
                     className="shrink-0"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      deleteNotification(notification.id)
-                    }}
+                    disabled={deleting === notification.id}
+                    onClick={(e) => handleDeleteNotification(e, notification.id)}
                   >
-                    <Trash2 className="w-4 h-4 text-muted-foreground" />
+                    {deleting === notification.id ? (
+                      <Loader2 className="w-4 h-4 text-muted-foreground animate-spin" />
+                    ) : (
+                      <Trash2 className="w-4 h-4 text-muted-foreground" />
+                    )}
                   </Button>
                 </div>
               </Card>
