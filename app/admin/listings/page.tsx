@@ -1,12 +1,12 @@
-"use client"
+﻿"use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import Link from "next/link"
 import Image from "next/image"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Dialog,
@@ -20,208 +20,121 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import {
   Search,
   MoreHorizontal,
-  Eye,
-  Trash2,
-  Edit,
-  Flag,
-  CheckCircle,
-  XCircle,
-  Clock,
-  Star,
-  TrendingUp,
+  Loader2,
+  ChevronRight,
 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { Checkbox } from "@/components/ui/checkbox"
+import { Separator } from "@/components/ui/separator"
+import { getAdminListings, adminUpdateListingStatus } from "@/app/actions/admin"
+import { useToast } from "@/components/ui/use-toast"
 
-// Mock listings data
-const mockListings = [
-  {
-    id: "1",
-    title: "Golden Dragon Pet - Limited Edition",
-    description: "Rare golden dragon pet from limited event. Never traded before.",
-    seller: "NinjaTrader",
-    sellerAvatar: "/placeholder.svg?key=azhhu",
-    game: "Adopt Me",
-    price: 15000,
-    currency: "Robux",
-    image: "/golden-dragon-pet-roblox.jpg",
-    status: "active",
-    featured: true,
-    boosted: true,
-    createdAt: "2 hours ago",
-    views: 342,
-    reports: 0,
-    flags: [],
-  },
-  {
-    id: "2",
-    title: "FREE ROBUX!!! CLICK HERE NOW!!!",
-    description: "Get free robux instantly! No scam! 100% legit!",
-    seller: "SpamBot2024",
-    sellerAvatar: "/placeholder.svg?key=gn91z",
-    game: "Other",
-    price: 1,
-    currency: "Robux",
-    image: "/scam-warning-red-alert.jpg",
-    status: "flagged",
-    featured: false,
-    boosted: false,
-    createdAt: "1 day ago",
-    views: 89,
-    reports: 12,
-    flags: ["spam", "scam", "misleading"],
-  },
-  {
-    id: "3",
-    title: "Dominus Infernus - OG Item",
-    description: "Original Dominus Infernus. Proof of ownership available.",
-    seller: "EliteTrader99",
-    sellerAvatar: "/placeholder.svg?key=9ahw6",
-    game: "Roblox Catalog",
-    price: 500000,
-    currency: "Robux",
-    image: "/dominus-infernus-roblox-hat.jpg",
-    status: "pending",
-    featured: false,
-    boosted: false,
-    createdAt: "3 hours ago",
-    views: 156,
-    reports: 2,
-    flags: ["high-value", "needs-verification"],
-  },
-  {
-    id: "4",
-    title: "Mega Neon Frost Dragon",
-    description: "Trading mega neon frost dragon for good offers.",
-    seller: "TrustyShopper",
-    sellerAvatar: "/placeholder.svg?key=axt3p",
-    game: "Adopt Me",
-    price: 25000,
-    currency: "Robux",
-    image: "/neon-frost-dragon-adopt-me.jpg",
-    status: "active",
-    featured: false,
-    boosted: true,
-    createdAt: "5 hours ago",
-    views: 234,
-    reports: 0,
-    flags: [],
-  },
-  {
-    id: "5",
-    title: "Murder Mystery 2 Godly Bundle",
-    description: "Selling 5 godly knives and 3 godly guns. DM for details.",
-    seller: "ScammerJoe",
-    sellerAvatar: "/placeholder.svg?key=7gmm9",
-    game: "Murder Mystery 2",
-    price: 8000,
-    currency: "Robux",
-    image: "/murder-mystery-godly-knives.jpg",
-    status: "removed",
-    featured: false,
-    boosted: false,
-    createdAt: "2 days ago",
-    views: 45,
-    reports: 8,
-    flags: ["fake-item", "scam-attempt"],
-  },
-  {
-    id: "6",
-    title: "Blox Fruits Leopard Account",
-    description: "Level 2450 account with Leopard fruit awakened.",
-    seller: "FruitMaster",
-    sellerAvatar: "/placeholder.svg?key=c2vur",
-    game: "Blox Fruits",
-    price: 12000,
-    currency: "Robux",
-    image: "/blox-fruits-leopard.jpg",
-    status: "active",
-    featured: true,
-    boosted: false,
-    createdAt: "6 hours ago",
-    views: 189,
-    reports: 0,
-    flags: [],
-  },
-]
-
-const flagReasons = [
-  { value: "spam", label: "Spam" },
-  { value: "scam", label: "Scam Attempt" },
-  { value: "misleading", label: "Misleading" },
-  { value: "fake-item", label: "Fake Item" },
-  { value: "nsfw", label: "NSFW Content" },
-  { value: "illegal", label: "Illegal Trade" },
-  { value: "price-manipulation", label: "Price Manipulation" },
-  { value: "duplicate", label: "Duplicate Listing" },
+const validStatuses = [
+  { value: "available", label: "Available" },
+  { value: "sold", label: "Sold" },
+  { value: "hidden", label: "Hidden" },
+  { value: "pending", label: "Pending Review" },
+  { value: "banned", label: "Banned" },
 ]
 
 export default function ListingsPage() {
+  const { toast } = useToast()
+  const [listings, setListings] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
-  const [gameFilter, setGameFilter] = useState("all")
-  const [selectedListing, setSelectedListing] = useState<(typeof mockListings)[0] | null>(null)
+  const [selectedListing, setSelectedListing] = useState<any>(null)
   const [actionDialogOpen, setActionDialogOpen] = useState(false)
-  const [actionType, setActionType] = useState<string>("")
+  const [newStatus, setNewStatus] = useState("")
   const [actionReason, setActionReason] = useState("")
-  const [selectedFlags, setSelectedFlags] = useState<string[]>([])
+  const [actionLoading, setActionLoading] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(0)
 
-  const filteredListings = mockListings.filter((listing) => {
-    const matchesSearch =
-      listing.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      listing.seller.toLowerCase().includes(searchQuery.toLowerCase())
+  // Load listings
+  useEffect(() => {
+    const loadListings = async () => {
+      try {
+        setLoading(true)
+        const result = await getAdminListings(currentPage, searchQuery, statusFilter === "all" ? "all" : statusFilter)
+        if (result.success && result.listings) {
+          setListings(result.listings)
+          setTotalPages(result.pages || 0)
+        }
+      } catch (err) {
+        console.error("Failed to load listings:", err)
+        toast({ title: "Error", description: "Failed to load listings", variant: "destructive" })
+      } finally {
+        setLoading(false)
+      }
+    }
 
-    const matchesStatus = statusFilter === "all" || listing.status === statusFilter
-
-    const matchesGame = gameFilter === "all" || listing.game === gameFilter
-
-    return matchesSearch && matchesStatus && matchesGame
-  })
+    loadListings()
+  }, [searchQuery, statusFilter, currentPage, toast])
 
   const stats = {
-    total: mockListings.length,
-    active: mockListings.filter((l) => l.status === "active").length,
-    pending: mockListings.filter((l) => l.status === "pending").length,
-    flagged: mockListings.filter((l) => l.status === "flagged").length,
-    removed: mockListings.filter((l) => l.status === "removed").length,
-  }
-
-  const handleAction = (listing: (typeof mockListings)[0], action: string) => {
-    setSelectedListing(listing)
-    setActionType(action)
-    setSelectedFlags(listing.flags || [])
-    setActionDialogOpen(true)
-  }
-
-  const executeAction = () => {
-    console.log(`Executing ${actionType} on listing ${selectedListing?.id} with reason: ${actionReason}`)
-    setActionDialogOpen(false)
-    setActionReason("")
-    setSelectedFlags([])
+    total: listings.length,
+    available: listings.filter((l) => l.status === "available").length,
+    pending: listings.filter((l) => l.status === "pending").length,
+    hidden: listings.filter((l) => l.status === "hidden").length,
+    banned: listings.filter((l) => l.status === "banned").length,
   }
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "active":
-        return <Badge className="bg-green-500 text-white">Active</Badge>
+      case "available":
+        return <Badge className="bg-green-500 text-white">Available</Badge>
       case "pending":
         return <Badge className="bg-yellow-500 text-white">Pending Review</Badge>
-      case "flagged":
-        return <Badge variant="destructive">Flagged</Badge>
-      case "removed":
-        return <Badge variant="secondary">Removed</Badge>
+      case "hidden":
+        return <Badge variant="secondary">Hidden</Badge>
+      case "banned":
+        return <Badge variant="destructive">Banned</Badge>
       case "sold":
         return <Badge className="bg-blue-500 text-white">Sold</Badge>
       default:
         return <Badge variant="outline">{status}</Badge>
+    }
+  }
+
+  const handleAction = (listing: any, newStat: string) => {
+    setSelectedListing(listing)
+    setNewStatus(newStat)
+    setActionDialogOpen(true)
+  }
+
+  const executeAction = async () => {
+    if (!selectedListing || !newStatus) return
+
+    try {
+      setActionLoading(true)
+
+      const result = await adminUpdateListingStatus(selectedListing.id, newStatus)
+
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: `Listing status updated to ${newStatus}`,
+        })
+        // Update local state
+        setListings(
+          listings.map((l) => (l.id === selectedListing.id ? { ...l, status: newStatus } : l))
+        )
+        setActionDialogOpen(false)
+        setActionReason("")
+      } else {
+        toast({ title: "Error", description: result.error || "Failed to update listing", variant: "destructive" })
+      }
+    } finally {
+      setActionLoading(false)
     }
   }
 
@@ -230,7 +143,7 @@ export default function ListingsPage() {
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold">Listing Management</h1>
-        <p className="text-muted-foreground">Review, moderate, and manage marketplace listings</p>
+        <p className="text-muted-foreground">Review and moderate marketplace listings</p>
       </div>
 
       {/* Stats Cards */}
@@ -243,8 +156,8 @@ export default function ListingsPage() {
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-green-500">{stats.active}</p>
-            <p className="text-sm text-muted-foreground">Active</p>
+            <p className="text-2xl font-bold text-green-500">{stats.available}</p>
+            <p className="text-sm text-muted-foreground">Available</p>
           </CardContent>
         </Card>
         <Card>
@@ -255,14 +168,14 @@ export default function ListingsPage() {
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-red-500">{stats.flagged}</p>
-            <p className="text-sm text-muted-foreground">Flagged</p>
+            <p className="text-2xl font-bold text-muted-foreground">{stats.hidden}</p>
+            <p className="text-sm text-muted-foreground">Hidden</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-muted-foreground">{stats.removed}</p>
-            <p className="text-sm text-muted-foreground">Removed</p>
+            <p className="text-2xl font-bold text-red-500">{stats.banned}</p>
+            <p className="text-sm text-muted-foreground">Banned</p>
           </CardContent>
         </Card>
       </div>
@@ -286,400 +199,285 @@ export default function ListingsPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="available">Available</SelectItem>
                 <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="flagged">Flagged</SelectItem>
-                <SelectItem value="removed">Removed</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={gameFilter} onValueChange={setGameFilter}>
-              <SelectTrigger className="w-full md:w-[180px]">
-                <SelectValue placeholder="Game" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Games</SelectItem>
-                <SelectItem value="Adopt Me">Adopt Me</SelectItem>
-                <SelectItem value="Murder Mystery 2">Murder Mystery 2</SelectItem>
-                <SelectItem value="Blox Fruits">Blox Fruits</SelectItem>
-                <SelectItem value="Roblox Catalog">Roblox Catalog</SelectItem>
-                <SelectItem value="Other">Other</SelectItem>
+                <SelectItem value="hidden">Hidden</SelectItem>
+                <SelectItem value="banned">Banned</SelectItem>
+                <SelectItem value="sold">Sold</SelectItem>
               </SelectContent>
             </Select>
           </div>
         </CardContent>
       </Card>
 
-      {/* Listings Tabs */}
-      <Tabs defaultValue="all">
-        <TabsList>
-          <TabsTrigger value="all">All Listings</TabsTrigger>
-          <TabsTrigger value="flagged" className="text-red-500">
-            Flagged Queue ({stats.flagged})
-          </TabsTrigger>
-          <TabsTrigger value="pending" className="text-yellow-500">
-            Pending Review ({stats.pending})
-          </TabsTrigger>
-          <TabsTrigger value="featured">Featured</TabsTrigger>
-        </TabsList>
+      {/* Listings Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Listings</CardTitle>
+          <CardDescription>{listings.length} listings</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="flex items-center justify-center h-[400px]">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : listings.length === 0 ? (
+            <div className="flex items-center justify-center h-[400px]">
+              <div className="text-center">
+                <p className="text-muted-foreground">No listings found</p>
+              </div>
+            </div>
+          ) : (
+            <ScrollArea className="w-full">
+              <div className="space-y-2">
+                {listings.map((listing) => (
+                  <div
+                    key={listing.id}
+                    onClick={() => setSelectedListing(listing)}
+                    className={`p-4 border rounded-lg cursor-pointer transition-colors hover:bg-muted/50 ${
+                      selectedListing?.id === listing.id ? "border-primary bg-muted/50" : ""
+                    }`}
+                  >
+                    <div className="flex items-center gap-4">
+                      {/* Listing Image */}
+                      <div className="relative h-16 w-16 flex-shrink-0">
+                        <Image
+                          src={listing.image || "/placeholder.svg"}
+                          alt={listing.title}
+                          fill
+                          className="object-cover rounded"
+                        />
+                      </div>
 
-        <TabsContent value="all" className="mt-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredListings.map((listing) => (
-              <Card key={listing.id} className="overflow-hidden">
-                <div className="relative">
-                  <Image
-                    src={listing.image || "/placeholder.svg"}
-                    alt={listing.title}
-                    width={400}
-                    height={200}
-                    className="w-full h-40 object-cover"
-                  />
-                  <div className="absolute top-2 left-2 flex gap-1">{getStatusBadge(listing.status)}</div>
-                  <div className="absolute top-2 right-2 flex gap-1">
-                    {listing.featured && (
-                      <Badge className="bg-amber-500 text-white">
-                        <Star className="h-3 w-3 mr-1" />
-                        Featured
-                      </Badge>
-                    )}
-                    {listing.boosted && (
-                      <Badge className="bg-blue-500 text-white">
-                        <TrendingUp className="h-3 w-3 mr-1" />
-                        Boosted
-                      </Badge>
-                    )}
-                  </div>
-                  {listing.reports > 0 && (
-                    <div className="absolute bottom-2 right-2">
-                      <Badge variant="destructive">
-                        <Flag className="h-3 w-3 mr-1" />
-                        {listing.reports} reports
-                      </Badge>
-                    </div>
-                  )}
-                </div>
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between mb-2">
-                    <h3 className="font-semibold line-clamp-1">{listing.title}</h3>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => setSelectedListing(listing)}>
-                          <Eye className="h-4 w-4 mr-2" />
-                          View Details
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleAction(listing, "edit")}>
-                          <Edit className="h-4 w-4 mr-2" />
-                          Edit Listing
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        {listing.status !== "active" && (
-                          <DropdownMenuItem onClick={() => handleAction(listing, "approve")}>
-                            <CheckCircle className="h-4 w-4 mr-2" />
-                            Approve
+                      {/* Listing Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="font-semibold truncate">{listing.title}</p>
+                            <p className="text-sm text-muted-foreground truncate">{listing.description}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <Avatar className="h-6 w-6">
+                                <AvatarImage src={listing.seller.profilePicture || "/placeholder.svg"} />
+                                <AvatarFallback>{listing.seller.username.charAt(0)}</AvatarFallback>
+                              </Avatar>
+                              <span className="text-xs text-muted-foreground">{listing.seller.username}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Price & Status */}
+                      <div className="text-right flex-shrink-0">
+                        <p className="font-semibold">{listing.price} Robux</p>
+                        {getStatusBadge(listing.status)}
+                      </div>
+
+                      {/* Actions */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleAction(listing, "available")}>
+                            Mark Available
                           </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem onClick={() => handleAction(listing, "flag")}>
-                          <Flag className="h-4 w-4 mr-2" />
-                          Flag Listing
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleAction(listing, "remove")} className="text-destructive">
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Remove
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                  <p className="text-sm text-muted-foreground line-clamp-2 mb-3">{listing.description}</p>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Avatar className="h-6 w-6">
-                        <AvatarImage src={listing.sellerAvatar || "/placeholder.svg"} />
-                        <AvatarFallback>{listing.seller.charAt(0)}</AvatarFallback>
-                      </Avatar>
-                      <span className="text-sm text-muted-foreground">{listing.seller}</span>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-primary">
-                        {listing.price.toLocaleString()} {listing.currency}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{listing.views} views</p>
+                          <DropdownMenuItem onClick={() => handleAction(listing, "hidden")}>
+                            Hide Listing
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleAction(listing, "banned")}>
+                            Ban Listing
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleAction(listing, "sold")}>
+                            Mark Sold
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem asChild>
+                            <Link href={`/listing/${listing.id}`} target="_blank">
+                              View Listing
+                              <ChevronRight className="h-3 w-3 ml-auto" />
+                            </Link>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem asChild>
+                            <Link href={`/profile/${listing.sellerId}`} target="_blank">
+                              View Seller
+                              <ChevronRight className="h-3 w-3 ml-auto" />
+                            </Link>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
-                  {listing.flags.length > 0 && (
-                    <div className="mt-3 pt-3 border-t flex flex-wrap gap-1">
-                      {listing.flags.map((flag) => (
-                        <Badge key={flag} variant="outline" className="text-xs">
-                          {flag}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </TabsContent>
+                ))}
+              </div>
+            </ScrollArea>
+          )}
 
-        <TabsContent value="flagged" className="mt-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredListings
-              .filter((l) => l.status === "flagged")
-              .map((listing) => (
-                <Card key={listing.id} className="overflow-hidden border-destructive/50">
-                  <div className="relative">
-                    <Image
-                      src={listing.image || "/placeholder.svg"}
-                      alt={listing.title}
-                      width={400}
-                      height={200}
-                      className="w-full h-40 object-cover"
-                    />
-                    <div className="absolute inset-0 bg-destructive/10" />
-                    <div className="absolute top-2 left-2">
-                      <Badge variant="destructive">Flagged</Badge>
-                    </div>
-                    <div className="absolute bottom-2 right-2">
-                      <Badge variant="destructive">
-                        <Flag className="h-3 w-3 mr-1" />
-                        {listing.reports} reports
-                      </Badge>
-                    </div>
-                  </div>
-                  <CardContent className="p-4">
-                    <h3 className="font-semibold line-clamp-1 mb-2">{listing.title}</h3>
-                    <div className="flex items-center gap-2 mb-3">
-                      <Avatar className="h-6 w-6">
-                        <AvatarImage src={listing.sellerAvatar || "/placeholder.svg"} />
-                        <AvatarFallback>{listing.seller.charAt(0)}</AvatarFallback>
-                      </Avatar>
-                      <span className="text-sm text-muted-foreground">{listing.seller}</span>
-                    </div>
-                    <div className="flex flex-wrap gap-1 mb-3">
-                      {listing.flags.map((flag) => (
-                        <Badge key={flag} variant="destructive" className="text-xs">
-                          {flag}
-                        </Badge>
-                      ))}
-                    </div>
-                    <div className="flex gap-2">
-                      <Button size="sm" className="flex-1" onClick={() => handleAction(listing, "approve")}>
-                        <CheckCircle className="h-4 w-4 mr-1" />
-                        Approve
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        className="flex-1"
-                        onClick={() => handleAction(listing, "remove")}
-                      >
-                        <Trash2 className="h-4 w-4 mr-1" />
-                        Remove
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-          </div>
-        </TabsContent>
+          {/* Pagination */}
+          {totalPages > 1 && !loading && (
+            <div className="flex items-center justify-between mt-4 pt-4 border-t">
+              <Button
+                variant="outline"
+                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+              >
+                Previous
+              </Button>
+              <span className="text-sm text-muted-foreground">
+                Page {currentPage} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
+              >
+                Next
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-        <TabsContent value="pending" className="mt-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredListings
-              .filter((l) => l.status === "pending")
-              .map((listing) => (
-                <Card key={listing.id} className="overflow-hidden border-yellow-500/50">
-                  <div className="relative">
-                    <Image
-                      src={listing.image || "/placeholder.svg"}
-                      alt={listing.title}
-                      width={400}
-                      height={200}
-                      className="w-full h-40 object-cover"
-                    />
-                    <div className="absolute top-2 left-2">
-                      <Badge className="bg-yellow-500 text-white">
-                        <Clock className="h-3 w-3 mr-1" />
-                        Pending Review
-                      </Badge>
-                    </div>
-                  </div>
-                  <CardContent className="p-4">
-                    <h3 className="font-semibold line-clamp-1 mb-2">{listing.title}</h3>
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <Avatar className="h-6 w-6">
-                          <AvatarImage src={listing.sellerAvatar || "/placeholder.svg"} />
-                          <AvatarFallback>{listing.seller.charAt(0)}</AvatarFallback>
-                        </Avatar>
-                        <span className="text-sm text-muted-foreground">{listing.seller}</span>
-                      </div>
-                      <p className="font-semibold text-primary">{listing.price.toLocaleString()} R$</p>
-                    </div>
-                    {listing.flags.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mb-3">
-                        {listing.flags.map((flag) => (
-                          <Badge key={flag} variant="outline" className="text-xs">
-                            {flag}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-                    <div className="flex gap-2">
-                      <Button size="sm" className="flex-1" onClick={() => handleAction(listing, "approve")}>
-                        <CheckCircle className="h-4 w-4 mr-1" />
-                        Approve
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex-1 bg-transparent"
-                        onClick={() => handleAction(listing, "flag")}
-                      >
-                        <Flag className="h-4 w-4 mr-1" />
-                        Flag
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-          </div>
-        </TabsContent>
+      {/* Listing Details Panel */}
+      {selectedListing && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Listing Details</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Image */}
+            <div className="relative w-full h-48">
+              <Image
+                src={selectedListing.image || "/placeholder.svg"}
+                alt={selectedListing.title}
+                fill
+                className="object-cover rounded"
+              />
+            </div>
 
-        <TabsContent value="featured" className="mt-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredListings
-              .filter((l) => l.featured || l.boosted)
-              .map((listing) => (
-                <Card key={listing.id} className="overflow-hidden border-amber-500/50">
-                  <div className="relative">
-                    <Image
-                      src={listing.image || "/placeholder.svg"}
-                      alt={listing.title}
-                      width={400}
-                      height={200}
-                      className="w-full h-40 object-cover"
-                    />
-                    <div className="absolute top-2 right-2 flex gap-1">
-                      {listing.featured && (
-                        <Badge className="bg-amber-500 text-white">
-                          <Star className="h-3 w-3 mr-1" />
-                          Featured
-                        </Badge>
-                      )}
-                      {listing.boosted && (
-                        <Badge className="bg-blue-500 text-white">
-                          <TrendingUp className="h-3 w-3 mr-1" />
-                          Boosted
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                  <CardContent className="p-4">
-                    <h3 className="font-semibold line-clamp-1 mb-2">{listing.title}</h3>
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <Avatar className="h-6 w-6">
-                          <AvatarImage src={listing.sellerAvatar || "/placeholder.svg"} />
-                          <AvatarFallback>{listing.seller.charAt(0)}</AvatarFallback>
-                        </Avatar>
-                        <span className="text-sm text-muted-foreground">{listing.seller}</span>
-                      </div>
-                      <p className="font-semibold text-primary">{listing.price.toLocaleString()} R$</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline" className="flex-1 bg-transparent">
-                        <Eye className="h-4 w-4 mr-1" />
-                        View
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex-1 bg-transparent"
-                        onClick={() => handleAction(listing, "remove-feature")}
-                      >
-                        <XCircle className="h-4 w-4 mr-1" />
-                        Unfeature
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-          </div>
-        </TabsContent>
-      </Tabs>
+            {/* Basic Info */}
+            <div className="space-y-3">
+              <div>
+                <p className="text-sm font-semibold text-muted-foreground">Title</p>
+                <p className="font-semibold">{selectedListing.title}</p>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-muted-foreground">Description</p>
+                <p className="text-sm">{selectedListing.description}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm font-semibold text-muted-foreground">Price</p>
+                  <p className="font-semibold">{selectedListing.price} Robux</p>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-muted-foreground">Status</p>
+                  {getStatusBadge(selectedListing.status)}
+                </div>
+              </div>
+            </div>
 
-      {/* Action Dialog */}
+            {/* Seller Info */}
+            <div className="p-4 bg-muted/50 rounded-lg">
+              <p className="text-sm font-semibold text-muted-foreground mb-3">Seller</p>
+              <div className="flex items-center gap-3">
+                <Avatar>
+                  <AvatarImage src={selectedListing.seller.profilePicture || "/placeholder.svg"} />
+                  <AvatarFallback>{selectedListing.seller.username.charAt(0)}</AvatarFallback>
+                </Avatar>
+                <div className="flex-1">
+                  <p className="font-semibold">{selectedListing.seller.username}</p>
+                  <p className="text-xs text-muted-foreground">ID: {selectedListing.sellerId}</p>
+                </div>
+                <Link href={`/profile/${selectedListing.sellerId}`} target="_blank">
+                  <Button variant="outline" size="sm">
+                    View Profile
+                  </Button>
+                </Link>
+              </div>
+            </div>
+
+            {/* Created At */}
+            <div>
+              <p className="text-sm font-semibold text-muted-foreground">Created</p>
+              <p className="text-sm">{new Date(selectedListing.createdAt).toLocaleString()}</p>
+            </div>
+
+            <Separator />
+
+            {/* Actions */}
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => handleAction(selectedListing, "available")}
+                disabled={selectedListing.status === "available"}
+                className="flex-1"
+              >
+                Mark Available
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => handleAction(selectedListing, "hidden")}
+                disabled={selectedListing.status === "hidden"}
+                className="flex-1"
+              >
+                Hide
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => handleAction(selectedListing, "banned")}
+                disabled={selectedListing.status === "banned"}
+                className="flex-1"
+              >
+                Ban Item
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Status Change Dialog */}
       <Dialog open={actionDialogOpen} onOpenChange={setActionDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle className="capitalize">
-              {actionType === "remove"
-                ? "Remove Listing"
-                : actionType === "flag"
-                  ? "Flag Listing"
-                  : actionType === "approve"
-                    ? "Approve Listing"
-                    : actionType}
-            </DialogTitle>
+            <DialogTitle>Change Listing Status</DialogTitle>
             <DialogDescription>
-              {actionType === "remove"
-                ? "This will remove the listing from the marketplace."
-                : actionType === "flag"
-                  ? "Select the reasons for flagging this listing."
-                  : actionType === "approve"
-                    ? "This will approve the listing and make it visible."
-                    : `Modifying listing: ${selectedListing?.title}`}
+              Update the status of "{selectedListing?.title}"
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            {actionType === "flag" && (
-              <div className="space-y-3">
-                <Label>Flag Reasons</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {flagReasons.map((reason) => (
-                    <div key={reason.value} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={reason.value}
-                        checked={selectedFlags.includes(reason.value)}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setSelectedFlags([...selectedFlags, reason.value])
-                          } else {
-                            setSelectedFlags(selectedFlags.filter((f) => f !== reason.value))
-                          }
-                        }}
-                      />
-                      <label htmlFor={reason.value} className="text-sm">
-                        {reason.label}
-                      </label>
-                    </div>
+            <div>
+              <Label>New Status</Label>
+              <Select value={newStatus} onValueChange={setNewStatus}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {validStatuses.map((status) => (
+                    <SelectItem key={status.value} value={status.value}>
+                      {status.label}
+                    </SelectItem>
                   ))}
-                </div>
-              </div>
-            )}
-            {(actionType === "remove" || actionType === "flag") && (
-              <div>
-                <Label>Additional Notes</Label>
-                <Textarea
-                  placeholder="Enter additional notes..."
-                  value={actionReason}
-                  onChange={(e) => setActionReason(e.target.value)}
-                  className="mt-2"
-                />
-              </div>
-            )}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Reason (optional)</Label>
+              <Textarea
+                placeholder="Enter reason for this action..."
+                value={actionReason}
+                onChange={(e) => setActionReason(e.target.value)}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setActionDialogOpen(false)}>
               Cancel
             </Button>
-            <Button variant={actionType === "remove" ? "destructive" : "default"} onClick={executeAction}>
-              Confirm
+            <Button onClick={executeAction} disabled={actionLoading}>
+              {actionLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              Update Status
             </Button>
           </DialogFooter>
         </DialogContent>

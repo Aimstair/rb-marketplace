@@ -41,6 +41,8 @@
     "@radix-ui/react-toggle": "latest",
     "@radix-ui/react-toggle-group": "latest",
     "@radix-ui/react-tooltip": "latest",
+    "@uploadthing/react": "^7.3.3",
+    "@uploadthing/shared": "^7.1.10",
     "@vercel/analytics": "latest",
     "autoprefixer": "^10.4.20",
     "class-variance-authority": "^0.7.1",
@@ -61,6 +63,7 @@
     "sonner": "latest",
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
+    "uploadthing": "^7.7.4",
     "vaul": "latest",
     "zod": "3.25.76"
   },

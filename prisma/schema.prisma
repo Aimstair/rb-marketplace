@@ -19,14 +19,24 @@ model User {
   profilePicture   String?
   banner           String?
   bio              String?
+  socialLinks      Json?    // { discord?: string, twitter?: string, ... }
+  isVerified       Boolean  @default(false)
+  isBanned         Boolean  @default(false)
+  lastActive       DateTime @default(now())
   joinDate         DateTime @default(now())
   robloxProfile    String?
   discordTag       String?
+  
+  // Subscription fields
+  subscriptionTier String   @default("FREE")  // "FREE" | "PRO" | "ELITE"
+  subscriptionStatus String @default("ACTIVE") // "ACTIVE" | "CANCELLED" | "EXPIRED"
+  subscriptionEndsAt DateTime?
   
   // Relations
   listings         Listing[]
   vouchesReceived  Vouch[]   @relation("VouchesReceived")
   vouchesSent      Vouch[]   @relation("VouchesSent")
+  subscriptionLogs SubscriptionLog[]
   
   // Messaging relations
   conversationsInitiated  Conversation[] @relation("Buyer")
@@ -40,10 +50,35 @@ model User {
   // Notification relations
   notifications    Notification[]
   
+  // Follow relations
+  followers        UserFollow[] @relation("FollowedBy")
+  following        UserFollow[] @relation("Following")
+  
+  // Report relations
+  reportsSubmitted Report[] @relation("ReporterUser")
+  reportsReceived  Report[] @relation("ReportedUser")
+  
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
   @@map("users")
+}
+
+model UserFollow {
+  id             String   @id @default(cuid())
+  
+  followerId     String
+  follower       User     @relation("FollowedBy", fields: [followerId], references: [id], onDelete: Cascade)
+  
+  followingId    String
+  following      User     @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
+  
+  createdAt      DateTime @default(now())
+
+  @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
+  @@map("user_follows")
 }
 
 model Listing {
@@ -60,6 +95,7 @@ model Listing {
   featured     Boolean  @default(false)
   
   // Engagement metrics
+  views        Int      @default(0)
   vouchCount   Int      @default(0)
   upvotes      Int      @default(0)
   downvotes    Int      @default(0)
@@ -73,6 +109,9 @@ model Listing {
   
   // Transaction relation
   transactions  Transaction[]
+  
+  // Report relation
+  reports       Report[]
   
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -213,4 +252,53 @@ model Notification {
   @@index([isRead])
   @@index([createdAt])
   @@map("notifications")
+}
+
+model Report {
+  id           String   @id @default(cuid())
+  
+  // Reporter
+  reporterId   String
+  reporter     User     @relation("ReporterUser", fields: [reporterId], references: [id], onDelete: Cascade)
+  
+  // Reported user (optional - for profile reports)
+  reportedId   String?
+  reported     User?    @relation("ReportedUser", fields: [reportedId], references: [id], onDelete: Cascade)
+  
+  // Reported listing (optional - for item reports)
+  listingId    String?
+  listing      Listing? @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  
+  // Report details
+  reason       String   // "Scam" | "Spam" | "Inappropriate" | "Fake Items" | "Impersonation" | etc
+  details      String?
+  status       String   @default("PENDING") // "PENDING" | "RESOLVED" | "DISMISSED"
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([reporterId])
+  @@index([reportedId])
+  @@index([listingId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("reports")
+}
+
+model SubscriptionLog {
+  id           String   @id @default(cuid())
+  
+  // User who purchased/upgraded
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Subscription details
+  plan         String   // "PRO" | "ELITE"
+  amount       Int      // In cents or pesos
+  
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("subscription_logs")
 }

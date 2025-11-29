@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { getSubscriptionStats } from "@/app/actions/subscriptions"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -248,6 +249,36 @@ export default function MonetizationPage() {
   const [adjustDialogOpen, setAdjustDialogOpen] = useState(false)
   const [selectedUser, setSelectedUser] = useState<(typeof userSubscriptions)[0] | null>(null)
   const [adjustAction, setAdjustAction] = useState<"extend" | "refund" | "upgrade" | "cancel">("extend")
+  const [totalRevenue, setTotalRevenue] = useState(0)
+  const [activeSubscribers, setActiveSubscribers] = useState(0)
+  const [recentSales, setRecentSales] = useState<Array<{
+    id: string
+    username: string
+    plan: string
+    amount: number
+    createdAt: Date
+  }>>([])
+  const [loading, setLoading] = useState(true)
+
+  // Load subscription stats on mount
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        const result = await getSubscriptionStats()
+        if (result.success && result.data) {
+          setTotalRevenue(result.data.totalRevenue)
+          setActiveSubscribers(result.data.activeSubscribers)
+          setRecentSales(result.data.recentSales)
+        }
+      } catch (err) {
+        console.error("Failed to load subscription stats:", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadStats()
+  }, [])
 
   const handleAdjustPlan = (
     user: (typeof userSubscriptions)[0],
@@ -307,8 +338,8 @@ export default function MonetizationPage() {
                 +18.7%
               </div>
             </div>
-            <p className="text-2xl font-bold">₱232,000</p>
-            <p className="text-sm text-muted-foreground">Revenue This Month</p>
+            <p className="text-2xl font-bold">₱{(totalRevenue / 100).toLocaleString()}</p>
+            <p className="text-sm text-muted-foreground">Total Subscription Revenue</p>
           </CardContent>
         </Card>
         <Card>
@@ -322,7 +353,7 @@ export default function MonetizationPage() {
                 +12.3%
               </div>
             </div>
-            <p className="text-2xl font-bold">1,990</p>
+            <p className="text-2xl font-bold">{activeSubscribers}</p>
             <p className="text-sm text-muted-foreground">Active Subscribers</p>
           </CardContent>
         </Card>
@@ -450,27 +481,25 @@ export default function MonetizationPage() {
           {/* Recent Transactions */}
           <Card>
             <CardHeader>
-              <CardTitle>Recent Transactions</CardTitle>
-              <CardDescription>Latest purchases and subscriptions</CardDescription>
+              <CardTitle>Recent Subscriptions</CardTitle>
+              <CardDescription>Latest subscription purchases</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {[...boostPurchases.slice(0, 3), ...featuredPayments.slice(0, 2)].map((item, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                {recentSales.slice(0, 5).map((sale) => (
+                  <div key={sale.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                     <div className="flex items-center gap-3">
                       <Avatar className="h-10 w-10">
-                        <AvatarFallback>{item.username.charAt(0)}</AvatarFallback>
+                        <AvatarFallback>{sale.username.charAt(0)}</AvatarFallback>
                       </Avatar>
                       <div>
-                        <p className="font-medium">{item.username}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {"type" in item ? item.type : item.slot} - {"listing" in item ? item.listing : ""}
-                        </p>
+                        <p className="font-medium">{sale.username}</p>
+                        <p className="text-sm text-muted-foreground">Upgraded to {sale.plan}</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="font-medium text-green-500">{item.amount}</p>
-                      <p className="text-xs text-muted-foreground">{"date" in item ? item.date : item.startDate}</p>
+                      <p className="font-medium text-green-500">₱{(sale.amount / 100).toLocaleString()}</p>
+                      <p className="text-xs text-muted-foreground">{new Date(sale.createdAt).toLocaleDateString()}</p>
                     </div>
                   </div>
                 ))}

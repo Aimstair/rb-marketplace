@@ -1,58 +1,67 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
-import { Star, MessageCircle } from "lucide-react"
+import { Star, MessageCircle, Loader2 } from "lucide-react"
+import { getTrendingListings } from "@/app/actions/trends"
 
-// Mock data - replace with real data from API
-const mockListings = [
-  {
-    id: 1,
-    title: "Golden Dragon Pet",
-    game: "Adopt Me",
-    price: "₱2,500",
-    image: "/golden-dragon-pet-roblox.jpg",
-    seller: "NinjaTrader",
-    vouch: 42,
-    featured: true,
-  },
-  {
-    id: 2,
-    title: "Dominus Astrorum",
-    game: "Roblox Limited",
-    price: "₱8,999",
-    image: "/dominus-astrorum-roblox-limited.jpg",
-    seller: "PixelVault",
-    vouch: 89,
-    featured: true,
-  },
-  {
-    id: 3,
-    title: "Blox Fruits Zoan Tier 3",
-    game: "Blox Fruits",
-    price: "₱1,200",
-    image: "/blox-fruits-zoan-tier.jpg",
-    seller: "TradeMaster",
-    vouch: 156,
-    featured: true,
-  },
-  {
-    id: 4,
-    title: "Pet Simulator X Huge Pets Bundle",
-    game: "Pet Simulator X",
-    price: "₱3,800",
-    image: "/pet-simulator-x-huge-pets-bundle.jpg",
-    seller: "CasualPlayer",
-    vouch: 23,
-    featured: false,
-  },
-]
+interface TrendingListing {
+  id: string
+  title: string
+  game: string
+  price: number
+  image: string
+  seller: {
+    username: string
+    vouch: number
+  }
+  views: number
+  vouchCount: number
+}
 
 export default function FeaturedListings() {
+  const [listings, setListings] = useState<TrendingListing[]>([])
+  const [loading, setLoading] = useState(true)
+
+  // Load trending listings on mount
+  useEffect(() => {
+    const loadListings = async () => {
+      try {
+        const result = await getTrendingListings(4)
+        if (result.success && result.data) {
+          setListings(result.data)
+        }
+      } catch (err) {
+        console.error("Failed to load trending listings:", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadListings()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (!listings.length) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-muted-foreground">No listings available yet</p>
+      </div>
+    )
+  }
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-      {mockListings.map((listing) => (
+      {listings.map((listing) => (
         <Link key={listing.id} href={`/listing/${listing.id}`}>
           <Card className="overflow-hidden hover:shadow-lg transition-all duration-300 cursor-pointer group h-full">
             {/* Image */}
@@ -62,9 +71,9 @@ export default function FeaturedListings() {
                 alt={listing.title}
                 className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
               />
-              {listing.featured && (
-                <Badge className="absolute top-3 right-3 bg-primary text-primary-foreground">Featured</Badge>
-              )}
+              <Badge className="absolute top-3 right-3 bg-primary text-primary-foreground">
+                {listing.views} views
+              </Badge>
             </div>
 
             {/* Content */}
@@ -75,15 +84,15 @@ export default function FeaturedListings() {
 
               {/* Price */}
               <div className="mb-3">
-                <p className="text-2xl font-bold text-primary">{listing.price}</p>
+                <p className="text-2xl font-bold text-primary">₱{listing.price.toLocaleString()}</p>
               </div>
 
               {/* Seller Info */}
               <div className="flex items-center justify-between text-sm mb-4 pb-4 border-b">
-                <span className="text-muted-foreground">{listing.seller}</span>
+                <span className="text-muted-foreground">{listing.seller.username}</span>
                 <div className="flex items-center gap-1">
                   <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                  <span className="font-semibold">{listing.vouch}</span>
+                  <span className="font-semibold">{listing.seller.vouch}</span>
                 </div>
               </div>
 

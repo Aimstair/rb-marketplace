@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { FileUpload } from "@/components/file-upload"
 import { useTheme } from "next-themes"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -30,16 +31,34 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { getProfile, updateProfile, type UserProfileData } from "@/app/actions/profile"
+import { useToast } from "@/components/ui/use-toast"
 
 export default function SettingsPage() {
   const { user } = useAuth()
   const router = useRouter()
+  const { toast } = useToast()
   const [activeTab, setActiveTab] = useState("account")
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showPasswordDialog, setShowPasswordDialog] = useState(false)
   const [deleteConfirmText, setDeleteConfirmText] = useState("")
+
+  // Profile data
+  const [profileData, setProfileData] = useState<UserProfileData | null>(null)
+  const [profileLoading, setProfileLoading] = useState(false)
+
+  // Account form state
+  const [formData, setFormData] = useState({
+    bio: "",
+    avatar: "",
+    banner: "",
+    robloxProfile: "",
+    discordTag: "",
+    socialLinks: {} as Record<string, any>,
+  })
+  const [saveLoading, setSaveLoading] = useState(false)
 
   // Settings state
   const [settings, setSettings] = useState({
@@ -71,8 +90,46 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!user) {
       router.push("/auth/login")
+    } else {
+      // Fetch profile data on mount
+      loadProfileData()
     }
   }, [user, router])
+
+  const loadProfileData = async () => {
+    if (!user) return
+    try {
+      setProfileLoading(true)
+      const result = await getProfile(user.id)
+      if (result.success && result.data) {
+        setProfileData(result.data)
+        // Populate form with profile data
+        setFormData({
+          bio: result.data.bio || "",
+          avatar: result.data.avatar || "",
+          banner: result.data.banner || "",
+          robloxProfile: result.data.robloxProfile || "",
+          discordTag: result.data.discordTag || "",
+          socialLinks: result.data.socialLinks || {},
+        })
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to load profile",
+          variant: "destructive",
+        })
+      }
+    } catch (err) {
+      console.error("Failed to load profile:", err)
+      toast({
+        title: "Error",
+        description: "Failed to load profile data",
+        variant: "destructive",
+      })
+    } finally {
+      setProfileLoading(false)
+    }
+  }
 
   const handleUnblock = (userId: number) => {
     setBlockedUsers((prev) => prev.filter((u) => u.id !== userId))
@@ -83,6 +140,61 @@ export default function SettingsPage() {
       // Handle account deletion
       alert("Account deletion requested. This feature is for demonstration only.")
       setShowDeleteDialog(false)
+    }
+  }
+
+  const handleFormChange = (field: string, value: any) => {
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }))
+  }
+
+  const handleSocialLinkChange = (platform: string, value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      socialLinks: {
+        ...prev.socialLinks,
+        [platform]: value,
+      },
+    }))
+  }
+
+  const handleSaveProfile = async () => {
+    try {
+      setSaveLoading(true)
+      const result = await updateProfile({
+        bio: formData.bio,
+        avatar: formData.avatar,
+        banner: formData.banner,
+        robloxProfile: formData.robloxProfile,
+        discordTag: formData.discordTag,
+        socialLinks: formData.socialLinks,
+      } as Partial<UserProfileData>)
+
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: "Profile updated successfully!",
+        })
+        // Reload profile data to reflect changes
+        await loadProfileData()
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to update profile",
+          variant: "destructive",
+        })
+      }
+    } catch (err) {
+      console.error("Failed to save profile:", err)
+      toast({
+        title: "Error",
+        description: "Failed to save profile",
+        variant: "destructive",
+      })
+    } finally {
+      setSaveLoading(false)
     }
   }
 
@@ -128,75 +240,94 @@ export default function SettingsPage() {
               <Card className="p-6 space-y-6">
                 <h2 className="text-2xl font-bold">Account Settings</h2>
 
-                {/* Profile Picture */}
-                <div>
-                  <Label className="mb-2 block">Profile Picture</Label>
-                  <div className="flex items-center gap-4">
-                    <div className="relative">
-                      <img
-                        src={user.avatar || "/placeholder.svg?height=80&width=80&query=user avatar"}
-                        alt="Profile"
-                        className="w-20 h-20 rounded-full object-cover"
-                      />
-                      <button className="absolute bottom-0 right-0 p-1.5 bg-primary text-primary-foreground rounded-full">
-                        <Camera className="w-3 h-3" />
-                      </button>
-                    </div>
+                {profileLoading ? (
+                  <div className="text-center py-8">
+                    <p className="text-muted-foreground">Loading profile data...</p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Profile Picture */}
                     <div>
-                      <Button variant="outline" size="sm">
-                        Change Photo
-                      </Button>
-                      <p className="text-xs text-muted-foreground mt-1">JPG, PNG. Max 2MB</p>
+                      <Label className="mb-2 block">Profile Picture</Label>
+                      <FileUpload
+                        endpoint="userAvatar"
+                        value={formData.avatar}
+                        onChange={(url) => handleFormChange("avatar", url || "")}
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">Upload a profile picture (JPG, PNG, up to 2MB)</p>
                     </div>
-                  </div>
-                </div>
 
-                {/* Profile Banner */}
-                <div>
-                  <Label className="mb-2 block">Profile Banner</Label>
-                  <div className="relative h-32 bg-muted rounded-lg overflow-hidden">
-                    <img src="/profile-banner.png" alt="Banner" className="w-full h-full object-cover" />
-                    <button className="absolute bottom-2 right-2 p-2 bg-primary text-primary-foreground rounded-lg text-sm flex items-center gap-1">
-                      <Camera className="w-4 h-4" />
-                      Change Banner
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <Label className="mb-2 block">Username</Label>
-                  <Input type="text" defaultValue={user.username} />
-                  <p className="text-xs text-muted-foreground mt-1">You can change your username once every 30 days</p>
-                </div>
-
-                <div>
-                  <Label className="mb-2 block">Email</Label>
-                  <Input type="email" value={user.email} readOnly className="bg-muted" />
-                </div>
-
-                <div>
-                  <Label className="mb-2 block">Bio</Label>
-                  <textarea
-                    className="w-full px-3 py-2 border rounded-lg bg-background text-foreground min-h-[100px]"
-                    placeholder="Tell us about yourself..."
-                    defaultValue={user.bio}
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">Max 200 characters</p>
-                </div>
-
-                {/* Social Links */}
-                <div>
-                  <Label className="mb-2 block">Social Links (Optional)</Label>
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      <LinkIcon className="w-4 h-4 text-muted-foreground" />
-                      <Input placeholder="Discord username (e.g., username#1234)" />
+                    {/* Profile Banner */}
+                    <div>
+                      <Label className="mb-2 block">Profile Banner</Label>
+                      <FileUpload
+                        endpoint="listingImage"
+                        value={formData.banner}
+                        onChange={(url) => handleFormChange("banner", url || "")}
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">Upload a banner image (JPG, PNG, up to 4MB)</p>
                     </div>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">Only shown if you enable it in privacy settings</p>
-                </div>
 
-                <Button>Save Changes</Button>
+                    <div>
+                      <Label className="mb-2 block">Username</Label>
+                      <Input type="text" value={user?.username || ""} readOnly className="bg-muted" />
+                      <p className="text-xs text-muted-foreground mt-1">You can change your username once every 30 days</p>
+                    </div>
+
+                    <div>
+                      <Label className="mb-2 block">Email</Label>
+                      <Input type="email" value={user?.email || ""} readOnly className="bg-muted" />
+                    </div>
+
+                    <div>
+                      <Label className="mb-2 block">Bio</Label>
+                      <textarea
+                        className="w-full px-3 py-2 border rounded-lg bg-background text-foreground min-h-[100px]"
+                        placeholder="Tell us about yourself..."
+                        value={formData.bio}
+                        onChange={(e) => handleFormChange("bio", e.target.value)}
+                        maxLength={200}
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {formData.bio.length}/200 characters
+                      </p>
+                    </div>
+
+                    {/* Roblox Profile */}
+                    <div>
+                      <Label className="mb-2 block">Roblox Profile</Label>
+                      <Input
+                        placeholder="Your Roblox username"
+                        value={formData.robloxProfile}
+                        onChange={(e) => handleFormChange("robloxProfile", e.target.value)}
+                      />
+                    </div>
+
+                    {/* Social Links */}
+                    <div>
+                      <Label className="mb-2 block">Social Links (Optional)</Label>
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <LinkIcon className="w-4 h-4 text-muted-foreground" />
+                          <Input
+                            placeholder="Discord username (e.g., username#1234)"
+                            value={formData.socialLinks?.discord || ""}
+                            onChange={(e) => handleSocialLinkChange("discord", e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">Only shown if you enable it in privacy settings</p>
+                    </div>
+
+                    <Button
+                      onClick={handleSaveProfile}
+                      disabled={saveLoading}
+                      className="w-full"
+                    >
+                      {saveLoading ? "Saving..." : "Save Changes"}
+                    </Button>
+                  </>
+                )}
               </Card>
             )}
 

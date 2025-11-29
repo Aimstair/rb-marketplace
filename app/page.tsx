@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Search, TrendingUp, Shield, Users, Zap } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,9 +11,40 @@ import Navigation from "@/components/navigation"
 import FeaturedListings from "@/components/featured-listings"
 import TrendingGames from "@/components/trending-games"
 import TopVouchedSellers from "@/components/top-vouched-sellers"
+import { getLandingStats } from "@/app/actions/trends"
 
 export default function HomePage() {
+  const router = useRouter()
   const [searchQuery, setSearchQuery] = useState("")
+  const [stats, setStats] = useState({ totalUsers: 0, totalListings: 0, totalVolume: 0, activeTraders: 0 })
+  const [loading, setLoading] = useState(true)
+
+  // Load stats on mount
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        const result = await getLandingStats()
+        if (result.success && result.data) {
+          setStats(result.data)
+        }
+      } catch (err) {
+        console.error("Failed to load stats:", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadStats()
+  }, [])
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (searchQuery.trim()) {
+      router.push(`/marketplace?search=${encodeURIComponent(searchQuery)}`)
+    } else {
+      router.push("/marketplace")
+    }
+  }
 
   return (
     <main className="min-h-screen bg-background">
@@ -30,7 +62,7 @@ export default function HomePage() {
             </p>
 
             {/* Search Bar */}
-            <div className="relative mb-8">
+            <form onSubmit={handleSearch} className="relative mb-8">
               <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground" />
               <Input
                 type="text"
@@ -39,7 +71,7 @@ export default function HomePage() {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-12 pr-4 py-3 text-lg"
               />
-            </div>
+            </form>
 
             {/* CTA Buttons */}
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -61,18 +93,22 @@ export default function HomePage() {
       {/* Quick Stats */}
       <section className="py-8 border-b bg-card/50">
         <div className="container mx-auto px-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div className="text-center">
-              <div className="text-3xl font-bold text-primary mb-2">12,457</div>
+              <div className="text-3xl font-bold text-primary mb-2">{stats.totalListings.toLocaleString()}</div>
               <p className="text-muted-foreground">Active Listings</p>
             </div>
             <div className="text-center">
-              <div className="text-3xl font-bold text-primary mb-2">3,891</div>
-              <p className="text-muted-foreground">Verified Sellers</p>
+              <div className="text-3xl font-bold text-primary mb-2">{stats.totalUsers.toLocaleString()}</div>
+              <p className="text-muted-foreground">Community Members</p>
             </div>
             <div className="text-center">
-              <div className="text-3xl font-bold text-primary mb-2">18,542</div>
-              <p className="text-muted-foreground">Successful Trades</p>
+              <div className="text-3xl font-bold text-primary mb-2">₱{(stats.totalVolume / 100000).toFixed(1)}k</div>
+              <p className="text-muted-foreground">Trade Volume</p>
+            </div>
+            <div className="text-center">
+              <div className="text-3xl font-bold text-primary mb-2">{stats.activeTraders.toLocaleString()}</div>
+              <p className="text-muted-foreground">Active Traders</p>
             </div>
           </div>
         </div>

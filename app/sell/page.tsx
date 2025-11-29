@@ -4,12 +4,13 @@ import type React from "react"
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Upload, X, Plus, Coins, Package } from "lucide-react"
+import { X, Plus, Coins, Package } from "lucide-react"
 import Navigation from "@/components/navigation"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { FileUpload } from "@/components/file-upload"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
 import { createListing, createCurrencyListing } from "@/app/actions/listings"
@@ -109,11 +110,13 @@ export default function SellPage() {
   }
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Now using FileUpload component - this can be removed
     const files = Array.from(e.target.files || [])
     setImagePreview([...imagePreview, ...files.map((file) => URL.createObjectURL(file))])
   }
 
   const removeImage = (index: number) => {
+    // Now using FileUpload component - this can be removed
     setImagePreview(imagePreview.filter((_, i) => i !== index))
   }
 
@@ -353,62 +356,20 @@ export default function SellPage() {
                     <h2 className="text-xl font-bold mb-4">Images</h2>
                     <div className="space-y-4">
                       <div>
-                        <label className="text-sm font-semibold mb-2 block">Image URL *</label>
-                        <Input
-                          type="url"
-                          name="image"
-                          placeholder="https://example.com/image.jpg"
+                        <label className="text-sm font-semibold mb-2 block">Item Image *</label>
+                        <FileUpload
+                          endpoint="listingImage"
                           value={itemFormData.image}
-                          onChange={handleItemChange}
+                          onChange={(url) =>
+                            setItemFormData({
+                              ...itemFormData,
+                              image: url || "",
+                            })
+                          }
                         />
-                        <p className="text-xs text-muted-foreground mt-1">Provide a direct URL to the item image</p>
+                        <p className="text-xs text-muted-foreground mt-1">Upload a clear image of your item</p>
                       </div>
-
-                      {itemFormData.image && (
-                        <div className="border rounded-lg overflow-hidden">
-                          <img src={itemFormData.image} alt="Preview" className="w-full h-48 object-cover" />
-                        </div>
-                      )}
                     </div>
-                    <div className="border-2 border-dashed border-border rounded-lg p-8 text-center mt-6">
-                      <Upload className="w-8 h-8 mx-auto mb-3 text-muted-foreground" />
-                      <p className="font-semibold mb-1">Upload images of your item (optional)</p>
-                      <p className="text-sm text-muted-foreground mb-4">Add up to 5 images (JPG, PNG)</p>
-                      <input
-                        type="file"
-                        multiple
-                        accept="image/*"
-                        onChange={handleImageUpload}
-                        className="hidden"
-                        id="image-upload"
-                      />
-                      <label htmlFor="image-upload">
-                        <Button type="button" variant="outline" asChild>
-                          <span>Select Images</span>
-                        </Button>
-                      </label>
-                    </div>
-
-                    {imagePreview.length > 0 && (
-                      <div className="mt-4 grid grid-cols-3 md:grid-cols-4 gap-4">
-                        {imagePreview.map((img, idx) => (
-                          <div key={idx} className="relative">
-                            <img
-                              src={img || "/placeholder.svg"}
-                              alt={`Preview ${idx + 1}`}
-                              className="w-full h-24 object-cover rounded-lg"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => removeImage(idx)}
-                              className="absolute top-1 right-1 p-1 bg-destructive text-white rounded-full hover:bg-destructive/90"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </Card>
 
                   <Card className="p-6">

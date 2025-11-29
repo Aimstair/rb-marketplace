@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Star, Share2, Flag, MessageCircle, Check, Calendar, Shield, ThumbsUp, ThumbsDown } from "lucide-react"
 import Navigation from "@/components/navigation"
@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
+import { incrementListingView } from "@/app/actions/trends"
 
 // Mock listing data with upvotes/downvotes
 const mockListingDetails = {
@@ -63,6 +64,19 @@ export default function ListingDetailPage({ params }: { params: { id: string } }
   const [isSaved, setIsSaved] = useState(false)
   const [userVote, setUserVote] = useState<"up" | "down" | null>(null)
   const [votes, setVotes] = useState({ upvotes: listing.upvotes, downvotes: listing.downvotes })
+
+  // Track view on component mount
+  useEffect(() => {
+    const trackView = async () => {
+      try {
+        await incrementListingView(params.id)
+      } catch (err) {
+        console.error("Failed to track view:", err)
+      }
+    }
+
+    trackView()
+  }, [params.id])
 
   const requireAuth = (action: () => void) => {
     if (!user) {
