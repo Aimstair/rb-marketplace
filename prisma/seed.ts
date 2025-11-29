@@ -1,12 +1,24 @@
 import { PrismaClient } from "@prisma/client"
+import { hash } from "bcryptjs"
 
-const prisma = new PrismaClient()
+const prisma = new PrismaClient({
+  errorFormat: "minimal",
+})
 
 async function main() {
-  // Clear existing data
+  console.log("Starting seed...")
+
+  // Clear existing data (in correct order to respect foreign keys)
+  await prisma.session.deleteMany({})
+  await prisma.account.deleteMany({})
+  await prisma.verificationToken.deleteMany({})
   await prisma.vouch.deleteMany({})
   await prisma.listing.deleteMany({})
   await prisma.user.deleteMany({})
+  console.log("Cleared existing data")
+
+  // Hash password for all dummy users
+  const hashedPassword = await hash("password123", 12)
 
   // Create users
   const trustedTrader = await prisma.user.create({
@@ -14,7 +26,7 @@ async function main() {
       id: "user-1",
       username: "TrustedTrader",
       email: "user@test.com",
-      password: "password123",
+      password: hashedPassword,
       role: "user",
       profilePicture: "/diverse-user-avatars.png",
       banner: "/profile-banner.png",
@@ -24,13 +36,14 @@ async function main() {
       discordTag: "TrustedTrader#1234",
     },
   })
+  console.log("Created user:", trustedTrader.username)
 
   const adminModerator = await prisma.user.create({
     data: {
       id: "admin-1",
       username: "AdminModerator",
       email: "admin@test.com",
-      password: "admin123",
+      password: hashedPassword,
       role: "admin",
       profilePicture: "/admin-avatar.png",
       banner: "/admin-banner.jpg",
@@ -39,70 +52,109 @@ async function main() {
       robloxProfile: "AdminMod_RobloxTrade",
     },
   })
+  console.log("Created admin:", adminModerator.username)
 
   // Create additional sellers for the listings
   const pixelVault = await prisma.user.create({
     data: {
       username: "PixelVault",
-      email: "pixel@test.com",
-      password: "pass123",
+      email: "pixelvault@test.com",
+      password: hashedPassword,
       role: "user",
+      profilePicture: "/profile-2.jpg",
+      bio: "Roblox asset collector. Premium limited items only!",
     },
   })
 
-  const legitTrader = await prisma.user.create({
+  const luxeTrading = await prisma.user.create({
     data: {
-      username: "LegitTrader",
-      email: "legit@test.com",
-      password: "pass123",
+      username: "LuxeTrading",
+      email: "luxetrading@test.com",
+      password: hashedPassword,
       role: "user",
+      profilePicture: "/profile-3.jpg",
+      bio: "Verified seller with 1000+ successful trades",
     },
   })
 
-  const ugcMaster = await prisma.user.create({
+  const skywardGames = await prisma.user.create({
     data: {
-      username: "UGCMaster",
-      email: "ugc@test.com",
-      password: "pass123",
+      username: "SkywardGames",
+      email: "skywardgames@test.com",
+      password: hashedPassword,
       role: "user",
+      profilePicture: "/profile-4.jpg",
+      bio: "Game pass specialist. Fast delivery guaranteed!",
     },
   })
 
-  const hatCollector = await prisma.user.create({
+  const vaultMaster = await prisma.user.create({
     data: {
-      username: "HatCollector",
-      email: "hat@test.com",
-      password: "pass123",
+      username: "VaultMaster",
+      email: "vaultmaster@test.com",
+      password: hashedPassword,
       role: "user",
+      profilePicture: "/profile-5.jpg",
+      bio: "High-end item trading. Authentication guaranteed.",
     },
   })
 
-  const ninjaTrader = await prisma.user.create({
+  const cosmicGems = await prisma.user.create({
     data: {
-      username: "NinjaTrader",
-      email: "ninja@test.com",
-      password: "pass123",
+      username: "CosmicGems",
+      email: "cosmicgems@test.com",
+      password: hashedPassword,
       role: "user",
+      profilePicture: "/profile-6.jpg",
+      bio: "Rarity expert. All items authenticated.",
     },
   })
 
-  const safeTrader = await prisma.user.create({
+  const shadowTrader = await prisma.user.create({
     data: {
-      username: "SafeTrader99",
-      email: "safe@test.com",
-      password: "pass123",
+      username: "ShadowTrader",
+      email: "shadowtrader@test.com",
+      password: hashedPassword,
       role: "user",
+      profilePicture: "/profile-7.jpg",
+      bio: "Quick and reliable. Safe trading environment.",
     },
   })
 
-  const casualPlayer = await prisma.user.create({
+  const etherealPlus = await prisma.user.create({
     data: {
-      username: "CasualPlayer",
-      email: "casual@test.com",
-      password: "pass123",
+      username: "EtherealPlus",
+      email: "etherealplus@test.com",
+      password: hashedPassword,
       role: "user",
+      profilePicture: "/profile-8.jpg",
+      bio: "Premium currency exchange. Best rates!",
     },
   })
+
+  const nexusTraders = await prisma.user.create({
+    data: {
+      username: "NexusTraders",
+      email: "nexustraders@test.com",
+      password: hashedPassword,
+      role: "user",
+      profilePicture: "/profile-9.jpg",
+      bio: "Multi-game specialist. Trusted by thousands.",
+    },
+  })
+
+  const primeVaults = await prisma.user.create({
+    data: {
+      username: "PrimeVaults",
+      email: "primevaults@test.com",
+      password: hashedPassword,
+      role: "user",
+      profilePicture: "/profile-10.jpg",
+      bio: "Exclusive items only. VIP service available.",
+    },
+  })
+
+  console.log("Created additional sellers")
 
   const tradeMaster = await prisma.user.create({
     data: {

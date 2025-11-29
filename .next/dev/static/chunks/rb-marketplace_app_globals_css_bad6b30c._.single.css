@@ -3702,6 +3702,10 @@
     --cell-size: calc(var(--spacing) * 8);
   }
 
+  .running {
+    animation-play-state: running;
+  }
+
   .slide-in-from-right-2 {
     --tw-enter-translate-x: calc(2 * var(--spacing));
   }
