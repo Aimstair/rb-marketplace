@@ -60,6 +60,7 @@ export interface ListingFilters {
   }
   page?: number
   itemsPerPage?: number
+  sellerId?: string
 }
 
 export interface ListingResponse {

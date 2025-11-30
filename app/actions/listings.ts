@@ -14,7 +14,7 @@ import {
   type CreateListingResult,
 } from "@/lib/schemas"
 
-export async function getListing(id: string): Promise<{
+export async function getListing(id: string, currentUserId?: string): Promise<{
   success: boolean
   listing?: {
     id: string
@@ -41,6 +41,7 @@ export async function getListing(id: string): Promise<{
     }
     upvotes: number
     downvotes: number
+    userVote?: "UP" | "DOWN" | null
     createdAt: Date
   }
   error?: string
@@ -48,6 +49,19 @@ export async function getListing(id: string): Promise<{
   try {
     if (!id) {
       return { success: false, error: "Listing ID is required" }
+    }
+
+    // If no currentUserId provided, try to get from session
+    let userId = currentUserId
+    if (!userId) {
+      const session = await auth()
+      if (session?.user?.email) {
+        const user = await prisma.user.findUnique({
+          where: { email: session.user.email },
+          select: { id: true },
+        })
+        userId = user?.id
+      }
     }
 
     const listing = await prisma.listing.findUnique({
@@ -80,6 +94,21 @@ export async function getListing(id: string): Promise<{
       data: { views: { increment: 1 } },
     }).catch((err) => console.error("Failed to increment views:", err))
 
+    // Get user's vote if they're logged in
+    let userVote: "UP" | "DOWN" | null = null
+    if (userId) {
+      const vote = await prisma.listingVote.findUnique({
+        where: {
+          userId_listingId: {
+            userId,
+            listingId: id,
+          },
+        },
+        select: { type: true },
+      })
+      userVote = (vote?.type as "UP" | "DOWN") || null
+    }
+
     return {
       success: true,
       listing: {
@@ -107,6 +136,7 @@ export async function getListing(id: string): Promise<{
         },
         upvotes: listing.upvotes || 0,
         downvotes: listing.downvotes || 0,
+        userVote,
         createdAt: listing.createdAt,
       },
     }
@@ -128,13 +158,19 @@ export async function getListings(
     priceRange = { min: 0, max: 1000000 },
     page = 1,
     itemsPerPage = 9,
+    sellerId = undefined,
   } = filters
 
   try {
     // Build where clause
     const where: any = {
       status: "available",
-      game: { not: "Currency Exchange" }, // EXCLUDE currency items
+      game: { not: "Currency Exchange" },
+    }
+
+    // Filter by seller if provided
+    if (sellerId) {
+      where.sellerId = sellerId
     }
 
     // Search filter
@@ -459,6 +495,21 @@ export async function toggleListingVote(
   type: "up" | "down"
 ): Promise<{ success: boolean; upvotes?: number; downvotes?: number; error?: string }> {
   try {
+    // Get current authenticated user
+    const session = await auth()
+    if (!session?.user?.email) {
+      return { success: false, error: "You must be logged in to vote" }
+    }
+
+    const currentUser = await prisma.user.findUnique({
+      where: { email: session.user.email },
+      select: { id: true },
+    })
+
+    if (!currentUser) {
+      return { success: false, error: "User not found" }
+    }
+
     // Verify listing exists
     const listing = await prisma.listing.findUnique({
       where: { id: listingId },
@@ -469,20 +520,109 @@ export async function toggleListingVote(
       return { success: false, error: "Listing not found" }
     }
 
-    // Update votes
-    const updatedListing = await prisma.listing.update({
-      where: { id: listingId },
-      data: {
-        upvotes: type === "up" ? { increment: 1 } : undefined,
-        downvotes: type === "down" ? { increment: 1 } : undefined,
+    // Check if user already voted
+    const existingVote = await prisma.listingVote.findUnique({
+      where: {
+        userId_listingId: {
+          userId: currentUser.id,
+          listingId,
+        },
       },
-      select: { upvotes: true, downvotes: true },
     })
 
-    return {
-      success: true,
-      upvotes: updatedListing.upvotes || 0,
-      downvotes: updatedListing.downvotes || 0,
+    const voteType = type.toUpperCase() as "UP" | "DOWN"
+
+    if (existingVote) {
+      if (existingVote.type === voteType) {
+        // Same vote type - delete (toggle off)
+        await prisma.listingVote.delete({
+          where: {
+            userId_listingId: {
+              userId: currentUser.id,
+              listingId,
+            },
+          },
+        })
+
+        // Decrement the vote count
+        const updatedListing = await prisma.listing.update({
+          where: { id: listingId },
+          data: {
+            upvotes: type === "up" ? { decrement: 1 } : undefined,
+            downvotes: type === "down" ? { decrement: 1 } : undefined,
+          },
+          select: { upvotes: true, downvotes: true },
+        })
+
+        return {
+          success: true,
+          upvotes: updatedListing.upvotes || 0,
+          downvotes: updatedListing.downvotes || 0,
+        }
+      } else {
+        // Different vote type - update
+        await prisma.listingVote.update({
+          where: {
+            userId_listingId: {
+              userId: currentUser.id,
+              listingId,
+            },
+          },
+          data: { type: voteType },
+        })
+
+        // Update vote counts (decrement old, increment new)
+        const oldType = existingVote.type
+        const updatedListing = await prisma.listing.update({
+          where: { id: listingId },
+          data: {
+            upvotes:
+              type === "up"
+                ? { increment: 1 }
+                : oldType === "UP"
+                  ? { decrement: 1 }
+                  : undefined,
+            downvotes:
+              type === "down"
+                ? { increment: 1 }
+                : oldType === "DOWN"
+                  ? { decrement: 1 }
+                  : undefined,
+          },
+          select: { upvotes: true, downvotes: true },
+        })
+
+        return {
+          success: true,
+          upvotes: updatedListing.upvotes || 0,
+          downvotes: updatedListing.downvotes || 0,
+        }
+      }
+    } else {
+      // No existing vote - create new one
+      await prisma.listingVote.create({
+        data: {
+          userId: currentUser.id,
+          listingId,
+          type: voteType,
+        },
+      })
+
+      // Increment the vote count
+      const updatedListing = await prisma.listing.update({
+        where: { id: listingId },
+        data: {
+          upvotes: type === "up" ? { increment: 1 } : undefined,
+          downvotes: type === "down" ? { increment: 1 } : undefined,
+        },
+        select: { upvotes: true, downvotes: true },
+      })
+
+      return {
+        success: true,
+        upvotes: updatedListing.upvotes || 0,
+        downvotes: updatedListing.downvotes || 0,
+      }
     }
   } catch (error) {
     console.error("Error toggling listing vote:", error)

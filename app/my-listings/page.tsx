@@ -62,11 +62,10 @@ export default function MyListingsPage() {
       const fetchListings = async () => {
         try {
           setIsLoading(true)
-          // Note: getListings doesn't have a sellerId filter yet, so we'll fetch all and filter
-          // In a production app, you'd add a sellerId parameter to getListings
           const result = await getListings({
             page: currentPage,
             itemsPerPage: ITEMS_PER_PAGE,
+            sellerId: session.user.id,
           })
           setListings(result.listings)
           setTotalListings(result.total)

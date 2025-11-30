@@ -235,17 +235,24 @@ export default function MessagesPage() {
           // Mark messages as read
           await markMessagesAsRead(selectedConversationId)
 
-          const convertedMessages: Message[] = result.messages.map((msg) => ({
-            id: msg.id,
-            sender: msg.senderId === user?.id ? "buyer" : "seller",
-            text: msg.content,
-            timestamp: new Date(msg.createdAt).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
-            type: msg.attachmentUrl ? "image" : ("text" as const),
-            imageUrl: msg.attachmentUrl || undefined,
-          }))
+          const convertedMessages: Message[] = result.messages.map((msg) => {
+            // Check if message is a counteroffer (has offerAmount)
+            const isCounteroffer = (msg as any).offerAmount !== null && (msg as any).offerAmount !== undefined
+            
+            return {
+              id: msg.id,
+              sender: msg.senderId === user?.id ? "buyer" : "seller",
+              text: msg.content,
+              timestamp: new Date(msg.createdAt).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+              type: isCounteroffer ? "counteroffer" : msg.attachmentUrl ? "image" : ("text" as const),
+              imageUrl: msg.attachmentUrl || undefined,
+              offerAmount: isCounteroffer ? (msg as any).offerAmount : undefined,
+              offerStatus: isCounteroffer ? "pending" : undefined,
+            }
+          })
           setMessages(convertedMessages)
         }
       } catch (error) {
@@ -342,22 +349,41 @@ export default function MessagesPage() {
     }
   }
 
-  const handleSendCounterOffer = () => {
+  const handleSendCounterOffer = async () => {
     const amount = Number(counterOfferAmount)
-    if (!amount || amount <= 0) return
+    if (!amount || amount <= 0 || !selectedConversationId) return
 
-    const newMessage: Message = {
-      id: `counteroffer-${Date.now()}`,
-      sender: "buyer",
-      text: `I'd like to make a counteroffer`,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      type: "counteroffer",
-      offerAmount: amount,
-      offerStatus: "pending",
+    setSendingMessage(true)
+    try {
+      // Send counteroffer as a message with offerAmount
+      const result = await sendMessage("I'd like to make a counteroffer", {
+        conversationId: selectedConversationId,
+        offerAmount: amount,
+      })
+
+      if (!result.success) {
+        console.error("Error sending counteroffer:", result.error)
+        return
+      }
+
+      // Add optimistic message update
+      const newMessage: Message = {
+        id: result.messageId || `counteroffer-${Date.now()}`,
+        sender: "buyer",
+        text: `I'd like to make a counteroffer`,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        type: "counteroffer",
+        offerAmount: amount,
+        offerStatus: "pending",
+      }
+      setMessages((prev) => [...prev, newMessage])
+      setCounterOfferAmount("")
+      setShowCounterOfferInput(false)
+    } catch (error) {
+      console.error("Error sending counteroffer:", error)
+    } finally {
+      setSendingMessage(false)
     }
-    setMessages((prev) => [...prev, newMessage])
-    setCounterOfferAmount("")
-    setShowCounterOfferInput(false)
   }
 
   const handleFileAttach = (e: React.ChangeEvent<HTMLInputElement>) => {

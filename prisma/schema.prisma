@@ -35,6 +35,7 @@ model User {
   
   // Relations
   listings         Listing[]
+  listingVotes     ListingVote[]
   vouchesReceived  Vouch[]   @relation("VouchesReceived")
   vouchesSent      Vouch[]   @relation("VouchesSent")
   subscriptionLogs SubscriptionLog[]
@@ -117,6 +118,9 @@ model Listing {
   sellerId     String
   seller       User     @relation(fields: [sellerId], references: [id], onDelete: Cascade)
   
+  // Voting relation
+  votes        ListingVote[]
+  
   // Messaging relation
   conversations Conversation[]
   
@@ -131,6 +135,27 @@ model Listing {
 
   @@index([sellerId])
   @@map("listings")
+}
+
+model ListingVote {
+  id         String   @id @default(cuid())
+  
+  // Relations
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  listingId  String
+  listing    Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  
+  // Vote type
+  type       String   // "UP" | "DOWN"
+  
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, listingId])
+  @@index([userId])
+  @@index([listingId])
+  @@map("listing_votes")
 }
 
 model Vouch {
@@ -198,6 +223,9 @@ model Message {
   // Content
   content        String
   attachmentUrl  String?
+  
+  // Counteroffer
+  offerAmount    Int?
   
   // Status
   isRead         Boolean  @default(false)

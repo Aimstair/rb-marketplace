@@ -3,3 +3,5 @@ node_modules
 /lib/generated/prisma
 .next
 .next\dev
+.env
+.env.local

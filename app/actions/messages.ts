@@ -41,6 +41,7 @@ export interface MessageData {
   createdAt: Date
   isRead: boolean
   attachmentUrl: string | null
+  offerAmount?: number | null
 }
 
 export interface GetConversationsResult {
@@ -189,6 +190,7 @@ export async function getMessages(conversationId: string): Promise<GetMessagesRe
       createdAt: msg.createdAt,
       isRead: msg.isRead,
       attachmentUrl: msg.attachmentUrl,
+      offerAmount: msg.offerAmount,
     }))
 
     return {
@@ -215,6 +217,7 @@ export async function sendMessage(
     otherUserId?: string
     listingId?: string
     attachmentUrl?: string
+    offerAmount?: number
   } = {}
 ): Promise<SendMessageResult> {
   try {
@@ -327,6 +330,7 @@ export async function sendMessage(
         conversationId,
         senderId: currentUser.id,
         attachmentUrl: options.attachmentUrl,
+        offerAmount: options.offerAmount,
       },
     })
 
@@ -412,6 +416,7 @@ export async function markMessagesAsRead(conversationId: string): Promise<{ succ
 /**
  * Create or find a conversation with a specific user
  * Useful for auto-opening conversations when navigating from message search
+ * Also creates a Transaction if a listing is provided and none exists
  */
 export async function getOrCreateConversation(
   sellerId: string,
@@ -480,6 +485,42 @@ export async function getOrCreateConversation(
           listingId: listingId || undefined,
         },
       })
+
+      // If a listingId is provided, create a transaction
+      if (listingId) {
+        // Check if listing exists
+        const listing = await prisma.listing.findUnique({
+          where: { id: listingId },
+          select: { id: true, price: true },
+        })
+
+        if (listing) {
+          // Check if transaction already exists
+          const existingTransaction = await prisma.transaction.findFirst({
+            where: {
+              buyerId: currentUser.id,
+              sellerId: sellerId,
+              listingId: listingId,
+            },
+          })
+
+          // Create transaction only if it doesn't exist
+          if (!existingTransaction) {
+            await prisma.transaction.create({
+              data: {
+                buyerId: currentUser.id,
+                sellerId: sellerId,
+                listingId: listingId,
+                price: listing.price,
+                status: "PENDING",
+              },
+            }).catch((err) => {
+              console.error("Failed to create transaction:", err)
+              // Don't fail conversation creation if transaction fails
+            })
+          }
+        }
+      }
     }
 
     return {

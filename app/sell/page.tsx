@@ -600,11 +600,14 @@ export default function SellPage() {
               {listingType === "item" ? (
                 <div className="border rounded-lg overflow-hidden">
                   <div className="aspect-video bg-muted flex items-center justify-center">
-                    {imagePreview.length > 0 ? (
+                    {itemFormData.image ? (
                       <img
-                        src={imagePreview[0] || "/placeholder.svg"}
+                        src={itemFormData.image}
                         alt="Preview"
                         className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.src = "/placeholder.jpg"
+                        }}
                       />
                     ) : (
                       <p className="text-muted-foreground text-sm">No image</p>
