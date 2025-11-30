@@ -30,6 +30,7 @@ export interface ConversationWithLatestMessage {
     isRead: boolean
   } | null
   unreadCount: number
+  status: "ongoing" | "completed" | "sold"
 }
 
 export interface MessageData {
@@ -60,6 +61,7 @@ export interface SendMessageResult {
   success: boolean
   messageId?: string
   conversationId?: string
+  transactionCreated?: boolean
   error?: string
 }
 
@@ -103,7 +105,7 @@ export async function getConversations(): Promise<GetConversationsResult> {
           select: { id: true, username: true, profilePicture: true },
         },
         listing: {
-          select: { id: true, title: true, price: true, image: true },
+          select: { id: true, title: true, price: true, image: true, status: true },
         },
         messages: {
           orderBy: { createdAt: "desc" },
@@ -121,29 +123,62 @@ export async function getConversations(): Promise<GetConversationsResult> {
     }) as any[]
 
     // Transform conversations to response format
-    const transformedConversations: ConversationWithLatestMessage[] = conversations.map((conv) => {
-      const otherUser = currentUser.id === conv.buyerId ? conv.seller : conv.buyer
-      const unreadMessages = conv.messages.filter(
-        (msg: any) => !msg.isRead && msg.senderId !== currentUser.id
-      )
+    const transformedConversations: ConversationWithLatestMessage[] = await Promise.all(
+      conversations.map(async (conv) => {
+        const otherUser = currentUser.id === conv.buyerId ? conv.seller : conv.buyer
+        const unreadMessages = conv.messages.filter(
+          (msg: any) => !msg.isRead && msg.senderId !== currentUser.id
+        )
 
-      return {
-        id: conv.id,
-        buyerId: conv.buyerId,
-        sellerId: conv.sellerId,
-        listingId: conv.listingId,
-        createdAt: conv.createdAt,
-        updatedAt: conv.updatedAt,
-        otherUser: {
-          id: otherUser.id,
-          username: otherUser.username,
-          profilePicture: otherUser.profilePicture,
-        },
-        listing: conv.listing,
-        latestMessage: conv.messages[0] || null,
-        unreadCount: unreadMessages.length,
-      }
-    })
+        // Calculate transaction status
+        let status: "ongoing" | "completed" | "sold" = "ongoing"
+
+        if (conv.listingId) {
+          // Check if transaction is completed
+          const completedTransaction = await (prisma.transaction as any).findFirst({
+            where: {
+              listingId: conv.listingId,
+              status: "COMPLETED",
+              OR: [
+                {
+                  buyerId: conv.buyerId,
+                  sellerId: conv.sellerId,
+                },
+                {
+                  buyerId: conv.sellerId,
+                  sellerId: conv.buyerId,
+                },
+              ],
+            },
+          })
+
+          if (completedTransaction) {
+            status = "completed"
+          } else if (conv.listing?.status === "sold") {
+            // If listing is sold (but not to these parties), mark as sold
+            status = "sold"
+          }
+        }
+
+        return {
+          id: conv.id,
+          buyerId: conv.buyerId,
+          sellerId: conv.sellerId,
+          listingId: conv.listingId,
+          createdAt: conv.createdAt,
+          updatedAt: conv.updatedAt,
+          otherUser: {
+            id: otherUser.id,
+            username: otherUser.username,
+            profilePicture: otherUser.profilePicture,
+          },
+          listing: conv.listing,
+          latestMessage: conv.messages[0] || null,
+          unreadCount: unreadMessages.length,
+          status,
+        }
+      })
+    )
 
     return {
       success: true,
@@ -334,6 +369,57 @@ export async function sendMessage(
       },
     })
 
+    let transactionCreated = false
+
+    // Auto-create transaction if listing exists but transaction doesn't
+    if (conversation.listingId) {
+      const existingTransaction = await (prisma.transaction as any).findFirst({
+        where: {
+          listingId: conversation.listingId,
+          OR: [
+            { buyerId: conversation.buyerId, sellerId: conversation.sellerId },
+            { buyerId: conversation.sellerId, sellerId: conversation.buyerId },
+          ],
+        },
+      })
+
+      if (!existingTransaction) {
+        try {
+          // Fetch the listing to identify the TRUE seller
+          const listing = await prisma.listing.findUnique({
+            where: { id: conversation.listingId },
+            select: { sellerId: true, price: true },
+          })
+
+          if (listing) {
+            // TRUE buyer = participant who is NOT the seller
+            // TRUE seller = listing.sellerId
+            const trueSellerId = listing.sellerId
+            const trueBuyerId = conversation.buyerId === trueSellerId ? conversation.sellerId : conversation.buyerId
+
+            // Create transaction with correct roles
+            await (prisma.transaction as any).create({
+              data: {
+                buyerId: trueBuyerId,
+                sellerId: trueSellerId,
+                listingId: conversation.listingId,
+                price: listing.price || 0,
+                status: "PENDING",
+              },
+            })
+
+            transactionCreated = true
+            console.log(
+              `✅ Transaction auto-created: buyer=${trueBuyerId}, seller=${trueSellerId}, listing=${conversation.listingId}`
+            )
+          }
+        } catch (error) {
+          console.error("Failed to auto-create transaction:", error)
+          // Don't fail the message send if transaction creation fails
+        }
+      }
+    }
+
     // Update conversation's updatedAt timestamp
     await prisma.conversation.update({
       where: { id: conversationId },
@@ -357,6 +443,7 @@ export async function sendMessage(
       success: true,
       messageId: message.id,
       conversationId,
+      transactionCreated,
     }
   } catch (error) {
     console.error("Error sending message:", error)
@@ -615,6 +702,188 @@ export async function getOrCreateListingConversation(
     return {
       success: false,
       error: "Failed to create or find conversation",
+    }
+  }
+}
+
+export interface AcceptCounterOfferResult {
+  success: boolean
+  message?: string
+  error?: string
+}
+
+/**
+ * Accept a counteroffer by updating the transaction price
+ */
+export async function acceptCounterOffer(messageId: string): Promise<AcceptCounterOfferResult> {
+  try {
+    const session = await auth()
+    if (!session?.user?.email) {
+      return {
+        success: false,
+        error: "You must be logged in to accept a counteroffer",
+      }
+    }
+
+    const currentUser = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    })
+
+    if (!currentUser) {
+      return {
+        success: false,
+        error: "User account not found",
+      }
+    }
+
+    // Get the message with offer
+    const message = await prisma.message.findUnique({
+      where: { id: messageId },
+      include: {
+        conversation: true,
+      },
+    })
+
+    if (!message) {
+      return {
+        success: false,
+        error: "Message not found",
+      }
+    }
+
+    if (!message.offerAmount) {
+      return {
+        success: false,
+        error: "This message does not contain a counteroffer",
+      }
+    }
+
+    const conversation = message.conversation
+
+    // Find the transaction for this conversation's listing and users
+    let transaction = await (prisma.transaction as any).findFirst({
+      where: {
+        listingId: conversation.listingId,
+        OR: [
+          {
+            buyerId: conversation.buyerId,
+            sellerId: conversation.sellerId,
+          },
+          {
+            buyerId: conversation.sellerId,
+            sellerId: conversation.buyerId,
+          },
+        ],
+      },
+    })
+
+    // If no transaction found, create one with the offer price
+    if (!transaction) {
+      transaction = await (prisma.transaction as any).create({
+        data: {
+          buyerId: conversation.buyerId,
+          sellerId: conversation.sellerId,
+          listingId: conversation.listingId,
+          price: message.offerAmount,
+          status: "PENDING",
+        },
+      })
+    } else {
+      // Update existing transaction price
+      transaction = await (prisma.transaction as any).update({
+        where: { id: transaction.id },
+        data: { price: message.offerAmount },
+      })
+    }
+
+    // Create system message
+    await prisma.message.create({
+      data: {
+        conversationId: message.conversationId,
+        senderId: currentUser.id,
+        content: `Counteroffer accepted. Price updated to ${message.offerAmount}`,
+        isSystemMessage: true,
+      },
+    })
+
+    return {
+      success: true,
+      message: "Counteroffer accepted successfully",
+    }
+  } catch (error) {
+    console.error("Error accepting counteroffer:", error)
+    return {
+      success: false,
+      error: "Failed to accept counteroffer",
+    }
+  }
+}
+
+/**
+ * Decline a counteroffer
+ */
+export async function declineCounterOffer(messageId: string): Promise<AcceptCounterOfferResult> {
+  try {
+    const session = await auth()
+    if (!session?.user?.email) {
+      return {
+        success: false,
+        error: "You must be logged in to decline a counteroffer",
+      }
+    }
+
+    const currentUser = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    })
+
+    if (!currentUser) {
+      return {
+        success: false,
+        error: "User account not found",
+      }
+    }
+
+    // Get the message with offer
+    const message = await prisma.message.findUnique({
+      where: { id: messageId },
+      include: {
+        conversation: true,
+      },
+    })
+
+    if (!message) {
+      return {
+        success: false,
+        error: "Message not found",
+      }
+    }
+
+    if (!message.offerAmount) {
+      return {
+        success: false,
+        error: "This message does not contain a counteroffer",
+      }
+    }
+
+    // Create system message
+    await prisma.message.create({
+      data: {
+        conversationId: message.conversationId,
+        senderId: currentUser.id,
+        content: "Counteroffer declined.",
+        isSystemMessage: true,
+      },
+    })
+
+    return {
+      success: true,
+      message: "Counteroffer declined",
+    }
+  } catch (error) {
+    console.error("Error declining counteroffer:", error)
+    return {
+      success: false,
+      error: "Failed to decline counteroffer",
     }
   }
 }

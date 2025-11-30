@@ -1,6 +1,7 @@
 "use server"
 
 import { prisma } from "@/lib/prisma"
+import { auth } from "@/auth"
 import { createNotification } from "./notifications"
 import { z } from "zod"
 
@@ -15,6 +16,7 @@ export interface TransactionData {
   status: "PENDING" | "COMPLETED" | "CANCELLED"
   buyerConfirmed: boolean
   sellerConfirmed: boolean
+  userVouched: boolean
   createdAt: Date
   updatedAt: Date
 }
@@ -231,6 +233,26 @@ export async function getTransactionById(transactionId: string): Promise<{
   error?: string
 }> {
   try {
+    // Get current authenticated user
+    const session = await auth()
+    if (!session?.user?.email) {
+      return {
+        success: false,
+        error: "Unauthorized",
+      }
+    }
+
+    const currentUser = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    })
+
+    if (!currentUser) {
+      return {
+        success: false,
+        error: "User not found",
+      }
+    }
+
     const transaction = await (prisma.transaction as any).findUnique({
       where: { id: transactionId },
       include: {
@@ -253,6 +275,121 @@ export async function getTransactionById(transactionId: string): Promise<{
       }
     }
 
+    // Check if current user has already vouched for this transaction
+    const userVouch = await prisma.vouch.findFirst({
+      where: {
+        transactionId,
+        fromUserId: currentUser.id,
+      },
+    })
+
+    return {
+      success: true,
+      transaction: {
+        id: transaction.id,
+        buyerId: transaction.buyerId,
+        sellerId: transaction.sellerId,
+        buyer: transaction.buyer,
+        seller: transaction.seller,
+        listing: transaction.listing,
+        price: transaction.price,
+        status: transaction.status,
+        buyerConfirmed: transaction.buyerConfirmed,
+        sellerConfirmed: transaction.sellerConfirmed,
+        userVouched: !!userVouch,
+        createdAt: transaction.createdAt,
+        updatedAt: transaction.updatedAt,
+      },
+    }
+  } catch (error) {
+    console.error("Error fetching transaction:", error)
+    return {
+      success: false,
+      error: "Failed to fetch transaction",
+    }
+  }
+}
+
+/**
+ * Get a transaction by listing ID and the other user involved
+ * Finds a transaction where the listing matches and participants are current user and otherUserId
+ * Covers both viewing angles: (currentUser as buyer, otherUser as seller) OR (otherUser as buyer, currentUser as seller)
+ */
+export async function getTransactionByPeers(
+  listingId: string,
+  otherUserId: string
+): Promise<{
+  success: boolean
+  transaction?: TransactionData
+  error?: string
+}> {
+  try {
+    if (!listingId || !otherUserId) {
+      return {
+        success: true,
+        transaction: undefined,
+      }
+    }
+
+    // Get the current authenticated user
+    const session = await auth()
+    if (!session?.user?.email) {
+      return {
+        success: true,
+        transaction: undefined,
+      }
+    }
+
+    const currentUser = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    })
+
+    if (!currentUser) {
+      return {
+        success: true,
+        transaction: undefined,
+      }
+    }
+
+    // Find transaction where listing matches AND participants are currentUser and otherUserId
+    // This covers both viewing angles:
+    // (currentUser as buyer, otherUser as seller) OR (otherUser as buyer, currentUser as seller)
+    const transaction = await (prisma.transaction as any).findFirst({
+      where: {
+        listingId,
+        OR: [
+          // Current user is buyer, other user is seller
+          {
+            buyerId: currentUser.id,
+            sellerId: otherUserId,
+          },
+          // Other user is buyer, current user is seller
+          {
+            buyerId: otherUserId,
+            sellerId: currentUser.id,
+          },
+        ],
+      },
+      include: {
+        buyer: {
+          select: { id: true, username: true },
+        },
+        seller: {
+          select: { id: true, username: true },
+        },
+        listing: {
+          select: { id: true, title: true, price: true, image: true },
+        },
+      },
+    })
+
+    if (!transaction) {
+      return {
+        success: true,
+        transaction: undefined, // No transaction found (not an error)
+      }
+    }
+
     return {
       success: true,
       transaction: {
@@ -271,10 +408,10 @@ export async function getTransactionById(transactionId: string): Promise<{
       },
     }
   } catch (error) {
-    console.error("Error fetching transaction:", error)
+    console.error("Error fetching transaction by peers:", error)
     return {
-      success: false,
-      error: "Failed to fetch transaction",
+      success: true, // Return success with no transaction rather than error
+      transaction: undefined,
     }
   }
 }
@@ -288,15 +425,24 @@ export async function toggleTransactionConfirmation(
   transactionId: string
 ): Promise<ToggleConfirmationResult> {
   try {
-    // Get the current user (placeholder - first user in DB)
-    const currentUser = await prisma.user.findFirst({
-      where: { role: "user" },
+    // Get the current authenticated user from session
+    const session = await auth()
+    
+    if (!session?.user?.email) {
+      return {
+        success: false,
+        error: "Unauthorized. Please log in to confirm transactions.",
+      }
+    }
+
+    const currentUser = await prisma.user.findUnique({
+      where: { email: session.user.email },
     })
 
     if (!currentUser) {
       return {
         success: false,
-        error: "No user found. Please contact support.",
+        error: "User not found. Please contact support.",
       }
     }
 
@@ -350,34 +496,66 @@ export async function toggleTransactionConfirmation(
       const completedTransaction = await (prisma.transaction as any).update({
         where: { id: transactionId },
         data: { status: "COMPLETED" },
+        include: {
+          buyer: { select: { id: true, username: true } },
+          seller: { select: { id: true, username: true } },
+          listing: { select: { id: true, title: true, price: true, image: true } },
+        },
       })
 
       // Update listing status to sold
       await prisma.listing.update({
-        where: { id: updatedTransaction.listingId },
+        where: { id: completedTransaction.listingId },
         data: { status: "sold" },
       })
 
       // Create notification to both parties about completion
       await createNotification(
-        updatedTransaction.buyerId,
+        completedTransaction.buyerId,
         "ORDER_UPDATE",
         "Transaction completed!",
-        `Your transaction for ${updatedTransaction.listing.title} has been completed by both parties.`,
+        `Your transaction for ${completedTransaction.listing.title} has been completed by both parties.`,
         `/my-transactions`
       ).catch((error) => {
         console.error("Failed to create completion notification for buyer:", error)
       })
 
       await createNotification(
-        updatedTransaction.sellerId,
+        completedTransaction.sellerId,
         "ORDER_UPDATE",
         "Transaction completed!",
-        `Your transaction for ${updatedTransaction.listing.title} has been completed by both parties.`,
+        `Your transaction for ${completedTransaction.listing.title} has been completed by both parties.`,
         `/my-transactions`
       ).catch((error) => {
         console.error("Failed to create completion notification for seller:", error)
       })
+
+      // Check if current user has vouched
+      const userVouch = await prisma.vouch.findFirst({
+        where: {
+          transactionId,
+          fromUserId: currentUser.id,
+        },
+      })
+
+      return {
+        success: true,
+        transaction: {
+          id: completedTransaction.id,
+          buyerId: completedTransaction.buyerId,
+          sellerId: completedTransaction.sellerId,
+          buyer: completedTransaction.buyer,
+          seller: completedTransaction.seller,
+          listing: completedTransaction.listing,
+          price: completedTransaction.price,
+          status: completedTransaction.status,
+          buyerConfirmed: completedTransaction.buyerConfirmed,
+          sellerConfirmed: completedTransaction.sellerConfirmed,
+          userVouched: !!userVouch,
+          createdAt: completedTransaction.createdAt,
+          updatedAt: completedTransaction.updatedAt,
+        },
+      }
     } else {
       // Create notification for the counterparty about the confirmation
       const counterpartyId = isBuyer ? updatedTransaction.sellerId : updatedTransaction.buyerId
@@ -392,24 +570,33 @@ export async function toggleTransactionConfirmation(
       ).catch((error) => {
         console.error("Failed to create confirmation notification:", error)
       })
-    }
 
-    return {
-      success: true,
-      transaction: {
-        id: updatedTransaction.id,
-        buyerId: updatedTransaction.buyerId,
-        sellerId: updatedTransaction.sellerId,
-        buyer: updatedTransaction.buyer,
-        seller: updatedTransaction.seller,
-        listing: updatedTransaction.listing,
-        price: updatedTransaction.price,
-        status: updatedTransaction.status,
-        buyerConfirmed: updatedTransaction.buyerConfirmed,
-        sellerConfirmed: updatedTransaction.sellerConfirmed,
-        createdAt: updatedTransaction.createdAt,
-        updatedAt: updatedTransaction.updatedAt,
-      },
+      // Check if current user has vouched
+      const userVouch = await prisma.vouch.findFirst({
+        where: {
+          transactionId,
+          fromUserId: currentUser.id,
+        },
+      })
+
+      return {
+        success: true,
+        transaction: {
+          id: updatedTransaction.id,
+          buyerId: updatedTransaction.buyerId,
+          sellerId: updatedTransaction.sellerId,
+          buyer: updatedTransaction.buyer,
+          seller: updatedTransaction.seller,
+          listing: updatedTransaction.listing,
+          price: updatedTransaction.price,
+          status: updatedTransaction.status,
+          buyerConfirmed: updatedTransaction.buyerConfirmed,
+          sellerConfirmed: updatedTransaction.sellerConfirmed,
+          userVouched: !!userVouch,
+          createdAt: updatedTransaction.createdAt,
+          updatedAt: updatedTransaction.updatedAt,
+        },
+      }
     }
   } catch (error) {
     console.error("Error toggling transaction confirmation:", error)
@@ -437,15 +624,24 @@ export async function submitVouch(
       }
     }
 
-    // Get the current user (placeholder - first user in DB)
-    const currentUser = await prisma.user.findFirst({
-      where: { role: "user" },
+    // Get the current authenticated user from session
+    const session = await auth()
+    
+    if (!session?.user?.email) {
+      return {
+        success: false,
+        error: "Unauthorized. Please log in to submit vouches.",
+      }
+    }
+
+    const currentUser = await prisma.user.findUnique({
+      where: { email: session.user.email },
     })
 
     if (!currentUser) {
       return {
         success: false,
-        error: "No user found. Please contact support.",
+        error: "User not found. Please contact support.",
       }
     }
 

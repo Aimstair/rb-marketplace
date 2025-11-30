@@ -4,28 +4,27 @@ import Navigation from "@/components/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
-import { Card } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Search, ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Search, Loader2 } from "lucide-react"
 import { getTransactions } from "@/app/actions/transactions"
 import type { TransactionData } from "@/app/actions/transactions"
+import { TransactionCard } from "@/components/transaction-card"
 
-const ITEMS_PER_PAGE = 5
+const ITEMS_PER_PAGE = 10
 
 export default function MyTransactionsPage() {
   const { user, isLoading: isAuthLoading } = useAuth()
   const router = useRouter()
   const [transactions, setTransactions] = useState<TransactionData[]>([])
   const [searchQuery, setSearchQuery] = useState("")
-  const [typeFilter, setTypeFilter] = useState("all")
-  const [statusFilter, setStatusFilter] = useState("all")
-  const [currentPage, setCurrentPage] = useState(1)
+  const [activeTab, setActiveTab] = useState("buying")
+  const [currentPageBuying, setCurrentPageBuying] = useState(1)
+  const [currentPageSelling, setCurrentPageSelling] = useState(1)
   const [loading, setLoading] = useState(true)
 
-  // Load transactions on mount
+  // Load transactions on mount and when activeTab changes
   useEffect(() => {
     if (isAuthLoading) return
     if (!user) {
@@ -36,12 +35,7 @@ export default function MyTransactionsPage() {
     const loadTransactions = async () => {
       setLoading(true)
       try {
-        // Determine role filter based on typeFilter
-        let roleFilter: "buyer" | "seller" | undefined = undefined
-        if (typeFilter === "sold") roleFilter = "seller"
-        else if (typeFilter === "bought") roleFilter = "buyer"
-
-        const result = await getTransactions(roleFilter)
+        const result = await getTransactions()
         if (result.success && result.transactions) {
           setTransactions(result.transactions)
         }
@@ -53,27 +47,37 @@ export default function MyTransactionsPage() {
     }
 
     loadTransactions()
-  }, [user, isAuthLoading, router, typeFilter])
+  }, [user, isAuthLoading, router])
 
-  // Filter transactions based on search and status
-  const filteredTransactions = transactions.filter((tx) => {
-    const matchesSearch =
-      tx.listing.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      tx.buyer.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      tx.seller.username.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesStatus = statusFilter === "all" || tx.status.toLowerCase() === statusFilter.toLowerCase()
-    return matchesSearch && matchesStatus
-  })
+  // Filter transactions based on tab and search
+  const buyingTransactions = transactions.filter(
+    (tx) =>
+      tx.buyerId === user?.id &&
+      (tx.listing.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        tx.seller.username.toLowerCase().includes(searchQuery.toLowerCase()))
+  )
 
-  // Pagination
-  const totalPages = Math.ceil(filteredTransactions.length / ITEMS_PER_PAGE)
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
-  const paginatedTransactions = filteredTransactions.slice(startIndex, startIndex + ITEMS_PER_PAGE)
+  const sellingTransactions = transactions.filter(
+    (tx) =>
+      tx.sellerId === user?.id &&
+      (tx.listing.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        tx.buyer.username.toLowerCase().includes(searchQuery.toLowerCase()))
+  )
 
-  // Reset to page 1 when filters change
+  // Pagination logic
+  const totalPagesBuying = Math.ceil(buyingTransactions.length / ITEMS_PER_PAGE)
+  const startIndexBuying = (currentPageBuying - 1) * ITEMS_PER_PAGE
+  const paginatedBuying = buyingTransactions.slice(startIndexBuying, startIndexBuying + ITEMS_PER_PAGE)
+
+  const totalPagesSelling = Math.ceil(sellingTransactions.length / ITEMS_PER_PAGE)
+  const startIndexSelling = (currentPageSelling - 1) * ITEMS_PER_PAGE
+  const paginatedSelling = sellingTransactions.slice(startIndexSelling, startIndexSelling + ITEMS_PER_PAGE)
+
+  // Reset to page 1 when search changes
   useEffect(() => {
-    setCurrentPage(1)
-  }, [searchQuery, statusFilter])
+    setCurrentPageBuying(1)
+    setCurrentPageSelling(1)
+  }, [searchQuery])
 
   if (isAuthLoading) {
     return (
@@ -90,154 +94,176 @@ export default function MyTransactionsPage() {
 
   if (!user) return null
 
-  const getStatusColor = (status: string) => {
-    if (status === "COMPLETED") return "bg-green-100 text-green-800"
-    if (status === "PENDING") return "bg-yellow-100 text-yellow-800"
-    if (status === "CANCELLED") return "bg-red-100 text-red-800"
-    return "bg-blue-100 text-blue-800"
-  }
-
-  const getTransactionType = (tx: TransactionData) => {
-    return tx.buyerId === user.id ? "bought" : "sold"
-  }
-
-  const getCounterparty = (tx: TransactionData) => {
-    return tx.buyerId === user.id ? tx.seller.username : tx.buyer.username
-  }
-
   return (
     <>
       <Navigation />
       <main className="container mx-auto px-4 py-8">
         <h1 className="text-3xl font-bold mb-8">My Transactions</h1>
 
-        <div className="flex flex-col sm:flex-row gap-4 mb-6">
-          <div className="relative flex-1">
+        {/* Search Bar */}
+        <div className="mb-6">
+          <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search by item, buyer, or seller..."
+              placeholder="Search by item or other party..."
               className="pl-9"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger className="w-[150px]">
-              <SelectValue placeholder="Type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Types</SelectItem>
-              <SelectItem value="sold">Sold</SelectItem>
-              <SelectItem value="bought">Bought</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[150px]">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-              <SelectItem value="cancelled">Cancelled</SelectItem>
-            </SelectContent>
-          </Select>
         </div>
 
-        <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="border-b bg-muted">
-                <tr>
-                  <th className="px-6 py-3 text-left text-sm font-semibold">Type</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold">Item</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold">Party</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold">Amount</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold">Date</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center">
-                      <Loader2 className="w-5 h-5 animate-spin mx-auto text-muted-foreground" />
-                    </td>
-                  </tr>
-                ) : paginatedTransactions.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">
-                      No transactions found
-                    </td>
-                  </tr>
-                ) : (
-                  paginatedTransactions.map((tx) => (
-                    <tr key={tx.id} className="border-b hover:bg-muted/50">
-                      <td className="px-6 py-4">
-                        <Badge variant={getTransactionType(tx) === "sold" ? "default" : "secondary"}>
-                          {getTransactionType(tx) === "sold" ? "Sold" : "Bought"}
-                        </Badge>
-                      </td>
-                      <td className="px-6 py-4 font-medium">{tx.listing.title}</td>
-                      <td className="px-6 py-4 text-sm">{getCounterparty(tx)}</td>
-                      <td className="px-6 py-4 font-bold text-primary">₱{tx.price.toLocaleString()}</td>
-                      <td className="px-6 py-4 text-sm text-muted-foreground">
-                        {new Date(tx.createdAt).toLocaleDateString()}
-                      </td>
-                      <td className="px-6 py-4">
-                        <Badge className={getStatusColor(tx.status)}>
-                          {tx.status === "PENDING"
-                            ? "Pending"
-                            : tx.status === "COMPLETED"
-                              ? "Completed"
-                              : "Cancelled"}
-                        </Badge>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+        {/* Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="buying">
+              Buying ({buyingTransactions.length})
+            </TabsTrigger>
+            <TabsTrigger value="selling">
+              Selling ({sellingTransactions.length})
+            </TabsTrigger>
+          </TabsList>
 
-          {filteredTransactions.length > 0 && (
-            <div className="flex items-center justify-between px-6 py-4 border-t">
-              <p className="text-sm text-muted-foreground">
-                Showing {startIndex + 1}-{Math.min(startIndex + ITEMS_PER_PAGE, filteredTransactions.length)} of{" "}
-                {filteredTransactions.length} transactions
-              </p>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                  <Button
-                    key={page}
-                    variant={currentPage === page ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setCurrentPage(page)}
-                    className="w-8"
-                  >
-                    {page}
-                  </Button>
-                ))}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                >
-                  <ChevronRight className="h-4 h-4" />
-                </Button>
+          {/* Buying Tab */}
+          <TabsContent value="buying" className="space-y-4 mt-6">
+            {loading ? (
+              <div className="flex items-center justify-center h-96">
+                <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
               </div>
-            </div>
-          )}
-        </Card>
+            ) : paginatedBuying.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-muted-foreground">
+                  {buyingTransactions.length === 0 ? "You haven't bought anything yet." : "No transactions match your search."}
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-4">
+                  {paginatedBuying.map((tx) => (
+                    <TransactionCard
+                      key={tx.id}
+                      transaction={tx}
+                      currentUserId={user.id}
+                      onUpdate={() => {
+                        // Refresh transactions
+                        const loadTransactions = async () => {
+                          const result = await getTransactions()
+                          if (result.success && result.transactions) {
+                            setTransactions(result.transactions)
+                          }
+                        }
+                        loadTransactions()
+                      }}
+                    />
+                  ))}
+                </div>
+
+                {/* Pagination */}
+                {totalPagesBuying > 1 && (
+                  <div className="flex items-center justify-center gap-2 mt-6">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPageBuying((p) => Math.max(1, p - 1))}
+                      disabled={currentPageBuying === 1}
+                    >
+                      Previous
+                    </Button>
+                    {Array.from({ length: totalPagesBuying }, (_, i) => i + 1).map((page) => (
+                      <Button
+                        key={page}
+                        variant={currentPageBuying === page ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setCurrentPageBuying(page)}
+                        className="w-8"
+                      >
+                        {page}
+                      </Button>
+                    ))}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPageBuying((p) => Math.min(totalPagesBuying, p + 1))}
+                      disabled={currentPageBuying === totalPagesBuying}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+          </TabsContent>
+
+          {/* Selling Tab */}
+          <TabsContent value="selling" className="space-y-4 mt-6">
+            {loading ? (
+              <div className="flex items-center justify-center h-96">
+                <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : paginatedSelling.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-muted-foreground">
+                  {sellingTransactions.length === 0 ? "You haven't sold anything yet." : "No transactions match your search."}
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-4">
+                  {paginatedSelling.map((tx) => (
+                    <TransactionCard
+                      key={tx.id}
+                      transaction={tx}
+                      currentUserId={user.id}
+                      onUpdate={() => {
+                        // Refresh transactions
+                        const loadTransactions = async () => {
+                          const result = await getTransactions()
+                          if (result.success && result.transactions) {
+                            setTransactions(result.transactions)
+                          }
+                        }
+                        loadTransactions()
+                      }}
+                    />
+                  ))}
+                </div>
+
+                {/* Pagination */}
+                {totalPagesSelling > 1 && (
+                  <div className="flex items-center justify-center gap-2 mt-6">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPageSelling((p) => Math.max(1, p - 1))}
+                      disabled={currentPageSelling === 1}
+                    >
+                      Previous
+                    </Button>
+                    {Array.from({ length: totalPagesSelling }, (_, i) => i + 1).map((page) => (
+                      <Button
+                        key={page}
+                        variant={currentPageSelling === page ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setCurrentPageSelling(page)}
+                        className="w-8"
+                      >
+                        {page}
+                      </Button>
+                    ))}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPageSelling((p) => Math.min(totalPagesSelling, p + 1))}
+                      disabled={currentPageSelling === totalPagesSelling}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+          </TabsContent>
+        </Tabs>
       </main>
     </>
   )

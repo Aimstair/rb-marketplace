@@ -14,7 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu"
-import { getUnreadCount, getNotifications, markAsRead } from "@/app/actions/notifications"
+import { getUnreadCount, getNotifications, markAsRead, markAllAsRead } from "@/app/actions/notifications"
 import type { NotificationData } from "@/app/actions/notifications"
 
 export default function Navigation() {
@@ -38,12 +38,14 @@ export default function Navigation() {
 
   // Fetch notifications when dropdown is opened
   const fetchNotifications = async () => {
-    if (notifications.length > 0) return // Already loaded
     setLoadingNotifications(true)
     try {
       const result = await getNotifications()
       if (result.success && result.notifications) {
         setNotifications(result.notifications)
+        // Mark all as read when dropdown opens
+        await markAllAsRead()
+        setUnreadCount(0)
       }
     } catch (err) {
       console.error("Failed to fetch notifications:", err)
@@ -127,9 +129,9 @@ export default function Navigation() {
         <div className="hidden md:flex items-center gap-4">
           {status === "authenticated" && session?.user ? (
             <>
-              <DropdownMenu>
+              <DropdownMenu onOpenChange={(open) => open && fetchNotifications()}>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="relative" onClick={fetchNotifications}>
+                  <Button variant="ghost" size="icon" className="relative">
                     <Bell className="w-5 h-5" />
                     {unreadCount > 0 && (
                       <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">

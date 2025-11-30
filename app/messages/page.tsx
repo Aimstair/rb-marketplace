@@ -5,6 +5,7 @@ import type React from "react"
 import Navigation from "@/components/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { useRouter, useSearchParams } from "next/navigation"
+import Link from "next/link"
 import { useEffect, useState, useRef } from "react"
 import {
   MessageCircle,
@@ -43,10 +44,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { getConversations, getMessages, sendMessage, markMessagesAsRead, getOrCreateConversation } from "@/app/actions/messages"
+import { getConversations, getMessages, sendMessage, markMessagesAsRead, getOrCreateConversation, acceptCounterOffer, declineCounterOffer } from "@/app/actions/messages"
 import type { ConversationWithLatestMessage, MessageData } from "@/app/actions/messages"
 import {
   getTransactionById,
+  getTransactionByPeers,
   toggleTransactionConfirmation,
   submitVouch,
 } from "@/app/actions/transactions"
@@ -54,6 +56,7 @@ import type { TransactionData } from "@/app/actions/transactions"
 
 type Contact = {
   id: string
+  otherUserId: string
   name: string
   lastMessage: string
   timestamp: string
@@ -158,6 +161,7 @@ export default function MessagesPage() {
         if (result.success && result.conversations) {
           const convertedContacts: Contact[] = result.conversations.map((conv) => ({
             id: conv.id,
+            otherUserId: conv.otherUser.id,
             name: conv.otherUser.username,
             lastMessage: conv.latestMessage?.content || "No messages yet",
             timestamp: conv.latestMessage
@@ -166,10 +170,10 @@ export default function MessagesPage() {
                   minute: "2-digit",
                 })
               : "Just now",
-            online: false, // TODO: Add online status to backend
+            online: false,
             role: conv.buyerId === user.id ? "seller" : "buyer",
-            status: "ongoing" as const, // TODO: Add transaction status to backend
-            blocked: false, // TODO: Add blocking feature to backend
+            status: conv.status as any,
+            blocked: false,
             item: conv.listing || {
               id: "unknown",
               title: "Unknown Item",
@@ -177,7 +181,7 @@ export default function MessagesPage() {
               image: "/placeholder.svg",
             },
             transactionStatus: {
-              buyerConfirmed: false, // TODO: Add transaction status tracking
+              buyerConfirmed: false,
               sellerConfirmed: false,
               buyerVouched: false,
               sellerVouched: false,
@@ -308,6 +312,8 @@ export default function MessagesPage() {
 
     setSendingMessage(true)
     try {
+      let messageResult: any = null
+
       // Send attached images first
       for (const imgUrl of attachedImages) {
         const result = await sendMessage(imgUrl, {
@@ -316,6 +322,8 @@ export default function MessagesPage() {
         })
         if (!result.success) {
           console.error("Error sending image:", result.error)
+        } else {
+          messageResult = result // Track the last result
         }
       }
 
@@ -329,6 +337,8 @@ export default function MessagesPage() {
           return
         }
 
+        messageResult = result // Track the text message result
+
         // Add optimistic message update
         const newMessage: Message = {
           id: `temp-${Date.now()}`,
@@ -338,6 +348,55 @@ export default function MessagesPage() {
           type: "text",
         }
         setMessages((prev) => [...prev, newMessage])
+      }
+
+      // If transaction was just created or transaction state is null, load it immediately
+      if (messageResult?.transactionCreated || !transaction) {
+        console.log("🔄 Loading transaction after message send...")
+        if (selectedContact?.item.id && selectedContact?.item.id !== "unknown") {
+          const result = await getTransactionByPeers(selectedContact.item.id, selectedContact.otherUserId)
+          if (result.success && result.transaction) {
+            setTransaction(result.transaction)
+            console.log("✅ Transaction loaded after message:", result.transaction)
+          }
+        }
+      }
+
+      // If new conversation was created, refresh contacts list
+      if (messageResult?.conversationId && messageResult.conversationId !== selectedConversationId) {
+        console.log("🔄 New conversation created, refreshing contacts...")
+        const conversationsResult = await getConversations()
+        if (conversationsResult.success && conversationsResult.conversations) {
+          const convertedContacts: Contact[] = conversationsResult.conversations.map((conv) => ({
+            id: conv.id,
+            otherUserId: conv.otherUser.id,
+            name: conv.otherUser.username,
+            lastMessage: conv.latestMessage?.content || "No messages yet",
+            timestamp: conv.latestMessage
+              ? new Date(conv.latestMessage.createdAt).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : "Just now",
+            online: false,
+            role: conv.buyerId === user?.id ? "seller" : "buyer",
+            status: "ongoing" as const,
+            blocked: false,
+            item: conv.listing || {
+              id: "unknown",
+              title: "Unknown Item",
+              price: 0,
+              image: "/placeholder.svg",
+            },
+            transactionStatus: {
+              buyerConfirmed: false,
+              sellerConfirmed: false,
+              buyerVouched: false,
+              sellerVouched: false,
+            },
+          }))
+          setContacts(convertedContacts)
+        }
       }
 
       setMessageText("")
@@ -438,6 +497,14 @@ export default function MessagesPage() {
 
         // Update contact status based on new transaction status
         if (result.transaction.status === "COMPLETED") {
+          setContacts((prev) =>
+            prev.map((contact) => {
+              if (contact.id === selectedContact?.id) {
+                return { ...contact, status: "completed" as const }
+              }
+              return contact
+            })
+          )
           setSelectedContact((prev) => {
             if (!prev) return null
             return { ...prev, status: "completed" as const }
@@ -497,6 +564,90 @@ export default function MessagesPage() {
     setShowDeleteModal(false)
   }
 
+  const handleAcceptCounterOffer = async (messageId: string) => {
+    try {
+      const result = await acceptCounterOffer(messageId)
+      if (result.success) {
+        // Reload messages to show acceptance status
+        if (selectedConversationId) {
+          const messagesResult = await getMessages(selectedConversationId)
+          if (messagesResult.success && messagesResult.messages) {
+            const convertedMessages: Message[] = messagesResult.messages.map((msg) => {
+              const isSender = msg.senderId === user?.id
+              return {
+                id: msg.id,
+                sender: isSender ? "buyer" : "seller",
+                text: msg.content,
+                timestamp: new Date(msg.createdAt).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }),
+                type: msg.offerAmount ? "counteroffer" : msg.attachmentUrl ? "image" : "text",
+                offerAmount: msg.offerAmount || undefined,
+                imageUrl: msg.attachmentUrl || undefined,
+                offerStatus: "accepted" as const,
+              }
+            })
+            setMessages(convertedMessages)
+          }
+        }
+        // Also reload transaction to reflect new price
+        if (selectedContact?.item.id && selectedContact?.item.id !== "unknown") {
+          const transactionResult = await getTransactionByPeers(
+            selectedContact.item.id,
+            selectedContact.otherUserId
+          )
+          if (transactionResult.success && transactionResult.transaction) {
+            setTransaction(transactionResult.transaction)
+          }
+        }
+        alert("Counteroffer accepted successfully!")
+      } else {
+        alert(result.error || "Failed to accept counteroffer")
+      }
+    } catch (error) {
+      console.error("Error accepting counteroffer:", error)
+      alert("Failed to accept counteroffer")
+    }
+  }
+
+  const handleDeclineCounterOffer = async (messageId: string) => {
+    try {
+      const result = await declineCounterOffer(messageId)
+      if (result.success) {
+        // Reload messages to show decline status
+        if (selectedConversationId) {
+          const messagesResult = await getMessages(selectedConversationId)
+          if (messagesResult.success && messagesResult.messages) {
+            const convertedMessages: Message[] = messagesResult.messages.map((msg) => {
+              const isSender = msg.senderId === user?.id
+              return {
+                id: msg.id,
+                sender: isSender ? "buyer" : "seller",
+                text: msg.content,
+                timestamp: new Date(msg.createdAt).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }),
+                type: msg.offerAmount ? "counteroffer" : msg.attachmentUrl ? "image" : "text",
+                offerAmount: msg.offerAmount || undefined,
+                imageUrl: msg.attachmentUrl || undefined,
+                offerStatus: "declined" as const,
+              }
+            })
+            setMessages(convertedMessages)
+          }
+        }
+        alert("Counteroffer declined")
+      } else {
+        alert(result.error || "Failed to decline counteroffer")
+      }
+    } catch (error) {
+      console.error("Error declining counteroffer:", error)
+      alert("Failed to decline counteroffer")
+    }
+  }
+
   const handleSelectContact = (contact: Contact) => {
     setSelectedContact(contact)
     setSelectedConversationId(contact.id)
@@ -505,15 +656,30 @@ export default function MessagesPage() {
     setMessages([])
     setTransaction(null)
 
-    // Try to load transaction for this conversation (linked by listing)
+    // Load transaction for this conversation (linked by listing)
     const loadTransaction = async () => {
       if (contact.item.id === "unknown") return
 
       try {
-        // Search for transaction by listing ID
-        // Note: In a real app, you'd fetch from a dedicated endpoint
-        // For now, we'll try to infer from contact data
-        // This would be improved with a getTransactionByConversationId action
+        // Get transaction by listing ID and other user ID
+        const result = await getTransactionByPeers(contact.item.id, contact.otherUserId)
+        if (result.success && result.transaction) {
+          setTransaction(result.transaction)
+          // Update contact status if transaction exists
+          setSelectedContact((prev) => {
+            if (!prev) return null
+            return {
+              ...prev,
+              status: result.transaction?.status === "COMPLETED" ? "completed" : result.transaction?.status === "CANCELLED" ? "sold" : "ongoing",
+              transactionStatus: {
+                buyerConfirmed: result.transaction?.buyerConfirmed || false,
+                sellerConfirmed: result.transaction?.sellerConfirmed || false,
+                buyerVouched: false, // These would need to be fetched separately if needed
+                sellerVouched: false,
+              },
+            }
+          })
+        }
       } catch (error) {
         console.error("Error loading transaction:", error)
       }
@@ -655,7 +821,9 @@ export default function MessagesPage() {
                     </div>
                     <div>
                       <p className="font-semibold flex items-center gap-2">
-                        {selectedContact.name}
+                        <Link href={`/profile/${selectedContact.otherUserId}`} className="hover:underline">
+                          {selectedContact.name}
+                        </Link>
                         {selectedContact.blocked && (
                           <Badge variant="destructive" className="text-xs">
                             Blocked
@@ -778,7 +946,11 @@ export default function MessagesPage() {
                                   : "text-muted-foreground"
                               }
                             >
-                              Buyer {transaction.buyerConfirmed ? "confirmed" : "pending"}
+                              {user?.id === transaction.buyerId && transaction.buyerConfirmed
+                                ? "You have confirmed"
+                                : transaction.buyerConfirmed
+                                  ? "Buyer confirmed"
+                                  : "Buyer pending"}
                             </span>
                           </div>
                           <div className="flex items-center gap-2">
@@ -792,35 +964,66 @@ export default function MessagesPage() {
                                   : "text-muted-foreground"
                               }
                             >
-                              Seller {transaction.sellerConfirmed ? "confirmed" : "pending"}
+                              {user?.id === transaction.sellerId && transaction.sellerConfirmed
+                                ? "You have confirmed"
+                                : transaction.sellerConfirmed
+                                  ? "Seller confirmed"
+                                  : "Seller pending"}
                             </span>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          {transaction.status === "PENDING" && (
-                            <Button size="sm" onClick={handleMarkComplete}>
-                              <CheckCircle className="w-4 h-4 mr-2" />
-                              Mark as Complete
-                            </Button>
-                          )}
-                          {transaction.status === "COMPLETED" && (
+                          {transaction.status === "COMPLETED" ? (
                             <>
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                onClick={() => setShowVouchModal(true)}
-                              >
-                                <Star className="w-4 h-4 mr-2" />
-                                Vouch for {selectedContact?.name}
-                              </Button>
+                              {transaction.userVouched ? (
+                                <Badge variant="outline" className="bg-green-500/20 text-green-600">
+                                  <CheckCircle className="w-3 h-3 mr-1" />
+                                  Vouched
+                                </Badge>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() => setShowVouchModal(true)}
+                                >
+                                  <Star className="w-4 h-4 mr-2" />
+                                  Vouch for {selectedContact?.name}
+                                </Button>
+                              )}
                             </>
-                          )}
-                          {transaction.status === "CANCELLED" && (
+                          ) : transaction.status === "PENDING" ? (
+                            (() => {
+                              const isBuyer = user?.id === transaction.buyerId
+                              const isConfirmed = isBuyer
+                                ? transaction.buyerConfirmed
+                                : transaction.sellerConfirmed
+
+                              if (!isConfirmed) {
+                                return (
+                                  <Button size="sm" onClick={handleMarkComplete}>
+                                    <CheckCircle className="w-4 h-4 mr-2" />
+                                    Mark as Complete
+                                  </Button>
+                                )
+                              } else {
+                                return (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={handleMarkComplete}
+                                  >
+                                    <X className="w-4 h-4 mr-2" />
+                                    Cancel Confirmation
+                                  </Button>
+                                )
+                              }
+                            })()
+                          ) : transaction.status === "CANCELLED" ? (
                             <span className="text-sm text-red-500 flex items-center gap-1">
                               <AlertTriangle className="w-4 h-4" />
                               Transaction cancelled
                             </span>
-                          )}
+                          ) : null}
                         </div>
                       </>
                     ) : (
@@ -870,9 +1073,39 @@ export default function MessagesPage() {
                               </div>
                               <p className="text-2xl font-bold text-primary">₱{msg.offerAmount?.toLocaleString()}</p>
                               <p className="text-xs text-muted-foreground mt-1">{msg.timestamp}</p>
-                              {msg.offerStatus === "pending" && (
-                                <Badge variant="outline" className="mt-2 bg-yellow-500/20 text-yellow-600">
-                                  Pending
+                              {msg.offerStatus === "pending" && msg.sender !== "buyer" && (
+                                <>
+                                  <Badge variant="outline" className="mt-2 bg-yellow-500/20 text-yellow-600">
+                                    Pending
+                                  </Badge>
+                                  <div className="flex gap-2 mt-3">
+                                    <Button
+                                      size="sm"
+                                      variant="default"
+                                      onClick={() => handleAcceptCounterOffer(msg.id)}
+                                      className="flex-1"
+                                    >
+                                      Accept
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleDeclineCounterOffer(msg.id)}
+                                      className="flex-1"
+                                    >
+                                      Decline
+                                    </Button>
+                                  </div>
+                                </>
+                              )}
+                              {msg.offerStatus === "accepted" && (
+                                <Badge variant="outline" className="mt-2 bg-green-500/20 text-green-600">
+                                  Accepted
+                                </Badge>
+                              )}
+                              {msg.offerStatus === "declined" && (
+                                <Badge variant="outline" className="mt-2 bg-red-500/20 text-red-600">
+                                  Declined
                                 </Badge>
                               )}
                             </div>

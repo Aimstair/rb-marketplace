@@ -1,6 +1,7 @@
 "use server"
 
 import { prisma } from "@/lib/prisma"
+import { auth } from "@/auth"
 
 export interface NotificationData {
   id: string
@@ -79,15 +80,24 @@ export async function createNotification(
  */
 export async function getNotifications(): Promise<GetNotificationsResult> {
   try {
-    // Get the current user (placeholder - first user in DB)
-    const currentUser = await prisma.user.findFirst({
-      where: { role: "user" },
+    // Get the current authenticated user
+    const session = await auth()
+    if (!session?.user?.email) {
+      return {
+        success: false,
+        error: "You must be logged in to view notifications",
+      }
+    }
+
+    // Find the current user by email from session
+    const currentUser = await prisma.user.findUnique({
+      where: { email: session.user.email },
     })
 
     if (!currentUser) {
       return {
         success: false,
-        error: "No user found. Please contact support.",
+        error: "User not found",
       }
     }
 
@@ -133,15 +143,23 @@ export async function markAsRead(notificationId: string): Promise<MarkAsReadResu
       }
     }
 
-    // Get the current user (placeholder)
-    const currentUser = await prisma.user.findFirst({
-      where: { role: "user" },
+    // Get the current authenticated user
+    const session = await auth()
+    if (!session?.user?.email) {
+      return {
+        success: false,
+        error: "You must be logged in",
+      }
+    }
+
+    const currentUser = await prisma.user.findUnique({
+      where: { email: session.user.email },
     })
 
     if (!currentUser) {
       return {
         success: false,
-        error: "No user found",
+        error: "User not found",
       }
     }
 
@@ -185,15 +203,23 @@ export async function markAsRead(notificationId: string): Promise<MarkAsReadResu
  */
 export async function markAllAsRead(): Promise<MarkAsReadResult> {
   try {
-    // Get the current user (placeholder)
-    const currentUser = await prisma.user.findFirst({
-      where: { role: "user" },
+    // Get the current authenticated user
+    const session = await auth()
+    if (!session?.user?.email) {
+      return {
+        success: false,
+        error: "You must be logged in",
+      }
+    }
+
+    const currentUser = await prisma.user.findUnique({
+      where: { email: session.user.email },
     })
 
     if (!currentUser) {
       return {
         success: false,
-        error: "No user found",
+        error: "User not found",
       }
     }
 
@@ -221,15 +247,23 @@ export async function markAllAsRead(): Promise<MarkAsReadResult> {
  */
 export async function getUnreadCount(): Promise<GetUnreadCountResult> {
   try {
-    // Get the current user (placeholder)
-    const currentUser = await prisma.user.findFirst({
-      where: { role: "user" },
+    // Get the current authenticated user
+    const session = await auth()
+    if (!session?.user?.email) {
+      return {
+        success: false,
+        error: "You must be logged in",
+      }
+    }
+
+    const currentUser = await prisma.user.findUnique({
+      where: { email: session.user.email },
     })
 
     if (!currentUser) {
       return {
         success: false,
-        error: "No user found",
+        error: "User not found",
       }
     }
 
