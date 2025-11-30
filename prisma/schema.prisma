@@ -62,6 +62,10 @@ model User {
   // Admin relations
   auditLogs        AuditLog[] @relation("AdminUser")
   supportTickets   SupportTicket[]
+  
+  // Custom role relation
+  customRoleId     String?
+  customRole       Role?      @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
 
   // NextAuth relations
   accounts         Account[]
@@ -373,6 +377,26 @@ model Announcement {
   @@index([isActive])
   @@index([createdAt])
   @@map("announcements")
+}
+
+model Role {
+  id             String   @id @default(cuid())
+  
+  // Role details
+  name           String   @unique
+  description    String?
+  color          String   // For UI badges (e.g., "bg-red-500", "bg-blue-500")
+  permissions    String[] // Array of permission IDs (e.g., ["users_view", "users_ban", "listings_edit"])
+  
+  // Relations
+  users          User[]
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([name])
+  @@index([createdAt])
+  @@map("roles")
 }
 
 model AuditLog {

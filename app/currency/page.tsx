@@ -31,99 +31,7 @@ const GAME_CATEGORIES = [
   { name: "Pet Simulator", currency: "Tokens" },
 ]
 
-// Fallback mock listings in case DB is empty
-const MOCK_LISTINGS: CurrencyListing[] = [
-  {
-    id: "1",
-    game: "Roblox",
-    currencyType: "Robux",
-    ratePerPeso: 3,
-    stock: 10000,
-    sellerVouches: 24,
-    status: "Available",
-    deliveryMethods: ["In-game Trade", "Gift Card"],
-    sellerId: "seller1",
-    sellerName: "TrustTrader",
-    sellerAvatar: "/placeholder-user.jpg",
-    upvotes: 45,
-    downvotes: 2,
-  },
-  {
-    id: "2",
-    game: "Roblox",
-    currencyType: "Robux",
-    ratePerPeso: 2.5,
-    stock: 25000,
-    sellerVouches: 18,
-    status: "Available",
-    deliveryMethods: ["Account Trade", "In-game Trade"],
-    sellerId: "seller2",
-    sellerName: "FastDelivery",
-    sellerAvatar: "/user-avatar-profile.png",
-    upvotes: 32,
-    downvotes: 5,
-  },
-  {
-    id: "3",
-    game: "Adopt Me",
-    currencyType: "Coins",
-    ratePerPeso: 500,
-    stock: 1000000,
-    sellerVouches: 31,
-    status: "Available",
-    deliveryMethods: ["In-game Trade"],
-    sellerId: "seller3",
-    sellerName: "CoinMaster",
-    sellerAvatar: "/placeholder-user.jpg",
-    upvotes: 78,
-    downvotes: 3,
-  },
-  {
-    id: "4",
-    game: "Blox Fruits",
-    currencyType: "Gems",
-    ratePerPeso: 10,
-    stock: 5000,
-    sellerVouches: 9,
-    status: "Pending",
-    deliveryMethods: ["Gift Card"],
-    sellerId: "seller4",
-    sellerName: "GemTrader",
-    sellerAvatar: "/placeholder-user.jpg",
-    upvotes: 12,
-    downvotes: 1,
-  },
-  {
-    id: "5",
-    game: "Pet Simulator",
-    currencyType: "Tokens",
-    ratePerPeso: 1000,
-    stock: 5000000,
-    sellerVouches: 42,
-    status: "Available",
-    deliveryMethods: ["Account Trade"],
-    sellerId: "seller5",
-    sellerName: "TokenKing",
-    sellerAvatar: "/user-avatar-profile.png",
-    upvotes: 89,
-    downvotes: 4,
-  },
-  {
-    id: "6",
-    game: "Roblox",
-    currencyType: "Robux",
-    ratePerPeso: 2.8,
-    stock: 15000,
-    sellerVouches: 15,
-    status: "Available",
-    deliveryMethods: ["In-game Trade", "Gift Card"],
-    sellerId: "seller6",
-    sellerName: "RobuxPro",
-    sellerAvatar: "/placeholder-user.jpg",
-    upvotes: 56,
-    downvotes: 8,
-  },
-]
+// No mock data - use real database only
 
 export default function CurrencyMarketplace() {
   const router = useRouter()
@@ -143,48 +51,42 @@ export default function CurrencyMarketplace() {
         const dbListings = await getCurrencyListings()
         console.log("[Currency Page] Fetched listings:", dbListings)
 
-        if (dbListings && dbListings.length > 0) {
-          // Transform DB listings to UI format
-          const mapped: CurrencyListing[] = dbListings.map((listing: DBCurrencyListing) => {
-            // Safety check: default to empty string if description is null/undefined
-            const description = listing.description || ""
-            
-            // Parse currency details from description with safety checks
-            const currencyMatch = description.match(/Currency: (.+?)(?:\n|$)/)
-            const rateMatch = description.match(/Rate: ₱([\d.]+)/)
-            const stockMatch = description.match(/Stock: (\d+)/)
+        // Transform DB listings to UI format
+        const mapped: CurrencyListing[] = (dbListings || []).map((listing: DBCurrencyListing) => {
+          // Safety check: default to empty string if description is null/undefined
+          const description = listing.description || ""
+          
+          // Parse currency details from description with safety checks
+          const currencyMatch = description.match(/Currency: (.+?)(?:\n|$)/)
+          const rateMatch = description.match(/Rate: ₱([\d.]+)/)
+          const stockMatch = description.match(/Stock: (\d+)/)
 
-            const currencyType = currencyMatch ? currencyMatch[1].trim() : "Unknown"
-            const ratePerPeso = rateMatch ? parseFloat(rateMatch[1]) : 0
-            const stock = stockMatch ? parseInt(stockMatch[1], 10) : 0
+          const currencyType = currencyMatch ? currencyMatch[1].trim() : "Unknown"
+          const ratePerPeso = rateMatch ? parseFloat(rateMatch[1]) : 0
+          const stock = stockMatch ? parseInt(stockMatch[1], 10) : 0
 
-            return {
-              id: listing.id,
-              game: listing.game,
-              currencyType,
-              ratePerPeso,
-              stock,
-              sellerVouches: 0,
-              status: listing.status as "Available" | "Sold" | "Pending",
-              deliveryMethods: ["Instant", "Manual"],
-              sellerId: listing.sellerId,
-              sellerName: listing.sellerUsername || "Unknown Seller",
-              sellerAvatar: "/placeholder-user.jpg",
-              upvotes: listing.upvotes || 0,
-              downvotes: listing.downvotes || 0,
-            }
-          })
+          return {
+            id: listing.id,
+            game: listing.game,
+            currencyType,
+            ratePerPeso,
+            stock,
+            sellerVouches: 0,
+            status: listing.status as "Available" | "Sold" | "Pending",
+            deliveryMethods: ["Instant", "Manual"],
+            sellerId: listing.sellerId,
+            sellerName: listing.sellerUsername || "Unknown Seller",
+            sellerAvatar: "/placeholder-user.jpg",
+            upvotes: listing.upvotes || 0,
+            downvotes: listing.downvotes || 0,
+          }
+        })
 
-          console.log("[Currency Page] Transformed listings:", mapped)
-          setListings(mapped)
-        } else {
-          console.log("[Currency Page] No listings found, using mock data")
-          setListings(MOCK_LISTINGS)
-        }
+        console.log("[Currency Page] Transformed listings:", mapped)
+        setListings(mapped)
       } catch (error) {
         console.error("[Currency Page] Error fetching listings:", error)
-        // Fallback to mock data on error
-        setListings(MOCK_LISTINGS)
+        setListings([])
       } finally {
         setIsLoading(false)
       }

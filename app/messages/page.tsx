@@ -43,7 +43,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { getConversations, getMessages, sendMessage, markMessagesAsRead } from "@/app/actions/messages"
+import { getConversations, getMessages, sendMessage, markMessagesAsRead, getOrCreateConversation } from "@/app/actions/messages"
 import type { ConversationWithLatestMessage, MessageData } from "@/app/actions/messages"
 import {
   getTransactionById,
@@ -184,6 +184,34 @@ export default function MessagesPage() {
             },
           }))
           setContacts(convertedContacts)
+
+          // Auto-open conversation if sellerId is in searchParams
+          const sellerId = searchParams.get("sellerId")
+          const itemId = searchParams.get("itemId")
+
+          if (sellerId) {
+            try {
+              const result = await getOrCreateConversation(sellerId, itemId || undefined)
+              if (result.success && result.conversationId) {
+                // Find the contact in the list or use the new conversation ID
+                const targetContact =
+                  convertedContacts.find((c) => c.id === result.conversationId) ||
+                  convertedContacts.find((c) => {
+                    // Try to find by seller relationship
+                    return (
+                      (c.role === "seller" && sellerId) ||
+                      (c.role === "buyer" && sellerId)
+                    )
+                  })
+
+                if (targetContact) {
+                  handleSelectContact(targetContact)
+                }
+              }
+            } catch (error) {
+              console.error("Error auto-opening conversation:", error)
+            }
+          }
         }
       } catch (error) {
         console.error("Error loading conversations:", error)
@@ -193,7 +221,7 @@ export default function MessagesPage() {
     }
 
     loadConversations()
-  }, [user, isAuthLoading])
+  }, [user, isAuthLoading, searchParams])
 
   // Load messages when contact is selected
   useEffect(() => {

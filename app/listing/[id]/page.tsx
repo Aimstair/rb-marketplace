@@ -1,108 +1,85 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, use } from "react"
 import { useRouter } from "next/navigation"
-import { Star, Share2, Flag, MessageCircle, Check, Calendar, Shield, ThumbsUp, ThumbsDown } from "lucide-react"
+import { Star, Share2, Flag, MessageCircle, Check, Calendar, Shield, ThumbsUp, ThumbsDown, X } from "lucide-react"
 import Navigation from "@/components/navigation"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
-import { incrementListingView } from "@/app/actions/trends"
-
-// Mock listing data with upvotes/downvotes
-const mockListingDetails = {
-  1: {
-    id: 1,
-    title: "Golden Dragon Pet",
-    description:
-      "Golden Dragon Pet from Adopt Me! This is a rare pet that has been well-maintained. Perfect condition, never traded or scammed. Comes with proof of legitimacy.",
-    price: 2500,
-    image: "/placeholder.jpg",
-    images: ["/placeholder.jpg", "/placeholder.svg?key=img1", "/placeholder.svg?key=img2"],
-    seller: {
-      id: 1,
-      username: "NinjaTrader",
-      avatar: "/placeholder-user.jpg",
-      vouch: 42,
-      joinDate: "Jan 2023",
-      listings: 28,
-      verified: true,
-      responseRate: 98,
-      lastActive: "5 minutes ago",
-    },
-    game: "Adopt Me",
-    category: "Pets",
-    condition: "New",
-    status: "available",
-    postedDate: "2 days ago",
-    views: 342,
-    interestedBuyers: 12,
-    details: {
-      itemType: "Legendary Pet",
-      rarity: "Legendary",
-      tradeable: true,
-      ageRestriction: "None",
-    },
-    paymentMethods: ["GCash", "PayPal", "Robux Gift Cards"],
-    proof: {
-      hasScreenshots: true,
-      hasVideo: true,
-      hasRobloxLink: true,
-    },
-    upvotes: 67,
-    downvotes: 3,
-  },
-}
+import { getListing, toggleListingVote, reportListing } from "@/app/actions/listings"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
+import { Input } from "@/components/ui/input"
 
 interface ListingDetailPageProps {
   params: Promise<{ id: string }>
 }
 
 export default function ListingDetailPage({ params }: ListingDetailPageProps) {
-  const [id, setId] = useState<string>("")
-  const [isReady, setIsReady] = useState(false)
+  // Unwrap params at the very top
+  const { id } = use(params)
+  
+  // ALL hooks declared before any conditional logic
   const { user } = useAuth()
   const router = useRouter()
-
-  useEffect(() => {
-    ;(async () => {
-      const { id: resolvedId } = await params
-      setId(resolvedId)
-      setIsReady(true)
-    })()
-  }, [params])
-
-  if (!isReady) {
-    return (
-      <main className="min-h-screen bg-background">
-        <Navigation />
-        <div className="container mx-auto px-4 py-8">
-          <p className="text-center text-muted-foreground">Loading...</p>
-        </div>
-      </main>
-    )
-  }
-
-  const listing = mockListingDetails[id as keyof typeof mockListingDetails] || mockListingDetails[1]
-  const [selectedImage, setSelectedImage] = useState(listing.images[0])
+  const [listing, setListing] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [selectedImage, setSelectedImage] = useState<string>("")
   const [isSaved, setIsSaved] = useState(false)
   const [userVote, setUserVote] = useState<"up" | "down" | null>(null)
-  const [votes, setVotes] = useState({ upvotes: listing.upvotes, downvotes: listing.downvotes })
+  const [votes, setVotes] = useState({ upvotes: 0, downvotes: 0 })
+  const [votingLoading, setVotingLoading] = useState(false)
+  const [showReportModal, setShowReportModal] = useState(false)
+  const [reportReason, setReportReason] = useState("")
+  const [reportDetails, setReportDetails] = useState("")
+  const [reportLoading, setReportLoading] = useState(false)
 
-  // Track view on component mount
+  // Fetch listing data
   useEffect(() => {
     if (!id) return
-    const trackView = async () => {
+
+    const fetchListing = async () => {
       try {
-        await incrementListingView(id)
+        setLoading(true)
+        const result = await getListing(id)
+        
+        if (!result.success || !result.listing) {
+          setError(result.error || "Listing not found")
+          return
+        }
+
+        console.log("Listing loaded:", result.listing)
+        console.log("Seller ID:", result.listing.seller?.id)
+        setListing(result.listing)
+        setVotes({ 
+          upvotes: result.listing.upvotes || 0, 
+          downvotes: result.listing.downvotes || 0 
+        })
+        
+        // Set first image as default
+        if (result.listing.image) {
+          setSelectedImage(result.listing.image)
+        }
       } catch (err) {
-        console.error("Failed to track view:", err)
+        console.error("Failed to fetch listing:", err)
+        setError("Failed to load listing")
+      } finally {
+        setLoading(false)
       }
     }
 
-    trackView()
+    fetchListing()
   }, [id])
 
   const requireAuth = (action: () => void) => {
@@ -114,34 +91,49 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
   }
 
   const handleVote = (type: "up" | "down") => {
-    requireAuth(() => {
-      if (userVote === type) {
-        setUserVote(null)
-        setVotes((prev) => ({
-          upvotes: type === "up" ? prev.upvotes - 1 : prev.upvotes,
-          downvotes: type === "down" ? prev.downvotes - 1 : prev.downvotes,
-        }))
-      } else {
-        setVotes((prev) => ({
-          upvotes: type === "up" ? prev.upvotes + 1 : userVote === "up" ? prev.upvotes - 1 : prev.upvotes,
-          downvotes: type === "down" ? prev.downvotes + 1 : userVote === "down" ? prev.downvotes - 1 : prev.downvotes,
-        }))
-        setUserVote(type)
+    requireAuth(async () => {
+      setVotingLoading(true)
+      try {
+        if (userVote === type) {
+          // Remove vote
+          setUserVote(null)
+          setVotes((prev) => ({
+            upvotes: type === "up" ? prev.upvotes - 1 : prev.upvotes,
+            downvotes: type === "down" ? prev.downvotes - 1 : prev.downvotes,
+          }))
+        } else {
+          // Add or switch vote
+          setVotes((prev) => ({
+            upvotes: type === "up" ? prev.upvotes + 1 : userVote === "up" ? prev.upvotes - 1 : prev.upvotes,
+            downvotes: type === "down" ? prev.downvotes + 1 : userVote === "down" ? prev.downvotes - 1 : prev.downvotes,
+          }))
+          setUserVote(type)
+        }
+
+        // Call server action
+        const result = await toggleListingVote(id, type)
+        if (!result.success) {
+          console.error("Failed to record vote:", result.error)
+        }
+      } catch (error) {
+        console.error("Error voting:", error)
+      } finally {
+        setVotingLoading(false)
       }
     })
   }
 
   const handleMessageSeller = () => {
     requireAuth(() => {
+      if (!listing) return
+      console.log("Attempting to message seller:", { 
+        seller: listing.seller, 
+        sellerId: listing.seller?.id || listing.sellerId 
+      })
       const params = new URLSearchParams({
-        sellerId: listing.seller.id.toString(),
-        sellerName: listing.seller.username,
-        sellerAvatar: listing.seller.avatar,
-        itemId: listing.id.toString(),
+        sellerId: listing.seller?.id || listing.sellerId,
+        itemId: listing.id,
         itemTitle: listing.title,
-        itemPrice: listing.price.toString(),
-        itemImage: listing.image,
-        type: "item",
       })
       router.push(`/messages?${params.toString()}`)
     })
@@ -153,8 +145,30 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
 
   const handleReport = () => {
     requireAuth(() => {
-      alert("Report submitted")
+      setShowReportModal(true)
     })
+  }
+
+  const handleSubmitReport = async () => {
+    if (!reportReason) return
+
+    setReportLoading(true)
+    try {
+      const result = await reportListing(id, reportReason, reportDetails)
+      if (result.success) {
+        alert("Report submitted successfully. Thank you for helping keep our community safe!")
+        setShowReportModal(false)
+        setReportReason("")
+        setReportDetails("")
+      } else {
+        alert(result.error || "Failed to submit report")
+      }
+    } catch (error) {
+      console.error("Error submitting report:", error)
+      alert("Failed to submit report")
+    } finally {
+      setReportLoading(false)
+    }
   }
 
   return (
@@ -162,57 +176,80 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
       <Navigation />
 
       <div className="container mx-auto px-4 py-8">
+        {loading && (
+          <div className="text-center py-12">
+            <p className="text-muted-foreground">Loading listing...</p>
+          </div>
+        )}
+
+        {error && !listing && (
+          <div className="text-center py-12">
+            <p className="text-destructive mb-4">{error}</p>
+            <Button onClick={() => router.push("/marketplace")}>
+              Back to Marketplace
+            </Button>
+          </div>
+        )}
+
+        {listing && (
+        <>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left Column - Images & Details */}
           <div className="lg:col-span-2">
             {/* Main Image */}
             <div className="mb-6">
               <div className="relative w-full bg-muted rounded-lg overflow-hidden mb-4">
                 <img
-                  src={selectedImage || "/placeholder.svg"}
+                  src={selectedImage || listing.image || "/placeholder.jpg"}
                   alt={listing.title}
                   className="w-full h-96 object-cover"
+                  onError={(e) => {
+                    ;(e.target as HTMLImageElement).src = "/placeholder.jpg"
+                  }}
                 />
-                <Badge className="absolute top-4 left-4 bg-primary text-primary-foreground">{listing.condition}</Badge>
+                <Badge className="absolute top-4 left-4 bg-primary text-primary-foreground">
+                  {listing.condition || "New"}
+                </Badge>
               </div>
 
-              {/* Thumbnail Gallery */}
-              <div className="flex gap-2">
-                {listing.images.map((img, idx) => (
+              {/* Thumbnail Gallery - if we have more images */}
+              {listing.image && (
+                <div className="flex gap-2">
                   <button
-                    key={idx}
-                    onClick={() => setSelectedImage(img)}
+                    onClick={() => setSelectedImage(listing.image)}
                     className={`w-20 h-20 rounded-lg overflow-hidden border-2 transition ${
-                      selectedImage === img ? "border-primary" : "border-border hover:border-primary/50"
+                      selectedImage === listing.image ? "border-primary" : "border-border hover:border-primary/50"
                     }`}
                   >
                     <img
-                      src={img || "/placeholder.svg"}
-                      alt={`View ${idx + 1}`}
+                      src={listing.image || "/placeholder.jpg"}
+                      alt="Main"
                       className="w-full h-full object-cover"
+                      onError={(e) => {
+                        ;(e.target as HTMLImageElement).src = "/placeholder.jpg"
+                      }}
                     />
                   </button>
-                ))}
-              </div>
+                </div>
+              )}
             </div>
 
             {/* Item Info Cards */}
             <div className="grid grid-cols-2 gap-4 mb-6">
               <Card className="p-4">
                 <p className="text-sm text-muted-foreground mb-1">Game</p>
-                <p className="font-bold">{listing.game}</p>
+                <p className="font-bold">{listing.game || "N/A"}</p>
               </Card>
               <Card className="p-4">
                 <p className="text-sm text-muted-foreground mb-1">Category</p>
-                <p className="font-bold">{listing.category}</p>
+                <p className="font-bold">{listing.category || "N/A"}</p>
               </Card>
               <Card className="p-4">
                 <p className="text-sm text-muted-foreground mb-1">Item Type</p>
-                <p className="font-bold">{listing.details.itemType}</p>
+                <p className="font-bold">{listing.itemType || "N/A"}</p>
               </Card>
               <Card className="p-4">
-                <p className="text-sm text-muted-foreground mb-1">Rarity</p>
-                <p className="font-bold">{listing.details.rarity}</p>
+                <p className="text-sm text-muted-foreground mb-1">Condition</p>
+                <p className="font-bold">{listing.condition || "New"}</p>
               </Card>
             </div>
 
@@ -242,50 +279,7 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
             {/* Description */}
             <Card className="p-6 mb-6">
               <h2 className="text-xl font-bold mb-4">Description</h2>
-              <p className="text-foreground leading-relaxed">{listing.description}</p>
-            </Card>
-
-            {/* Proof of Item */}
-            <Card className="p-6 mb-6">
-              <h2 className="text-xl font-bold mb-4">Item Proof</h2>
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  {listing.proof.hasScreenshots ? (
-                    <Check className="w-5 h-5 text-green-500" />
-                  ) : (
-                    <div className="w-5 h-5 rounded border border-muted" />
-                  )}
-                  <span>Screenshots provided</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  {listing.proof.hasVideo ? (
-                    <Check className="w-5 h-5 text-green-500" />
-                  ) : (
-                    <div className="w-5 h-5 rounded border border-muted" />
-                  )}
-                  <span>Video proof available</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  {listing.proof.hasRobloxLink ? (
-                    <Check className="w-5 h-5 text-green-500" />
-                  ) : (
-                    <div className="w-5 h-5 rounded border border-muted" />
-                  )}
-                  <span>Roblox link provided</span>
-                </div>
-              </div>
-            </Card>
-
-            {/* Payment Methods */}
-            <Card className="p-6">
-              <h2 className="text-xl font-bold mb-4">Payment Methods Accepted</h2>
-              <div className="flex flex-wrap gap-2">
-                {listing.paymentMethods.map((method) => (
-                  <Badge key={method} variant="secondary">
-                    {method}
-                  </Badge>
-                ))}
-              </div>
+              <p className="text-foreground leading-relaxed">{listing.description || "No description provided"}</p>
             </Card>
           </div>
 
@@ -294,15 +288,15 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
             {/* Price */}
             <div className="mb-6 p-6 bg-primary text-primary-foreground rounded-lg">
               <p className="text-sm mb-2 opacity-90">Price</p>
-              <p className="text-4xl font-bold">₱{listing.price.toLocaleString()}</p>
-              <p className="text-sm mt-2 opacity-75">Status: {listing.status}</p>
+              <p className="text-4xl font-bold">₱{listing.price?.toLocaleString() || "0"}</p>
+              <p className="text-sm mt-2 opacity-75">Status: {listing.status || "available"}</p>
             </div>
 
             {/* Action Buttons */}
             <div className="space-y-3 mb-6">
               <Button size="lg" className="w-full" onClick={handleMessageSeller}>
                 <MessageCircle className="w-5 h-5 mr-2" />
-                Message
+                Message Seller
               </Button>
               <Button size="lg" variant="outline" className="w-full bg-transparent" onClick={handleSaveItem}>
                 {isSaved ? "★ Saved" : "☆ Save Item"}
@@ -324,21 +318,23 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
 
             {/* Seller Card */}
             <Card className="p-6">
-              <Link href={`/profile/${listing.seller.id}`}>
+              <Link href={`/profile/${listing.sellerId}`}>
                 <div className="flex items-center gap-4 mb-4 cursor-pointer group">
                   <img
-                    src={listing.seller.avatar || "/placeholder.svg"}
-                    alt={listing.seller.username}
+                    src={listing.seller?.profilePicture || "/placeholder.svg"}
+                    alt={listing.seller?.username || "Seller"}
                     className="w-16 h-16 rounded-full object-cover group-hover:opacity-80 transition"
                   />
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="font-bold text-lg group-hover:text-primary transition">
-                        {listing.seller.username}
+                        {listing.seller?.username || "Unknown"}
                       </h3>
-                      {listing.seller.verified && <Shield className="w-4 h-4 text-primary" />}
+                      {listing.seller?.isVerified && <Shield className="w-4 h-4 text-primary" />}
                     </div>
-                    <p className="text-sm text-muted-foreground">Joined {listing.seller.joinDate}</p>
+                    <p className="text-sm text-muted-foreground">
+                      Joined {listing.seller?.joinDate ? new Date(listing.seller.joinDate).toLocaleDateString() : "Unknown"}
+                    </p>
                   </div>
                 </div>
               </Link>
@@ -350,19 +346,17 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
                     <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
                     Vouches
                   </span>
-                  <span className="font-bold">{listing.seller.vouch}</span>
+                  <span className="font-bold">{listing.seller?.vouchCount || 0}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Response Rate</span>
-                  <span className="font-bold">{listing.seller.responseRate}%</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Active Listings</span>
-                  <span className="font-bold">{listing.seller.listings}</span>
+                  <span className="text-sm text-muted-foreground">Verification</span>
+                  <span className="font-bold">{listing.seller?.isVerified ? "Verified" : "Unverified"}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Last Active</span>
-                  <span className="font-bold text-sm">{listing.seller.lastActive}</span>
+                  <span className="font-bold text-sm">
+                    {listing.seller?.lastActive ? new Date(listing.seller.lastActive).toLocaleDateString() : "Unknown"}
+                  </span>
                 </div>
               </div>
 
@@ -379,15 +373,11 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
                     <Calendar className="w-4 h-4" />
                     Posted
                   </span>
-                  <span>{listing.postedDate}</span>
+                  <span>{new Date(listing.createdAt).toLocaleDateString()}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Views</span>
-                  <span>{listing.views}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Interested</span>
-                  <span>{listing.interestedBuyers} buyers</span>
+                  <span>{listing.views || 0}</span>
                 </div>
               </div>
             </Card>
@@ -421,6 +411,8 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
             </div>
           </div>
         </Card>
+        </>
+        )}
       </div>
     </main>
   )

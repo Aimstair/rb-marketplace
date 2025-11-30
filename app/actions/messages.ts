@@ -410,6 +410,92 @@ export async function markMessagesAsRead(conversationId: string): Promise<{ succ
 }
 
 /**
+ * Create or find a conversation with a specific user
+ * Useful for auto-opening conversations when navigating from message search
+ */
+export async function getOrCreateConversation(
+  sellerId: string,
+  listingId?: string
+): Promise<{ success: boolean; conversationId?: string; error?: string }> {
+  try {
+    // Get the current authenticated user
+    const session = await auth()
+    if (!session?.user?.email) {
+      return {
+        success: false,
+        error: "You must be logged in",
+      }
+    }
+
+    // Find the current user by email from session
+    const currentUser = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    })
+
+    if (!currentUser) {
+      return {
+        success: false,
+        error: "User account not found",
+      }
+    }
+
+    // Verify seller user exists
+    const sellerUser = await prisma.user.findUnique({
+      where: { id: sellerId },
+    })
+
+    if (!sellerUser) {
+      return {
+        success: false,
+        error: "Seller not found",
+      }
+    }
+
+    if (sellerId === currentUser.id) {
+      return {
+        success: false,
+        error: "Cannot message yourself",
+      }
+    }
+
+    // Try to find existing conversation
+    const whereClause: any = {
+      buyerId_sellerId_listingId: {
+        buyerId: currentUser.id,
+        sellerId: sellerId,
+        listingId: listingId || null,
+      },
+    }
+
+    let conversation = await prisma.conversation.findUnique({
+      where: whereClause,
+    })
+
+    // If not found, create new conversation
+    if (!conversation) {
+      conversation = await prisma.conversation.create({
+        data: {
+          buyerId: currentUser.id,
+          sellerId: sellerId,
+          listingId: listingId || undefined,
+        },
+      })
+    }
+
+    return {
+      success: true,
+      conversationId: conversation.id,
+    }
+  } catch (error) {
+    console.error("Error creating conversation:", error)
+    return {
+      success: false,
+      error: "Failed to create or find conversation",
+    }
+  }
+}
+
+/**
  * Create or find a conversation for a specific listing
  * Useful for the "Message Seller" button on listing pages
  */

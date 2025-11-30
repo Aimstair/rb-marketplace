@@ -1,11 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Switch } from "@/components/ui/switch"
 import {
-  Shield,
   Users,
   ShoppingBag,
   Flag,
@@ -16,8 +14,7 @@ import {
   CreditCard,
   Settings,
   Plus,
-  Edit,
-  Trash2,
+  Loader2,
 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
@@ -33,52 +30,24 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useSession } from "next-auth/react"
+import { getRoles, createRole, updateRolePermissions, assignUserRole } from "@/app/actions/admin"
+import { Checkbox } from "@/components/ui/checkbox"
 
-const roles = [
-  {
-    id: "owner",
-    name: "Owner / Super Admin",
-    description: "Full access to all features",
-    color: "bg-red-500",
-    permissions: ["all"],
-    users: [{ username: "AdminModerator", avatar: "/placeholder.svg?key=h9u2m", email: "admin@robloxtrade.com" }],
-  },
-  {
-    id: "moderator",
-    name: "Moderator",
-    description: "Can manage reports, listings, and users",
-    color: "bg-blue-500",
-    permissions: ["users", "listings", "reports", "chat", "vouches"],
-    users: [
-      { username: "ModeratorX", avatar: "/placeholder.svg?key=c9sfl", email: "modx@robloxtrade.com" },
-      { username: "ModeratorY", avatar: "/placeholder.svg?key=rdfne", email: "mody@robloxtrade.com" },
-    ],
-  },
-  {
-    id: "support",
-    name: "Support Staff",
-    description: "Can answer support tickets",
-    color: "bg-green-500",
-    permissions: ["support", "users_readonly"],
-    users: [{ username: "SupportStaff", avatar: "/placeholder.svg?key=h4dti", email: "support@robloxtrade.com" }],
-  },
-  {
-    id: "finance",
-    name: "Finance Admin",
-    description: "Handle monetization and refunds",
-    color: "bg-purple-500",
-    permissions: ["monetization", "analytics"],
-    users: [{ username: "FinanceAdmin", avatar: "/placeholder.svg?key=96imd", email: "finance@robloxtrade.com" }],
-  },
-  {
-    id: "analytics",
-    name: "Analytics Manager",
-    description: "Read-only access to statistics",
-    color: "bg-orange-500",
-    permissions: ["analytics_readonly"],
-    users: [],
-  },
-]
+interface CustomRole {
+  id: string
+  name: string
+  description?: string
+  color: string
+  permissions: string[]
+  userCount: number
+  users: Array<{
+    id: string
+    username: string
+    email: string
+    profilePicture?: string
+  }>
+}
 
 const permissionGroups = [
   {
@@ -159,31 +128,161 @@ const permissionGroups = [
   },
 ]
 
-export default function PermissionsPage() {
-  const [selectedRole, setSelectedRole] = useState(roles[0])
-  const [addUserDialogOpen, setAddUserDialogOpen] = useState(false)
-  const [newUserData, setNewUserData] = useState({
-    username: "",
-    email: "",
-    password: "",
-    confirmPassword: "",
-  })
-  const [addingToRole, setAddingToRole] = useState<string | null>(null)
+const colorOptions = [
+  { value: "bg-red-500", label: "Red" },
+  { value: "bg-blue-500", label: "Blue" },
+  { value: "bg-green-500", label: "Green" },
+  { value: "bg-yellow-500", label: "Yellow" },
+  { value: "bg-purple-500", label: "Purple" },
+  { value: "bg-pink-500", label: "Pink" },
+  { value: "bg-indigo-500", label: "Indigo" },
+]
 
-  const handleAddUser = () => {
-    if (newUserData.password !== newUserData.confirmPassword) {
-      alert("Passwords do not match!")
-      return
+export default function PermissionsPage() {
+  const { data: session } = useSession()
+  const [roles, setRoles] = useState<CustomRole[]>([])
+  const [selectedRole, setSelectedRole] = useState<CustomRole | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [updating, setUpdating] = useState(false)
+
+  // Dialogs
+  const [isCreateRoleOpen, setIsCreateRoleOpen] = useState(false)
+  const [isAddUserOpen, setIsAddUserOpen] = useState(false)
+  const [creatingRole, setCreatingRole] = useState(false)
+  const [assigningUser, setAssigningUser] = useState(false)
+
+  // Create role form
+  const [newRoleName, setNewRoleName] = useState("")
+  const [newRoleDescription, setNewRoleDescription] = useState("")
+  const [newRoleColor, setNewRoleColor] = useState("bg-blue-500")
+
+  // Add user form
+  const [addUserUsername, setAddUserUsername] = useState("")
+
+  // Load roles
+  useEffect(() => {
+    const loadRoles = async () => {
+      try {
+        setLoading(true)
+        const result = await getRoles()
+        if (result.success && result.roles) {
+          setRoles(result.roles)
+          if (result.roles.length > 0) {
+            setSelectedRole(result.roles[0])
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load roles:", err)
+      } finally {
+        setLoading(false)
+      }
     }
-    console.log("Adding user:", newUserData, "to role:", addingToRole || selectedRole.id)
-    setAddUserDialogOpen(false)
-    setNewUserData({ username: "", email: "", password: "", confirmPassword: "" })
-    setAddingToRole(null)
+
+    loadRoles()
+  }, [])
+
+  const handleCreateRole = async () => {
+    if (!session?.user?.id || !newRoleName.trim()) return
+
+    try {
+      setCreatingRole(true)
+      const result = await createRole(
+        {
+          name: newRoleName,
+          description: newRoleDescription,
+          color: newRoleColor,
+          permissions: [],
+        },
+        session.user.id
+      )
+
+      if (result.success) {
+        // Refresh roles
+        const rolesResult = await getRoles()
+        if (rolesResult.success && rolesResult.roles) {
+          setRoles(rolesResult.roles)
+          const newRole = rolesResult.roles.find((r) => r.name === newRoleName)
+          if (newRole) {
+            setSelectedRole(newRole)
+          }
+        }
+        setNewRoleName("")
+        setNewRoleDescription("")
+        setNewRoleColor("bg-blue-500")
+        setIsCreateRoleOpen(false)
+      } else {
+        alert(result.error || "Failed to create role")
+      }
+    } catch (err) {
+      console.error("Failed to create role:", err)
+      alert("Failed to create role")
+    } finally {
+      setCreatingRole(false)
+    }
   }
 
-  const openAddUserDialog = (roleId?: string) => {
-    if (roleId) setAddingToRole(roleId)
-    setAddUserDialogOpen(true)
+  const handleTogglePermission = async (permissionId: string) => {
+    if (!selectedRole || !session?.user?.id) return
+
+    try {
+      setUpdating(true)
+      const newPermissions = selectedRole.permissions.includes(permissionId)
+        ? selectedRole.permissions.filter((p) => p !== permissionId)
+        : [...selectedRole.permissions, permissionId]
+
+      const result = await updateRolePermissions(selectedRole.id, newPermissions, session.user.id)
+      if (result.success) {
+        // Update local state
+        const updatedRole = { ...selectedRole, permissions: newPermissions }
+        setSelectedRole(updatedRole)
+        setRoles(roles.map((r) => (r.id === selectedRole.id ? updatedRole : r)))
+      } else {
+        alert(result.error || "Failed to update permissions")
+      }
+    } catch (err) {
+      console.error("Failed to toggle permission:", err)
+      alert("Failed to update permission")
+    } finally {
+      setUpdating(false)
+    }
+  }
+
+  const handleAssignUser = async () => {
+    if (!session?.user?.id || !addUserUsername.trim() || !selectedRole) return
+
+    try {
+      setAssigningUser(true)
+      const result = await assignUserRole(addUserUsername, selectedRole.id, session.user.id)
+
+      if (result.success) {
+        // Refresh roles
+        const rolesResult = await getRoles()
+        if (rolesResult.success && rolesResult.roles) {
+          setRoles(rolesResult.roles)
+          const updatedRole = rolesResult.roles.find((r) => r.id === selectedRole.id)
+          if (updatedRole) {
+            setSelectedRole(updatedRole)
+          }
+        }
+        setAddUserUsername("")
+        setIsAddUserOpen(false)
+      } else {
+        alert(result.error || "Failed to assign user")
+      }
+    } catch (err) {
+      console.error("Failed to assign user:", err)
+      alert("Failed to assign user to role")
+    } finally {
+      setAssigningUser(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="p-6 flex items-center justify-center py-12">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    )
   }
 
   return (
@@ -192,33 +291,65 @@ export default function PermissionsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Permission Roles</h1>
-          <p className="text-muted-foreground">Manage admin roles and permissions</p>
+          <p className="text-muted-foreground">Create and manage custom roles with fine-grained permissions</p>
         </div>
-        <Dialog>
+        <Dialog open={isCreateRoleOpen} onOpenChange={setIsCreateRoleOpen}>
           <DialogTrigger asChild>
             <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Create Role
+              <Plus className="mr-2 h-4 w-4" />
+              New Role
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Create New Role</DialogTitle>
-              <DialogDescription>Add a new permission role for staff members.</DialogDescription>
+              <DialogDescription>Define a new custom role with specific permissions.</DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div>
-                <Label>Role Name</Label>
-                <Input placeholder="e.g., Junior Moderator" className="mt-2" />
+                <Label htmlFor="role-name">Role Name</Label>
+                <Input
+                  id="role-name"
+                  placeholder="e.g., Content Moderator"
+                  value={newRoleName}
+                  onChange={(e) => setNewRoleName(e.target.value)}
+                />
               </div>
               <div>
-                <Label>Description</Label>
-                <Input placeholder="Brief description of this role" className="mt-2" />
+                <Label htmlFor="role-desc">Description</Label>
+                <Input
+                  id="role-desc"
+                  placeholder="Role description (optional)"
+                  value={newRoleDescription}
+                  onChange={(e) => setNewRoleDescription(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label htmlFor="role-color">Color Badge</Label>
+                <Select value={newRoleColor} onValueChange={setNewRoleColor}>
+                  <SelectTrigger id="role-color">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {colorOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        <div className="flex items-center gap-2">
+                          <div className={`w-3 h-3 rounded-full ${option.value}`} />
+                          {option.label}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline">Cancel</Button>
-              <Button>Create Role</Button>
+              <Button variant="outline" onClick={() => setIsCreateRoleOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleCreateRole} disabled={creatingRole || !newRoleName.trim()}>
+                {creatingRole ? "Creating..." : "Create Role"}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -229,8 +360,8 @@ export default function PermissionsPage() {
         <div className="lg:col-span-1 space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Roles</CardTitle>
-              <CardDescription>{roles.length} roles configured</CardDescription>
+              <CardTitle className="text-lg">Roles ({roles.length})</CardTitle>
+              <CardDescription>Custom roles and permissions</CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
               {roles.map((role) => (
@@ -238,25 +369,27 @@ export default function PermissionsPage() {
                   key={role.id}
                   onClick={() => setSelectedRole(role)}
                   className={`p-4 border rounded-lg cursor-pointer transition-colors hover:bg-muted/50 ${
-                    selectedRole.id === role.id ? "border-primary bg-muted/50" : ""
+                    selectedRole?.id === role.id ? "border-primary bg-muted/50" : ""
                   }`}
                 >
                   <div className="flex items-center gap-3 mb-2">
                     <div className={`w-3 h-3 rounded-full ${role.color}`} />
                     <span className="font-medium">{role.name}</span>
                   </div>
-                  <p className="text-sm text-muted-foreground mb-2">{role.description}</p>
+                  {role.description && <p className="text-xs text-muted-foreground mb-2">{role.description}</p>}
                   <div className="flex items-center gap-2">
                     <div className="flex -space-x-2">
-                      {role.users.slice(0, 3).map((user, i) => (
-                        <Avatar key={i} className="h-6 w-6 border-2 border-background">
-                          <AvatarImage src={user.avatar || "/placeholder.svg"} />
-                          <AvatarFallback className="text-xs">{user.username.charAt(0)}</AvatarFallback>
+                      {role.users.slice(0, 3).map((user) => (
+                        <Avatar key={user.id} className="h-6 w-6 border-2 border-background">
+                          <AvatarImage src={user.profilePicture || "/placeholder.svg"} />
+                          <AvatarFallback className="text-xs">
+                            {user.username.charAt(0).toUpperCase()}
+                          </AvatarFallback>
                         </Avatar>
                       ))}
                     </div>
                     <span className="text-xs text-muted-foreground">
-                      {role.users.length} user{role.users.length !== 1 ? "s" : ""}
+                      {role.userCount} user{role.userCount !== 1 ? "s" : ""}
                     </span>
                   </div>
                 </div>
@@ -266,85 +399,96 @@ export default function PermissionsPage() {
         </div>
 
         {/* Role Details */}
-        <div className="lg:col-span-2">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className={`w-4 h-4 rounded-full ${selectedRole.color}`} />
-                  <div>
-                    <CardTitle>{selectedRole.name}</CardTitle>
-                    <CardDescription>{selectedRole.description}</CardDescription>
+        {selectedRole && (
+          <div className="lg:col-span-2">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-4 h-4 rounded-full ${selectedRole.color}`} />
+                    <div>
+                      <CardTitle>{selectedRole.name}</CardTitle>
+                      {selectedRole.description && <CardDescription>{selectedRole.description}</CardDescription>}
+                    </div>
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm">
-                    <Edit className="h-4 w-4 mr-1" />
-                    Edit
-                  </Button>
-                  {selectedRole.id !== "owner" && (
-                    <Button variant="destructive" size="sm">
-                      <Trash2 className="h-4 w-4 mr-1" />
-                      Delete
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Assigned Users */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <p className="font-medium">Assigned Users ({selectedRole.users.length})</p>
-                  <Button variant="outline" size="sm" onClick={() => openAddUserDialog()}>
-                    <Plus className="h-4 w-4 mr-1" />
-                    Add User
-                  </Button>
-                </div>
-                {selectedRole.users.length > 0 ? (
-                  <div className="space-y-2">
-                    {selectedRole.users.map((user, i) => (
-                      <div key={i} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                        <div className="flex items-center gap-3">
-                          <Avatar>
-                            <AvatarImage src={user.avatar || "/placeholder.svg"} />
-                            <AvatarFallback>{user.username.charAt(0)}</AvatarFallback>
-                          </Avatar>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Assigned Users */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="font-medium">Assigned Users ({selectedRole.userCount})</p>
+                    <Dialog open={isAddUserOpen} onOpenChange={setIsAddUserOpen}>
+                      <DialogTrigger asChild>
+                        <Button size="sm">
+                          <Plus className="h-4 w-4 mr-1" />
+                          Add User
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Add User to Role</DialogTitle>
+                          <DialogDescription>
+                            Assign a user to the {selectedRole.name} role
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4">
                           <div>
-                            <span className="font-medium">{user.username}</span>
-                            <p className="text-xs text-muted-foreground">{user.email}</p>
+                            <Label htmlFor="username">Username</Label>
+                            <Input
+                              id="username"
+                              placeholder="Enter username"
+                              value={addUserUsername}
+                              onChange={(e) => setAddUserUsername(e.target.value)}
+                            />
                           </div>
                         </div>
-                        <Button variant="ghost" size="sm" className="text-destructive">
-                          Remove
-                        </Button>
-                      </div>
-                    ))}
+                        <DialogFooter>
+                          <Button variant="outline" onClick={() => setIsAddUserOpen(false)}>
+                            Cancel
+                          </Button>
+                          <Button
+                            onClick={handleAssignUser}
+                            disabled={assigningUser || !addUserUsername.trim()}
+                          >
+                            {assigningUser ? "Adding..." : "Add User"}
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
                   </div>
-                ) : (
-                  <div className="text-center p-4 bg-muted/50 rounded-lg">
-                    <p className="text-sm text-muted-foreground mb-2">No users assigned to this role</p>
-                    <Button variant="outline" size="sm" onClick={() => openAddUserDialog()}>
-                      <Plus className="h-4 w-4 mr-1" />
-                      Add First User
-                    </Button>
-                  </div>
-                )}
-              </div>
+                  {selectedRole.users.length > 0 ? (
+                    <div className="space-y-2">
+                      {selectedRole.users.map((user) => (
+                        <div
+                          key={user.id}
+                          className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
+                        >
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-8 w-8">
+                              <AvatarImage src={user.profilePicture || "/placeholder.svg"} />
+                              <AvatarFallback>{user.username.charAt(0).toUpperCase()}</AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <span className="font-medium text-sm">{user.username}</span>
+                              <p className="text-xs text-muted-foreground">{user.email}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center p-4 bg-muted/50 rounded-lg">
+                      <p className="text-sm text-muted-foreground">No users assigned to this role yet</p>
+                    </div>
+                  )}
+                </div>
 
-              <Separator />
+                <Separator />
 
-              {/* Permissions */}
-              <div>
-                <p className="font-medium mb-4">Permissions</p>
-                {selectedRole.permissions.includes("all") ? (
-                  <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
-                    <p className="text-green-600 font-medium flex items-center gap-2">
-                      <Shield className="h-5 w-5" />
-                      Full Access - All permissions granted
-                    </p>
-                  </div>
-                ) : (
+                {/* Permissions */}
+                <div>
+                  <p className="font-medium mb-4">Permissions</p>
                   <div className="space-y-6">
                     {permissionGroups.map((group) => {
                       const Icon = group.icon
@@ -358,16 +502,15 @@ export default function PermissionsPage() {
                             {group.permissions.map((perm) => (
                               <div
                                 key={perm.id}
-                                className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
+                                className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg cursor-pointer hover:bg-muted transition-colors"
+                                onClick={() => handleTogglePermission(perm.id)}
                               >
-                                <span className="text-sm">{perm.label}</span>
-                                <Switch
-                                  checked={
-                                    selectedRole.permissions.includes(perm.id.split("_")[0]) ||
-                                    selectedRole.permissions.includes(perm.id)
-                                  }
-                                  disabled={selectedRole.id === "owner"}
+                                <Checkbox
+                                  checked={selectedRole.permissions.includes(perm.id)}
+                                  disabled={updating}
+                                  className="cursor-pointer"
                                 />
+                                <span className="text-sm flex-1">{perm.label}</span>
                               </div>
                             ))}
                           </div>
@@ -375,107 +518,12 @@ export default function PermissionsPage() {
                       )
                     })}
                   </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      <Dialog open={addUserDialogOpen} onOpenChange={setAddUserDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add New User</DialogTitle>
-            <DialogDescription>
-              Create a new admin user for the{" "}
-              {addingToRole ? roles.find((r) => r.id === addingToRole)?.name : selectedRole.name} role.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="username">Username</Label>
-              <Input
-                id="username"
-                placeholder="Enter username"
-                value={newUserData.username}
-                onChange={(e) => setNewUserData({ ...newUserData, username: e.target.value })}
-                className="mt-2"
-              />
-            </div>
-            <div>
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="Enter email address"
-                value={newUserData.email}
-                onChange={(e) => setNewUserData({ ...newUserData, email: e.target.value })}
-                className="mt-2"
-              />
-            </div>
-            <div>
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="Enter password"
-                value={newUserData.password}
-                onChange={(e) => setNewUserData({ ...newUserData, password: e.target.value })}
-                className="mt-2"
-              />
-            </div>
-            <div>
-              <Label htmlFor="confirmPassword">Confirm Password</Label>
-              <Input
-                id="confirmPassword"
-                type="password"
-                placeholder="Confirm password"
-                value={newUserData.confirmPassword}
-                onChange={(e) => setNewUserData({ ...newUserData, confirmPassword: e.target.value })}
-                className="mt-2"
-              />
-            </div>
-            <div>
-              <Label htmlFor="role">Role</Label>
-              <Select value={addingToRole || selectedRole.id} onValueChange={(value) => setAddingToRole(value)}>
-                <SelectTrigger className="mt-2">
-                  <SelectValue placeholder="Select role" />
-                </SelectTrigger>
-                <SelectContent>
-                  {roles.map((role) => (
-                    <SelectItem key={role.id} value={role.id}>
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${role.color}`} />
-                        {role.name}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setAddUserDialogOpen(false)
-                setNewUserData({ username: "", email: "", password: "", confirmPassword: "" })
-                setAddingToRole(null)
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleAddUser}
-              disabled={
-                !newUserData.username || !newUserData.email || !newUserData.password || !newUserData.confirmPassword
-              }
-            >
-              Create User
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        )}
+      </div>
     </div>
   )
 }

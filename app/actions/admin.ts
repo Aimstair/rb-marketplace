@@ -253,7 +253,7 @@ export async function getUsers(
  * Ban or unban a user
  * Admin only
  */
-export async function banUser(userId: string, ban: boolean = true): Promise<AdminResult> {
+export async function banUser(userId: string, ban: boolean = true, adminId?: string): Promise<AdminResult> {
   try {
     // TODO: Verify admin role from auth context
     // TODO: Verify current user is admin
@@ -285,6 +285,25 @@ export async function banUser(userId: string, ban: boolean = true): Promise<Admi
         where: { sellerId: userId, status: "available" },
         data: { status: "hidden" },
       })
+    }
+
+    // Create audit log (non-blocking - don't fail the action if logging fails)
+    if (adminId) {
+      try {
+        await prisma.auditLog.create({
+          data: {
+            adminId,
+            action: ban ? "USER_BANNED" : "USER_UNBANNED",
+            targetId: userId,
+            details: ban
+              ? `Banned user ${user.username}. Hidden ${0} active listings.`
+              : `Unbanned user ${user.username}`,
+          },
+        })
+      } catch (logErr) {
+        console.error("Failed to create audit log:", logErr)
+        // Don't fail the main operation if logging fails
+      }
     }
 
     return { success: true }
@@ -532,6 +551,7 @@ export async function getAdminListings(
 export async function adminUpdateListingStatus(
   listingId: string,
   newStatus: string,
+  adminId?: string,
 ): Promise<AdminResult> {
   try {
     // TODO: Verify admin role from auth context
@@ -555,10 +575,30 @@ export async function adminUpdateListingStatus(
       return { success: false, error: "Invalid status" }
     }
 
+    // Store old status for audit log
+    const oldStatus = listing.status
+
     await prisma.listing.update({
       where: { id: listingId },
       data: { status: newStatus },
     })
+
+    // Create audit log (non-blocking - don't fail the action if logging fails)
+    if (adminId) {
+      try {
+        await prisma.auditLog.create({
+          data: {
+            adminId,
+            action: "LISTING_STATUS_UPDATED",
+            targetId: listingId,
+            details: `Changed listing "${listing.title}" status from ${oldStatus} to ${newStatus}`,
+          },
+        })
+      } catch (logErr) {
+        console.error("Failed to create audit log:", logErr)
+        // Don't fail the main operation if logging fails
+      }
+    }
 
     return { success: true }
   } catch (err) {
@@ -771,15 +811,43 @@ export async function createAnnouncement(
       },
     })
 
+    // Broadcast notification to all users (non-blocking)
+    try {
+      const allUsers = await prisma.user.findMany({
+        select: { id: true },
+      })
+
+      if (allUsers.length > 0) {
+        await prisma.notification.createMany({
+          data: allUsers.map((user) => ({
+            userId: user.id,
+            type: "SYSTEM",
+            title: data.title,
+            message: data.content,
+            link: "/notifications",
+            isRead: false,
+          })),
+        })
+      }
+    } catch (notificationErr) {
+      console.error("Failed to broadcast notifications:", notificationErr)
+      // Don't fail the announcement creation if notifications fail
+    }
+
     // Log audit trail
-    await prisma.auditLog.create({
-      data: {
-        adminId,
-        action: "ANNOUNCEMENT_CREATED",
-        targetId: announcement.id,
-        details: `Created announcement: ${data.title}`,
-      },
-    })
+    try {
+      await prisma.auditLog.create({
+        data: {
+          adminId,
+          action: "ANNOUNCEMENT_CREATED",
+          targetId: announcement.id,
+          details: `Created announcement: ${data.title} (broadcast to ${await prisma.user.count()} users)`,
+        },
+      })
+    } catch (logErr) {
+      console.error("Failed to log announcement creation:", logErr)
+      // Don't fail the announcement creation if logging fails
+    }
 
     return { success: true, announcementId: announcement.id }
   } catch (err) {
@@ -847,5 +915,341 @@ export async function getAuditLogs(limit: number = 50): Promise<{
   } catch (err) {
     console.error("Failed to get audit logs:", err)
     return { success: false, error: "Failed to get audit logs" }
+  }
+}
+
+/**
+ * Get all admin users
+ * Admin only
+ */
+export async function getAdmins(): Promise<{
+  success: boolean
+  admins?: Array<{
+    id: string
+    username: string
+    email: string
+    profilePicture?: string
+    role: string
+    joinDate: Date
+  }>
+  error?: string
+}> {
+  try {
+    const admins = await prisma.user.findMany({
+      where: { role: "admin" },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        profilePicture: true,
+        role: true,
+        joinDate: true,
+      },
+      orderBy: { joinDate: "desc" },
+    })
+
+    return { success: true, admins }
+  } catch (err) {
+    console.error("Failed to get admins:", err)
+    return { success: false, error: "Failed to get admin users" }
+  }
+}
+
+/**
+ * Get all staff users (admins, moderators, support staff)
+ * Admin only
+ */
+export async function getStaffUsers(): Promise<{
+  success: boolean
+  staff?: Array<{
+    id: string
+    username: string
+    email: string
+    profilePicture?: string
+    role: string
+    joinDate: Date
+  }>
+  error?: string
+}> {
+  try {
+    const staff = await prisma.user.findMany({
+      where: {
+        role: {
+          in: ["admin", "moderator", "support"],
+        },
+      },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        profilePicture: true,
+        role: true,
+        joinDate: true,
+      },
+      orderBy: { joinDate: "desc" },
+    })
+
+    return { success: true, staff }
+  } catch (err) {
+    console.error("Failed to get staff users:", err)
+    return { success: false, error: "Failed to get staff users" }
+  }
+}
+
+/**
+ * Update a user's role
+ * Admin only
+ */
+export async function updateUserRole(
+  userId: string,
+  newRole: string,
+  adminId: string,
+): Promise<AdminResult> {
+  try {
+    if (!userId) {
+      return { success: false, error: "User ID is required" }
+    }
+
+    // Validate role
+    const validRoles = ["user", "admin", "moderator", "support"]
+    if (!validRoles.includes(newRole)) {
+      return { success: false, error: "Invalid role" }
+    }
+
+    // Check if user exists
+    const user = await prisma.user.findUnique({ where: { id: userId } })
+    if (!user) {
+      return { success: false, error: "User not found" }
+    }
+
+    // Prevent removing admin role from last admin (optional safety check)
+    if (user.role === "admin" && newRole !== "admin") {
+      const adminCount = await prisma.user.count({ where: { role: "admin" } })
+      if (adminCount <= 1) {
+        return { success: false, error: "Cannot remove admin role from last admin" }
+      }
+    }
+
+    // Update user role
+    await prisma.user.update({
+      where: { id: userId },
+      data: { role: newRole },
+    })
+
+    // Log audit trail
+    await prisma.auditLog.create({
+      data: {
+        adminId,
+        action: "USER_ROLE_UPDATED",
+        targetId: userId,
+        details: `Changed role from ${user.role} to ${newRole}`,
+      },
+    })
+
+    return { success: true }
+  } catch (err) {
+    console.error("Failed to update user role:", err)
+    return { success: false, error: "Failed to update user role" }
+  }
+}
+
+/**
+ * Get all custom roles
+ * Admin only
+ */
+export async function getRoles(): Promise<{
+  success: boolean
+  roles?: Array<{
+    id: string
+    name: string
+    description?: string
+    color: string
+    permissions: string[]
+    userCount: number
+    users: Array<{
+      id: string
+      username: string
+      email: string
+      profilePicture?: string
+    }>
+  }>
+  error?: string
+}> {
+  try {
+    const roles = await prisma.role.findMany({
+      include: {
+        _count: { select: { users: true } },
+        users: {
+          select: {
+            id: true,
+            username: true,
+            email: true,
+            profilePicture: true,
+          },
+        },
+      },
+      orderBy: { name: "asc" },
+    })
+
+    return {
+      success: true,
+      roles: roles.map((r) => ({
+        id: r.id,
+        name: r.name,
+        description: r.description || undefined,
+        color: r.color,
+        permissions: r.permissions,
+        userCount: r._count.users,
+        users: r.users,
+      })),
+    }
+  } catch (err) {
+    console.error("Failed to get roles:", err)
+    return { success: false, error: "Failed to load roles" }
+  }
+}
+
+/**
+ * Create a new custom role
+ * Admin only
+ */
+export async function createRole(
+  data: {
+    name: string
+    description?: string
+    color: string
+    permissions: string[]
+  },
+  adminId: string,
+): Promise<{ success: boolean; roleId?: string; error?: string }> {
+  try {
+    if (!data.name || !data.color) {
+      return { success: false, error: "Name and color are required" }
+    }
+
+    // Check if role already exists
+    const existing = await prisma.role.findUnique({ where: { name: data.name } })
+    if (existing) {
+      return { success: false, error: "Role with this name already exists" }
+    }
+
+    // Create the role
+    const role = await prisma.role.create({
+      data: {
+        name: data.name,
+        description: data.description,
+        color: data.color,
+        permissions: data.permissions || [],
+      },
+    })
+
+    // Log audit trail
+    await prisma.auditLog.create({
+      data: {
+        adminId,
+        action: "ROLE_CREATED",
+        targetId: role.id,
+        details: `Created role "${data.name}" with ${(data.permissions || []).length} permissions`,
+      },
+    }).catch((err) => console.error("Failed to log role creation:", err))
+
+    return { success: true, roleId: role.id }
+  } catch (err) {
+    console.error("Failed to create role:", err)
+    return { success: false, error: "Failed to create role" }
+  }
+}
+
+/**
+ * Update role permissions
+ * Admin only
+ */
+export async function updateRolePermissions(
+  roleId: string,
+  permissions: string[],
+  adminId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!roleId) {
+      return { success: false, error: "Role ID is required" }
+    }
+
+    const role = await prisma.role.findUnique({ where: { id: roleId } })
+    if (!role) {
+      return { success: false, error: "Role not found" }
+    }
+
+    const oldPermissions = role.permissions
+    await prisma.role.update({
+      where: { id: roleId },
+      data: { permissions },
+    })
+
+    // Log audit trail
+    await prisma.auditLog.create({
+      data: {
+        adminId,
+        action: "ROLE_PERMISSIONS_UPDATED",
+        targetId: roleId,
+        details: `Updated permissions for role "${role.name}": ${oldPermissions.length} → ${permissions.length} permissions`,
+      },
+    }).catch((err) => console.error("Failed to log permission update:", err))
+
+    return { success: true }
+  } catch (err) {
+    console.error("Failed to update role permissions:", err)
+    return { success: false, error: "Failed to update permissions" }
+  }
+}
+
+/**
+ * Assign a user to a custom role
+ * Admin only
+ */
+export async function assignUserRole(
+  username: string,
+  roleId: string,
+  adminId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!username || !roleId) {
+      return { success: false, error: "Username and Role ID are required" }
+    }
+
+    // Find user by username
+    const user = await prisma.user.findUnique({
+      where: { username },
+      include: { customRole: true },
+    })
+    if (!user) {
+      return { success: false, error: "User not found" }
+    }
+
+    // Find role
+    const role = await prisma.role.findUnique({ where: { id: roleId } })
+    if (!role) {
+      return { success: false, error: "Role not found" }
+    }
+
+    // Update user's customRoleId
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { customRoleId: roleId },
+    })
+
+    // Log audit trail
+    await prisma.auditLog.create({
+      data: {
+        adminId,
+        action: "USER_ASSIGNED_ROLE",
+        targetId: user.id,
+        details: `Assigned user "${username}" to custom role "${role.name}"`,
+      },
+    }).catch((err) => console.error("Failed to log role assignment:", err))
+
+    return { success: true }
+  } catch (err) {
+    console.error("Failed to assign user role:", err)
+    return { success: false, error: "Failed to assign user to role" }
   }
 }

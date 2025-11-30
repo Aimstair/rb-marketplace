@@ -1,11 +1,14 @@
 import { Metadata } from "next"
 import { prisma } from "@/lib/prisma"
 
-export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   try {
+    // Await params since it's a Promise in Next.js 15+
+    const { id } = await params
+    
     // Fetch listing from database
     const listing = await prisma.listing.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         seller: {
           select: {
@@ -31,7 +34,7 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
       openGraph: {
         title: `${listing.title} - RB Marketplace`,
         description: `Buy ${listing.title} for ₱${price} on RB Marketplace`,
-        type: "product",
+        type: "website",
         images: [
           {
             url: listing.image,

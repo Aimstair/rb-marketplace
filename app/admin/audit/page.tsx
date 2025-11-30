@@ -1,99 +1,57 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Search, FileText, Ban, Trash2, Edit, AlertTriangle, Settings, LogIn } from "lucide-react"
+import { Search, FileText, Ban, Trash2, Edit, AlertTriangle, Settings, LogIn, Loader2 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { getAuditLogs } from "@/app/actions/admin"
 
-const mockAuditLogs = [
-  {
-    id: "1",
-    action: "user_banned",
-    admin: { username: "AdminModerator", avatar: "/placeholder.svg?key=0j3fc" },
-    target: "ScammerJoe",
-    details: "Banned for scam attempt. Multiple reports confirmed.",
-    timestamp: "2 min ago",
-    ip: "192.168.1.100",
-  },
-  {
-    id: "2",
-    action: "listing_removed",
-    admin: { username: "ModeratorX", avatar: "/placeholder.svg?key=vbqlu" },
-    target: "FREE ROBUX!!! CLICK HERE",
-    details: "Removed spam/scam listing",
-    timestamp: "15 min ago",
-    ip: "192.168.1.101",
-  },
-  {
-    id: "3",
-    action: "vouch_invalidated",
-    admin: { username: "AdminModerator", avatar: "/placeholder.svg?key=9a3jt" },
-    target: "Circular vouch pattern",
-    details: "Invalidated 12 vouches between alt accounts",
-    timestamp: "1 hour ago",
-    ip: "192.168.1.100",
-  },
-  {
-    id: "4",
-    action: "user_warning",
-    admin: { username: "SupportStaff", avatar: "/placeholder.svg?key=0xbg6" },
-    target: "SusTrader",
-    details: "Warning issued for suspicious pricing",
-    timestamp: "2 hours ago",
-    ip: "192.168.1.102",
-  },
-  {
-    id: "5",
-    action: "admin_login",
-    admin: { username: "AdminModerator", avatar: "/placeholder.svg?key=yptg1" },
-    target: "Admin Dashboard",
-    details: "Successful login from known IP",
-    timestamp: "3 hours ago",
-    ip: "192.168.1.100",
-  },
-  {
-    id: "6",
-    action: "subscription_modified",
-    admin: { username: "FinanceAdmin", avatar: "/placeholder.svg?key=ziceg" },
-    target: "EliteTrader99",
-    details: "Extended Pro subscription by 1 month (compensation)",
-    timestamp: "5 hours ago",
-    ip: "192.168.1.103",
-  },
-  {
-    id: "7",
-    action: "settings_changed",
-    admin: { username: "AdminModerator", avatar: "/placeholder.svg?key=47rqc" },
-    target: "System Settings",
-    details: "Updated max listing limit from 50 to 100",
-    timestamp: "1 day ago",
-    ip: "192.168.1.100",
-  },
-  {
-    id: "8",
-    action: "user_unbanned",
-    admin: { username: "AdminModerator", avatar: "/placeholder.svg?key=q9ey9" },
-    target: "FalseBannedUser",
-    details: "Ban appeal approved - insufficient evidence",
-    timestamp: "1 day ago",
-    ip: "192.168.1.100",
-  },
-]
+interface AuditLog {
+  id: string
+  action: string
+  targetId?: string
+  details?: string
+  admin: { id: string; username: string }
+  createdAt: Date
+}
 
 export default function AuditLogsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [actionFilter, setActionFilter] = useState("all")
   const [adminFilter, setAdminFilter] = useState("all")
+  const [logs, setLogs] = useState<AuditLog[]>([])
+  const [loading, setLoading] = useState(true)
+  const [uniqueAdmins, setUniqueAdmins] = useState<string[]>([])
 
-  const filteredLogs = mockAuditLogs.filter((log) => {
+  useEffect(() => {
+    const loadLogs = async () => {
+      try {
+        setLoading(true)
+        const result = await getAuditLogs(100)
+        if (result.success && result.logs) {
+          setLogs(result.logs)
+          const admins = [...new Set(result.logs.map((log) => log.admin.username))]
+          setUniqueAdmins(admins)
+        }
+      } catch (err) {
+        console.error("Failed to load audit logs:", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadLogs()
+  }, [])
+
+  const filteredLogs = logs.filter((log) => {
     const matchesSearch =
-      log.target.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.details.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      log.action.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      log.details?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       log.admin.username.toLowerCase().includes(searchQuery.toLowerCase())
 
     const matchesAction = actionFilter === "all" || log.action === actionFilter
@@ -104,20 +62,21 @@ export default function AuditLogsPage() {
 
   const getActionIcon = (action: string) => {
     switch (action) {
-      case "user_banned":
-      case "user_unbanned":
+      case "USER_BANNED":
+      case "USER_UNBANNED":
         return <Ban className="h-4 w-4" />
-      case "listing_removed":
+      case "LISTING_REMOVED":
         return <Trash2 className="h-4 w-4" />
-      case "vouch_invalidated":
+      case "VOUCH_INVALIDATED":
         return <AlertTriangle className="h-4 w-4" />
-      case "user_warning":
+      case "USER_WARNING":
         return <AlertTriangle className="h-4 w-4" />
-      case "admin_login":
+      case "ADMIN_LOGIN":
         return <LogIn className="h-4 w-4" />
-      case "subscription_modified":
+      case "SUBSCRIPTION_MODIFIED":
+      case "USER_ROLE_UPDATED":
         return <Edit className="h-4 w-4" />
-      case "settings_changed":
+      case "SETTINGS_CHANGED":
         return <Settings className="h-4 w-4" />
       default:
         return <FileText className="h-4 w-4" />
@@ -126,28 +85,51 @@ export default function AuditLogsPage() {
 
   const getActionBadge = (action: string) => {
     switch (action) {
-      case "user_banned":
+      case "USER_BANNED":
         return <Badge variant="destructive">User Banned</Badge>
-      case "user_unbanned":
+      case "USER_UNBANNED":
         return <Badge className="bg-green-500 text-white">User Unbanned</Badge>
-      case "listing_removed":
+      case "LISTING_REMOVED":
         return <Badge variant="destructive">Listing Removed</Badge>
-      case "vouch_invalidated":
+      case "VOUCH_INVALIDATED":
         return <Badge className="bg-orange-500 text-white">Vouch Invalidated</Badge>
-      case "user_warning":
+      case "USER_WARNING":
         return <Badge className="bg-yellow-500 text-white">Warning Issued</Badge>
-      case "admin_login":
+      case "ADMIN_LOGIN":
         return <Badge variant="outline">Admin Login</Badge>
-      case "subscription_modified":
+      case "SUBSCRIPTION_MODIFIED":
         return <Badge className="bg-blue-500 text-white">Subscription Modified</Badge>
-      case "settings_changed":
+      case "USER_ROLE_UPDATED":
+        return <Badge className="bg-purple-500 text-white">Role Updated</Badge>
+      case "SETTINGS_CHANGED":
         return <Badge variant="secondary">Settings Changed</Badge>
+      case "DISPUTE_RESOLVED":
+        return <Badge className="bg-green-500 text-white">Dispute Resolved</Badge>
+      case "TICKET_CLOSED":
+        return <Badge className="bg-blue-500 text-white">Ticket Closed</Badge>
+      case "ANNOUNCEMENT_CREATED":
+        return <Badge className="bg-cyan-500 text-white">Announcement Created</Badge>
+      case "ANNOUNCEMENT_DELETED":
+        return <Badge variant="destructive">Announcement Deleted</Badge>
       default:
-        return <Badge variant="outline">{action}</Badge>
+        return <Badge variant="outline">{action.replace(/_/g, " ")}</Badge>
     }
   }
 
-  const uniqueAdmins = [...new Set(mockAuditLogs.map((log) => log.admin.username))]
+  const formatDate = (date: Date | string) => {
+    const d = new Date(date)
+    const now = new Date()
+    const diff = now.getTime() - d.getTime()
+    const minutes = Math.floor(diff / 60000)
+    const hours = Math.floor(minutes / 60)
+    const days = Math.floor(hours / 24)
+
+    if (minutes < 1) return "just now"
+    if (minutes < 60) return `${minutes}m ago`
+    if (hours < 24) return `${hours}h ago`
+    if (days < 7) return `${days}d ago`
+    return d.toLocaleDateString()
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -176,14 +158,16 @@ export default function AuditLogsPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Actions</SelectItem>
-                <SelectItem value="user_banned">User Banned</SelectItem>
-                <SelectItem value="user_unbanned">User Unbanned</SelectItem>
-                <SelectItem value="listing_removed">Listing Removed</SelectItem>
-                <SelectItem value="vouch_invalidated">Vouch Invalidated</SelectItem>
-                <SelectItem value="user_warning">Warning Issued</SelectItem>
-                <SelectItem value="admin_login">Admin Login</SelectItem>
-                <SelectItem value="subscription_modified">Subscription Modified</SelectItem>
-                <SelectItem value="settings_changed">Settings Changed</SelectItem>
+                <SelectItem value="USER_BANNED">User Banned</SelectItem>
+                <SelectItem value="USER_UNBANNED">User Unbanned</SelectItem>
+                <SelectItem value="LISTING_REMOVED">Listing Removed</SelectItem>
+                <SelectItem value="VOUCH_INVALIDATED">Vouch Invalidated</SelectItem>
+                <SelectItem value="USER_WARNING">Warning Issued</SelectItem>
+                <SelectItem value="ADMIN_LOGIN">Admin Login</SelectItem>
+                <SelectItem value="USER_ROLE_UPDATED">Role Updated</SelectItem>
+                <SelectItem value="DISPUTE_RESOLVED">Dispute Resolved</SelectItem>
+                <SelectItem value="TICKET_CLOSED">Ticket Closed</SelectItem>
+                <SelectItem value="ANNOUNCEMENT_CREATED">Announcement Created</SelectItem>
               </SelectContent>
             </Select>
             <Select value={adminFilter} onValueChange={setAdminFilter}>
@@ -199,7 +183,9 @@ export default function AuditLogsPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Button variant="outline">Export Logs</Button>
+            <Button variant="outline" disabled>
+              Export Logs
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -211,35 +197,49 @@ export default function AuditLogsPage() {
           <CardDescription>{filteredLogs.length} entries</CardDescription>
         </CardHeader>
         <CardContent>
-          <ScrollArea className="h-[600px]">
-            <div className="space-y-4">
-              {filteredLogs.map((log) => (
-                <div key={log.id} className="p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-muted rounded-lg">{getActionIcon(log.action)}</div>
-                      {getActionBadge(log.action)}
-                    </div>
-                    <span className="text-sm text-muted-foreground">{log.timestamp}</span>
-                  </div>
-                  <div className="mb-3">
-                    <p className="font-medium">Target: {log.target}</p>
-                    <p className="text-sm text-muted-foreground">{log.details}</p>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2">
-                      <Avatar className="h-6 w-6">
-                        <AvatarImage src={log.admin.avatar || "/placeholder.svg"} />
-                        <AvatarFallback>{log.admin.username.charAt(0)}</AvatarFallback>
-                      </Avatar>
-                      <span className="text-muted-foreground">by {log.admin.username}</span>
-                    </div>
-                    <span className="text-muted-foreground">IP: {log.ip}</span>
-                  </div>
-                </div>
-              ))}
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
             </div>
-          </ScrollArea>
+          ) : (
+            <ScrollArea className="h-[600px]">
+              <div className="space-y-4 pr-4">
+                {filteredLogs.length > 0 ? (
+                  filteredLogs.map((log) => (
+                    <div key={log.id} className="p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-muted rounded-lg">{getActionIcon(log.action)}</div>
+                          {getActionBadge(log.action)}
+                        </div>
+                        <span className="text-sm text-muted-foreground">{formatDate(log.createdAt)}</span>
+                      </div>
+                      <div className="mb-3">
+                        {log.details && (
+                          <p className="text-sm text-foreground">{log.details}</p>
+                        )}
+                        {log.targetId && (
+                          <p className="text-xs text-muted-foreground mt-1">Target ID: {log.targetId}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 text-sm">
+                        <Avatar className="h-6 w-6">
+                          <AvatarFallback className="text-xs">
+                            {log.admin.username.charAt(0).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="text-muted-foreground">by {log.admin.username}</span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="flex items-center justify-center py-12">
+                    <p className="text-muted-foreground">No logs found</p>
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
+          )}
         </CardContent>
       </Card>
     </div>

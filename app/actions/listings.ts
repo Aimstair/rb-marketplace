@@ -14,6 +14,108 @@ import {
   type CreateListingResult,
 } from "@/lib/schemas"
 
+export async function getListing(id: string): Promise<{
+  success: boolean
+  listing?: {
+    id: string
+    title: string
+    description: string | null
+    price: number
+    image: string
+    images?: string[]
+    game: string
+    category: string
+    itemType: string
+    condition: string
+    status: string
+    views: number
+    seller: {
+      id: string
+      username: string
+      profilePicture: string | null
+      role: string
+      isVerified: boolean
+      joinDate: Date
+      lastActive: Date
+      vouchCount: number
+    }
+    upvotes: number
+    downvotes: number
+    createdAt: Date
+  }
+  error?: string
+}> {
+  try {
+    if (!id) {
+      return { success: false, error: "Listing ID is required" }
+    }
+
+    const listing = await prisma.listing.findUnique({
+      where: { id },
+      include: {
+        seller: {
+          select: {
+            id: true,
+            username: true,
+            profilePicture: true,
+            role: true,
+            isVerified: true,
+            joinDate: true,
+            lastActive: true,
+            vouchesReceived: {
+              select: { id: true },
+            },
+          },
+        },
+      },
+    })
+
+    if (!listing) {
+      return { success: false, error: "Listing not found" }
+    }
+
+    // Increment view count
+    await prisma.listing.update({
+      where: { id },
+      data: { views: { increment: 1 } },
+    }).catch((err) => console.error("Failed to increment views:", err))
+
+    return {
+      success: true,
+      listing: {
+        id: listing.id,
+        title: listing.title,
+        description: listing.description,
+        price: listing.price,
+        image: listing.image,
+        images: [listing.image], // Single image for now; extend if multi-image support added
+        game: listing.game,
+        category: listing.category,
+        itemType: listing.itemType,
+        condition: listing.condition,
+        status: listing.status,
+        views: (listing.views || 0) + 1,
+        seller: {
+          id: listing.seller.id,
+          username: listing.seller.username,
+          profilePicture: listing.seller.profilePicture,
+          role: listing.seller.role,
+          isVerified: listing.seller.isVerified,
+          joinDate: listing.seller.joinDate,
+          lastActive: listing.seller.lastActive,
+          vouchCount: listing.seller.vouchesReceived.length,
+        },
+        upvotes: listing.upvotes || 0,
+        downvotes: listing.downvotes || 0,
+        createdAt: listing.createdAt,
+      },
+    }
+  } catch (error) {
+    console.error("Error fetching listing:", error)
+    return { success: false, error: "Failed to fetch listing" }
+  }
+}
+
 export async function getListings(
   filters: ListingFilters = {}
 ): Promise<GetListingsResult> {
@@ -346,6 +448,101 @@ export async function createListing(input: CreateItemListingInput): Promise<Crea
       success: false,
       error: "Failed to create listing. Please try again.",
     }
+  }
+}
+
+/**
+ * Toggle upvote/downvote on a listing
+ */
+export async function toggleListingVote(
+  listingId: string,
+  type: "up" | "down"
+): Promise<{ success: boolean; upvotes?: number; downvotes?: number; error?: string }> {
+  try {
+    // Verify listing exists
+    const listing = await prisma.listing.findUnique({
+      where: { id: listingId },
+      select: { id: true, upvotes: true, downvotes: true },
+    })
+
+    if (!listing) {
+      return { success: false, error: "Listing not found" }
+    }
+
+    // Update votes
+    const updatedListing = await prisma.listing.update({
+      where: { id: listingId },
+      data: {
+        upvotes: type === "up" ? { increment: 1 } : undefined,
+        downvotes: type === "down" ? { increment: 1 } : undefined,
+      },
+      select: { upvotes: true, downvotes: true },
+    })
+
+    return {
+      success: true,
+      upvotes: updatedListing.upvotes || 0,
+      downvotes: updatedListing.downvotes || 0,
+    }
+  } catch (error) {
+    console.error("Error toggling listing vote:", error)
+    return { success: false, error: "Failed to toggle vote" }
+  }
+}
+
+/**
+ * Report a listing for violations
+ */
+export async function reportListing(
+  listingId: string,
+  reason: string,
+  details?: string
+): Promise<{ success: boolean; reportId?: string; error?: string }> {
+  try {
+    // Get current authenticated user
+    const session = await auth()
+    if (!session?.user?.email) {
+      return { success: false, error: "You must be logged in to report" }
+    }
+
+    const reporter = await prisma.user.findUnique({
+      where: { email: session.user.email },
+      select: { id: true },
+    })
+
+    if (!reporter) {
+      return { success: false, error: "User not found" }
+    }
+
+    // Verify listing exists
+    const listing = await prisma.listing.findUnique({
+      where: { id: listingId },
+      select: { id: true },
+    })
+
+    if (!listing) {
+      return { success: false, error: "Listing not found" }
+    }
+
+    // Create report
+    const report = await prisma.report.create({
+      data: {
+        listingId,
+        reportedId: reporter.id,
+        reason,
+        description: details || null,
+        status: "PENDING",
+      },
+      select: { id: true },
+    })
+
+    return {
+      success: true,
+      reportId: report.id,
+    }
+  } catch (error) {
+    console.error("Error reporting listing:", error)
+    return { success: false, error: "Failed to submit report" }
   }
 }
 
