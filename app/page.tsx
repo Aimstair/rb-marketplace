@@ -11,13 +11,34 @@ import Navigation from "@/components/navigation"
 import FeaturedListings from "@/components/featured-listings"
 import TrendingGames from "@/components/trending-games"
 import TopVouchedSellers from "@/components/top-vouched-sellers"
-import { getLandingStats } from "@/app/actions/trends"
+import { getLandingStats, getPopularGames, getTopTraders } from "@/app/actions/trends"
+
+interface PopularGame {
+  game: string
+  listings: number
+  avgPrice: number
+  totalViews: number
+}
+
+interface TopTrader {
+  id: string
+  username: string
+  avatar: string | null
+  vouch: number
+  joinDate: Date
+  listings: number
+  verified: boolean
+}
 
 export default function HomePage() {
   const router = useRouter()
   const [searchQuery, setSearchQuery] = useState("")
   const [stats, setStats] = useState({ totalUsers: 0, totalListings: 0, totalVolume: 0, activeTraders: 0 })
+  const [games, setGames] = useState<PopularGame[]>([])
+  const [traders, setTraders] = useState<TopTrader[]>([])
   const [loading, setLoading] = useState(true)
+  const [gamesLoading, setGamesLoading] = useState(true)
+  const [tradersLoading, setTradersLoading] = useState(true)
 
   // Load stats on mount
   useEffect(() => {
@@ -35,6 +56,42 @@ export default function HomePage() {
     }
 
     loadStats()
+  }, [])
+
+  // Load trending games
+  useEffect(() => {
+    const loadGames = async () => {
+      try {
+        const result = await getPopularGames(6)
+        if (result.success && result.data) {
+          setGames(result.data)
+        }
+      } catch (err) {
+        console.error("Failed to load games:", err)
+      } finally {
+        setGamesLoading(false)
+      }
+    }
+
+    loadGames()
+  }, [])
+
+  // Load top traders
+  useEffect(() => {
+    const loadTraders = async () => {
+      try {
+        const result = await getTopTraders(4)
+        if (result.success && result.data) {
+          setTraders(result.data)
+        }
+      } catch (err) {
+        console.error("Failed to load traders:", err)
+      } finally {
+        setTradersLoading(false)
+      }
+    }
+
+    loadTraders()
   }, [])
 
   const handleSearch = (e: React.FormEvent) => {
@@ -140,7 +197,7 @@ export default function HomePage() {
             </h2>
             <p className="text-muted-foreground">Most popular items being traded</p>
           </div>
-          <TrendingGames />
+          <TrendingGames games={games} isLoading={gamesLoading} />
         </div>
       </section>
 
@@ -154,7 +211,7 @@ export default function HomePage() {
             </h2>
             <p className="text-muted-foreground">Trusted community members</p>
           </div>
-          <TopVouchedSellers />
+          <TopVouchedSellers sellers={traders} isLoading={tradersLoading} />
         </div>
       </section>
 

@@ -15,7 +15,9 @@ import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
 import { createListing, createCurrencyListing } from "@/app/actions/listings"
 
-const itemCategories = ["Pets", "Limiteds", "Game Passes", "Accounts", "UGC", "Cross-Trading", "Other"]
+const itemCategories = ["Accessories", "Games", "Accounts"]
+
+const gameItemTypes = ["In-Game Items", "Gamepasses", "Services"]
 
 const games = ["Adopt Me", "Pet Simulator X", "Blox Fruits", "Roblox Limited", "Brookhaven RP", "Jailbreak", "Other"]
 
@@ -46,6 +48,7 @@ export default function SellPage() {
     title: "",
     description: "",
     category: "",
+    itemType: "",
     game: "",
     price: "",
     image: "",
@@ -77,9 +80,22 @@ export default function SellPage() {
   const handleItemChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target
     const checked = (e.target as HTMLInputElement).checked
+    let updates: any = { [name]: type === "checkbox" ? checked : value }
+    
+    // Auto-set itemType when category changes
+    if (name === "category") {
+      if (value === "Games") {
+        updates.itemType = ""
+      } else if (value === "Accounts") {
+        updates.itemType = "Account"
+      } else if (value === "Accessories") {
+        updates.itemType = "Limited"
+      }
+    }
+    
     setItemFormData({
       ...itemFormData,
-      [name]: type === "checkbox" ? checked : value,
+      ...updates,
     })
   }
 
@@ -145,7 +161,7 @@ export default function SellPage() {
           description: itemFormData.description,
           category: itemFormData.category as "Accessories" | "Games" | "Accounts",
           game: itemFormData.game,
-          itemType: itemFormData.category === "Accessories" ? "Limited" : "In-Game Items",
+          itemType: itemFormData.itemType,
           price: Number(itemFormData.price),
           image: itemFormData.image,
           condition: itemFormData.condition as "Mint" | "New" | "Used",
@@ -290,7 +306,7 @@ export default function SellPage() {
                     <h2 className="text-xl font-bold mb-4">Category</h2>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="text-sm font-semibold mb-2 block">Item Type *</label>
+                        <label className="text-sm font-semibold mb-2 block">Category *</label>
                         <select
                           name="category"
                           value={itemFormData.category}
@@ -305,6 +321,25 @@ export default function SellPage() {
                           ))}
                         </select>
                       </div>
+
+                      {itemFormData.category === "Games" && (
+                        <div>
+                          <label className="text-sm font-semibold mb-2 block">Item Type *</label>
+                          <select
+                            name="itemType"
+                            value={itemFormData.itemType}
+                            onChange={handleItemChange}
+                            className="w-full px-3 py-2 border border-border rounded-lg bg-background"
+                          >
+                            <option value="">Select item type</option>
+                            {gameItemTypes.map((type) => (
+                              <option key={type} value={type}>
+                                {type}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
 
                       <div>
                         <label className="text-sm font-semibold mb-2 block">Game *</label>

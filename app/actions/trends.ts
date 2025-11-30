@@ -326,6 +326,65 @@ export async function getTopSellingItems(
 }
 
 /**
+ * Get top traders by vouch count
+ * Returns users with highest reputation/vouch count
+ */
+export async function getTopTraders(
+  limit: number = 4,
+): Promise<{
+  success: boolean
+  data?: Array<{
+    id: string
+    username: string
+    avatar: string | null
+    vouch: number
+    joinDate: Date
+    listings: number
+    verified: boolean
+  }>
+  error?: string
+}> {
+  try {
+    const traders = await prisma.user.findMany({
+      select: {
+        id: true,
+        username: true,
+        profilePicture: true,
+        isVerified: true,
+        joinDate: true,
+        vouchesReceived: {
+          select: { id: true },
+        },
+        listings: {
+          where: { status: "available" },
+          select: { id: true },
+        },
+      },
+      orderBy: [
+        { vouchesReceived: { _count: "desc" } },
+        { joinDate: "asc" },
+      ],
+      take: limit,
+    })
+
+    const formatted = traders.map((trader) => ({
+      id: trader.id,
+      username: trader.username,
+      avatar: trader.profilePicture,
+      vouch: trader.vouchesReceived.length,
+      joinDate: trader.joinDate,
+      listings: trader.listings.length,
+      verified: trader.isVerified,
+    }))
+
+    return { success: true, data: formatted }
+  } catch (err) {
+    console.error("Failed to get top traders:", err)
+    return { success: false, error: "Failed to load top traders" }
+  }
+}
+
+/**
  * Get most viewed listings (trending now)
  */
 export async function getMostViewedListings(

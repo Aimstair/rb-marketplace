@@ -4,8 +4,9 @@ import Link from "next/link"
 import { MessageCircle, User, Menu, X, LogOut, Settings, ShoppingBag, History, Gift, Bell, Shield } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { signOut, useSession } from "next-auth/react"
 import { Button } from "@/components/ui/button"
-import { useAuth } from "@/lib/auth-context"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,60 +14,83 @@ import {
   DropdownMenuSeparator,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu"
-import { getUnreadCount } from "@/app/actions/notifications"
-
-const mockNotifications = [
-  {
-    id: 1,
-    title: "New message from FastSeller123",
-    description: "Thanks for trading!",
-    time: "2 min ago",
-    read: false,
-  },
-  {
-    id: 2,
-    title: "Your listing was viewed",
-    description: "Golden Dragon Pet received 15 views",
-    time: "1 hour ago",
-    read: false,
-  },
-  {
-    id: 3,
-    title: "Price drop alert",
-    description: "Dominus Infernus price dropped by 10%",
-    time: "3 hours ago",
-    read: true,
-  },
-]
+import { getUnreadCount, getNotifications, markAsRead } from "@/app/actions/notifications"
+import type { NotificationData } from "@/app/actions/notifications"
 
 export default function Navigation() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
+  const [notifications, setNotifications] = useState<NotificationData[]>([])
   const [loadingUnread, setLoadingUnread] = useState(false)
+  const [loadingNotifications, setLoadingNotifications] = useState(false)
   const router = useRouter()
-  const { user, logout } = useAuth()
+  const { data: session, status } = useSession()
 
+  // Fetch unread count on mount and periodically
   useEffect(() => {
-    if (user) {
+    if (status === "authenticated") {
       fetchUnreadCount()
       // Refresh unread count every 30 seconds
       const interval = setInterval(fetchUnreadCount, 30000)
       return () => clearInterval(interval)
     }
-  }, [user])
+  }, [status])
+
+  // Fetch notifications when dropdown is opened
+  const fetchNotifications = async () => {
+    if (notifications.length > 0) return // Already loaded
+    setLoadingNotifications(true)
+    try {
+      const result = await getNotifications()
+      if (result.success && result.notifications) {
+        setNotifications(result.notifications)
+      }
+    } catch (err) {
+      console.error("Failed to fetch notifications:", err)
+    } finally {
+      setLoadingNotifications(false)
+    }
+  }
 
   const fetchUnreadCount = async () => {
     setLoadingUnread(true)
-    const result = await getUnreadCount()
-    if (result.success && result.count !== undefined) {
-      setUnreadCount(result.count)
+    try {
+      const result = await getUnreadCount()
+      if (result.success && result.count !== undefined) {
+        setUnreadCount(result.count)
+      }
+    } catch (err) {
+      console.error("Failed to fetch unread count:", err)
+    } finally {
+      setLoadingUnread(false)
     }
-    setLoadingUnread(false)
   }
 
-  const handleLogout = () => {
-    logout()
-    router.push("/")
+  const handleMarkAsRead = async (notificationId: string) => {
+    try {
+      const result = await markAsRead(notificationId)
+      if (result.success) {
+        setNotifications(notifications.map((n) => (n.id === notificationId ? { ...n, isRead: true } : n)))
+        setUnreadCount(Math.max(0, unreadCount - 1))
+      }
+    } catch (err) {
+      console.error("Failed to mark notification as read:", err)
+    }
+  }
+
+  const handleLogout = async () => {
+    await signOut({ redirect: true, callbackUrl: "/" })
+  }
+
+  const formatTimeAgo = (date: Date): string => {
+    const now = new Date()
+    const seconds = Math.floor((now.getTime() - new Date(date).getTime()) / 1000)
+
+    if (seconds < 60) return "just now"
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
+    if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`
+    return new Date(date).toLocaleDateString()
   }
 
   return (
@@ -88,7 +112,7 @@ export default function Navigation() {
           <Link href="/trends" className="text-muted-foreground hover:text-foreground transition">
             Trends
           </Link>
-          {user?.role === "admin" && (
+          {session?.user && session.user.role === "admin" && (
             <Link
               href="/admin"
               className="text-muted-foreground hover:text-foreground transition flex items-center gap-1"
@@ -101,11 +125,11 @@ export default function Navigation() {
 
         {/* Right Actions */}
         <div className="hidden md:flex items-center gap-4">
-          {user ? (
+          {status === "authenticated" && session?.user ? (
             <>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="relative">
+                  <Button variant="ghost" size="icon" className="relative" onClick={fetchNotifications}>
                     <Bell className="w-5 h-5" />
                     {unreadCount > 0 && (
                       <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">
@@ -119,23 +143,39 @@ export default function Navigation() {
                     <p className="font-semibold">Notifications</p>
                   </div>
                   <div className="max-h-[300px] overflow-y-auto">
-                    {mockNotifications.slice(0, 5).map((notification) => (
-                      <div
-                        key={notification.id}
-                        className={`px-3 py-3 border-b last:border-b-0 hover:bg-muted cursor-pointer ${
-                          !notification.read ? "bg-primary/5" : ""
-                        }`}
-                      >
-                        <div className="flex items-start gap-2">
-                          {!notification.read && <div className="w-2 h-2 bg-primary rounded-full mt-2 flex-shrink-0" />}
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium text-sm truncate">{notification.title}</p>
-                            <p className="text-xs text-muted-foreground truncate">{notification.description}</p>
-                            <p className="text-xs text-muted-foreground mt-1">{notification.time}</p>
+                    {loadingNotifications ? (
+                      Array.from({ length: 3 }).map((_, i) => (
+                        <div key={i} className="px-3 py-3 border-b">
+                          <Skeleton className="h-4 w-full mb-2" />
+                          <Skeleton className="h-3 w-24" />
+                        </div>
+                      ))
+                    ) : notifications.length > 0 ? (
+                      notifications.slice(0, 5).map((notification) => (
+                        <div
+                          key={notification.id}
+                          onClick={() => handleMarkAsRead(notification.id)}
+                          className={`px-3 py-3 border-b last:border-b-0 hover:bg-muted cursor-pointer ${
+                            !notification.isRead ? "bg-primary/5" : ""
+                          }`}
+                        >
+                          <div className="flex items-start gap-2">
+                            {!notification.isRead && (
+                              <div className="w-2 h-2 bg-primary rounded-full mt-2 flex-shrink-0" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-sm truncate">{notification.title}</p>
+                              <p className="text-xs text-muted-foreground truncate">{notification.message}</p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {formatTimeAgo(notification.createdAt)}
+                              </p>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      ))
+                    ) : (
+                      <div className="px-3 py-6 text-center text-muted-foreground text-sm">No notifications</div>
+                    )}
                   </div>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
@@ -162,12 +202,12 @@ export default function Navigation() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56 bg-popover border shadow-lg">
                   <div className="px-2 py-1.5">
-                    <p className="font-semibold text-sm">{user.username}</p>
-                    <p className="text-xs text-muted-foreground">{user.email}</p>
+                    <p className="font-semibold text-sm">{session.user.name || session.user.email}</p>
+                    <p className="text-xs text-muted-foreground">{session.user.email}</p>
                   </div>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
-                    <Link href={`/profile/${user.id}`} className="cursor-pointer">
+                    <Link href={`/profile/${session.user.id}`} className="cursor-pointer">
                       <User className="w-4 h-4 mr-2" />
                       My Profile
                     </Link>
@@ -204,7 +244,7 @@ export default function Navigation() {
                 </DropdownMenuContent>
               </DropdownMenu>
             </>
-          ) : (
+          ) : status === "unauthenticated" ? (
             <>
               <Link href="/auth/login">
                 <Button variant="ghost" size="icon">
@@ -215,7 +255,7 @@ export default function Navigation() {
                 <Button>Sign Up</Button>
               </Link>
             </>
-          )}
+          ) : null}
         </div>
 
         {/* Mobile Menu Button */}
@@ -237,9 +277,9 @@ export default function Navigation() {
             <Link href="/trends" className="py-2 text-muted-foreground hover:text-foreground">
               Trends
             </Link>
-            {user && (
+            {status === "authenticated" && session?.user && (
               <>
-                {user.role === "admin" && (
+                {session.user.role === "admin" && (
                   <Link
                     href="/admin"
                     className="py-2 text-muted-foreground hover:text-foreground flex items-center gap-2"
@@ -249,7 +289,7 @@ export default function Navigation() {
                   </Link>
                 )}
                 <div className="border-t pt-4">
-                  <Link href={`/profile/${user.id}`} className="py-2 text-muted-foreground hover:text-foreground block">
+                  <Link href={`/profile/${session.user.id}`} className="py-2 text-muted-foreground hover:text-foreground block">
                     My Profile
                   </Link>
                   <Link href="/my-listings" className="py-2 text-muted-foreground hover:text-foreground block">
@@ -275,7 +315,7 @@ export default function Navigation() {
                 </div>
               </>
             )}
-            {!user && (
+            {status === "unauthenticated" && (
               <div className="flex gap-2 pt-4 border-t">
                 <Link href="/auth/login" className="flex-1">
                   <Button variant="outline" className="w-full bg-transparent">

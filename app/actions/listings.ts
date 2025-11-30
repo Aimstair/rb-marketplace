@@ -32,6 +32,7 @@ export async function getListings(
     // Build where clause
     const where: any = {
       status: "available",
+      game: { not: "Currency Exchange" }, // EXCLUDE currency items
     }
 
     // Search filter
@@ -183,6 +184,107 @@ export async function getAvailableGames(mainCategory: string = "All"): Promise<s
   } catch (error) {
     console.error("Error fetching available games:", error)
     return ["All Games"]
+  }
+}
+
+export interface CurrencyListing {
+  id: string
+  game: string
+  description: string | null
+  currencyType: string
+  ratePerPeso: number
+  stock: number
+  sellerId: string
+  sellerUsername: string
+  upvotes: number
+  downvotes: number
+  status: "Available" | "Sold" | "Pending"
+}
+
+// Helper function to parse currency details from description
+function parseCurrencyDescription(description: string): {
+  currencyType: string
+  ratePerPeso: number
+  stock: number
+  minOrder: number
+  maxOrder: number
+  notes?: string
+} {
+  const lines = description.split("\n")
+  const result: any = {}
+
+  for (const line of lines) {
+    if (line.startsWith("Currency:")) {
+      result.currencyType = line.replace("Currency:", "").trim()
+    } else if (line.startsWith("Rate:")) {
+      const match = line.match(/₱([\d.]+)/)
+      result.ratePerPeso = match ? parseFloat(match[1]) : 0
+    } else if (line.startsWith("Stock:")) {
+      result.stock = parseInt(line.replace("Stock:", "").trim()) || 0
+    } else if (line.startsWith("Min Order:")) {
+      result.minOrder = parseInt(line.replace("Min Order:", "").trim()) || 0
+    } else if (line.startsWith("Max Order:")) {
+      result.maxOrder = parseInt(line.replace("Max Order:", "").trim()) || 0
+    } else if (line.startsWith("Notes:")) {
+      result.notes = line.replace("Notes:", "").trim()
+    }
+  }
+
+  return result
+}
+
+export async function getCurrencyListings(): Promise<CurrencyListing[]> {
+  try {
+    const listings = await prisma.listing.findMany({
+      where: {
+        status: "available",
+        game: "Currency Exchange", // ONLY currency
+      },
+      include: {
+        seller: {
+          select: {
+            id: true,
+            username: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    })
+
+    return listings.map((listing: any) => {
+      const description = listing.description || ""
+      
+      // Parse currency details from description with safety checks
+      const currencyMatch = description.match(/Currency: (.+?)(?:\n|$)/)
+      const rateMatch = description.match(/Rate: ₱([\d.]+)/)
+      const stockMatch = description.match(/Stock: (\d+)/)
+
+      const currencyType = currencyMatch ? currencyMatch[1].trim() : "Unknown"
+      const ratePerPeso = rateMatch ? parseFloat(rateMatch[1]) : 0
+      const stock = stockMatch ? parseInt(stockMatch[1], 10) : 0
+
+      return {
+        id: listing.id,
+        game: listing.game,
+        description: listing.description,
+        currencyType,
+        ratePerPeso,
+        stock,
+        sellerId: listing.sellerId,
+        sellerUsername: listing.seller.username,
+        upvotes: listing.upvotes || 0,
+        downvotes: listing.downvotes || 0,
+        status: (listing.status === "available" ? "Available" : listing.status) as
+          | "Available"
+          | "Sold"
+          | "Pending",
+      }
+    })
+  } catch (error) {
+    console.error("Error fetching currency listings:", error)
+    return []
   }
 }
 

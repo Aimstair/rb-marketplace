@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -11,6 +11,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
+import { useToast } from "@/hooks/use-toast"
+import { getSupportTickets, closeTicket } from "@/app/actions/admin"
+import { useSession } from "next-auth/react"
 
 const mockTickets = [
   {
@@ -93,12 +96,123 @@ const mockTickets = [
 ]
 
 export default function SupportTicketsPage() {
+  const { data: session } = useSession()
+  const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [selectedTicket, setSelectedTicket] = useState<(typeof mockTickets)[0] | null>(null)
   const [replyMessage, setReplyMessage] = useState("")
+  const [tickets, setTickets] = useState<typeof mockTickets>([])
+  const [loading, setLoading] = useState(true)
+  const [closingId, setClosingId] = useState<string | null>(null)
 
-  const filteredTickets = mockTickets.filter((ticket) => {
+  useEffect(() => {
+    const fetchTickets = async () => {
+      try {
+        const result = await getSupportTickets()
+        if (result.success && result.data) {
+          // Map database tickets to mock format for UI
+          const mapped = result.data.map((ticket: any) => ({
+            id: ticket.id.slice(0, 8),
+            subject: ticket.subject,
+            user: {
+              username: ticket.user?.username || "Unknown User",
+              avatar: ticket.user?.profileImage || "/placeholder.svg",
+              email: ticket.user?.email || "unknown@example.com",
+            },
+            category: "support",
+            priority: "medium",
+            status: ticket.status.toLowerCase() === "open" ? "open" : "resolved",
+            createdAt: new Date(ticket.createdAt).toLocaleDateString(),
+            messages: [
+              {
+                sender: "user",
+                message: ticket.message,
+                time: new Date(ticket.createdAt).toLocaleDateString(),
+              },
+            ],
+            dbId: ticket.id,
+          }))
+          setTickets(mapped)
+          if (mapped.length > 0) {
+            setSelectedTicket(mapped[0])
+          }
+        }
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Failed to fetch support tickets",
+          variant: "destructive",
+        })
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchTickets()
+  }, [toast])
+
+  const handleCloseTicket = async () => {
+    if (!selectedTicket || !session?.user?.id) {
+      toast({
+        title: "Error",
+        description: "Unable to close ticket",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setClosingId(selectedTicket.dbId)
+    try {
+      const result = await closeTicket(selectedTicket.dbId, session.user.id)
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: "Ticket closed successfully",
+        })
+        setReplyMessage("")
+        // Refresh tickets
+        const refreshResult = await getSupportTickets()
+        if (refreshResult.success && refreshResult.data) {
+          const mapped = refreshResult.data.map((ticket: any) => ({
+            id: ticket.id.slice(0, 8),
+            subject: ticket.subject,
+            user: {
+              username: ticket.user?.username || "Unknown User",
+              avatar: ticket.user?.profileImage || "/placeholder.svg",
+              email: ticket.user?.email || "unknown@example.com",
+            },
+            category: "support",
+            priority: "medium",
+            status: ticket.status.toLowerCase() === "open" ? "open" : "resolved",
+            createdAt: new Date(ticket.createdAt).toLocaleDateString(),
+            messages: [
+              {
+                sender: "user",
+                message: ticket.message,
+                time: new Date(ticket.createdAt).toLocaleDateString(),
+              },
+            ],
+            dbId: ticket.id,
+          }))
+          setTickets(mapped)
+          if (mapped.length > 0) {
+            setSelectedTicket(mapped[0])
+          }
+        }
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to close ticket",
+          variant: "destructive",
+        })
+      }
+    } finally {
+      setClosingId(null)
+    }
+  }
+
+  const filteredTickets = tickets.filter((ticket) => {
     const matchesSearch =
       ticket.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
       ticket.user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -110,11 +224,11 @@ export default function SupportTicketsPage() {
   })
 
   const stats = {
-    total: mockTickets.length,
-    open: mockTickets.filter((t) => t.status === "open").length,
-    inProgress: mockTickets.filter((t) => t.status === "in-progress").length,
-    pending: mockTickets.filter((t) => t.status === "pending").length,
-    resolved: mockTickets.filter((t) => t.status === "resolved").length,
+    total: tickets.length,
+    open: tickets.filter((t) => t.status === "open").length,
+    inProgress: tickets.filter((t) => t.status === "in-progress").length,
+    pending: tickets.filter((t) => t.status === "pending").length,
+    resolved: tickets.filter((t) => t.status === "resolved").length,
   }
 
   const getPriorityBadge = (priority: string) => {
@@ -351,11 +465,26 @@ export default function SupportTicketsPage() {
                 <div className="flex gap-2">
                   {selectedTicket.status !== "resolved" && (
                     <>
-                      <Button variant="outline">Mark as Pending</Button>
-                      <Button className="bg-green-500 hover:bg-green-600">Resolve Ticket</Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          // Mark as pending
+                        }}
+                      >
+                        Mark as Pending
+                      </Button>
+                      <Button
+                        className="bg-green-500 hover:bg-green-600"
+                        onClick={handleCloseTicket}
+                        disabled={closingId === selectedTicket.dbId}
+                      >
+                        {closingId === selectedTicket.dbId ? "Closing..." : "Resolve Ticket"}
+                      </Button>
                     </>
                   )}
-                  {selectedTicket.status === "resolved" && <Button variant="outline">Reopen Ticket</Button>}
+                  {selectedTicket.status === "resolved" && (
+                    <Button variant="outline">Reopen Ticket</Button>
+                  )}
                 </div>
               </CardContent>
             </Card>

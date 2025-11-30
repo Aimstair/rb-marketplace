@@ -58,6 +58,10 @@ model User {
   // Report relations
   reportsSubmitted Report[] @relation("ReporterUser")
   reportsReceived  Report[] @relation("ReportedUser")
+  
+  // Admin relations
+  auditLogs        AuditLog[] @relation("AdminUser")
+  supportTickets   SupportTicket[]
 
   // NextAuth relations
   accounts         Account[]
@@ -223,6 +227,9 @@ model Transaction {
   buyerConfirmed   Boolean  @default(false)
   sellerConfirmed  Boolean  @default(false)
   
+  // Dispute relation
+  dispute          Dispute?
+  
   // Vouches linked to this transaction
   vouches          Vouch[]
   
@@ -306,6 +313,86 @@ model SubscriptionLog {
   @@index([userId])
   @@index([createdAt])
   @@map("subscription_logs")
+}
+
+model Dispute {
+  id             String   @id @default(cuid())
+  
+  // Relations
+  transactionId  String   @unique
+  transaction    Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  
+  // Details
+  reason         String   // "Item Not Received" | "Item Different" | "Scam" | "Other"
+  status         String   @default("OPEN") // "OPEN" | "RESOLVED"
+  resolution     String?  // Resolution details
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([transactionId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("disputes")
+}
+
+model SupportTicket {
+  id             String   @id @default(cuid())
+  
+  // Relations
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Details
+  subject        String
+  message        String   @db.Text
+  status         String   @default("OPEN") // "OPEN" | "CLOSED"
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("support_tickets")
+}
+
+model Announcement {
+  id             String   @id @default(cuid())
+  
+  // Details
+  title          String
+  content        String   @db.Text
+  type           String   @default("info") // "info" | "warning" | "maintenance" | "event" | "update"
+  isActive       Boolean  @default(true)
+  expiresAt      DateTime?
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([createdAt])
+  @@map("announcements")
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  
+  // Relations
+  adminId        String
+  admin          User     @relation("AdminUser", fields: [adminId], references: [id], onDelete: Cascade)
+  
+  // Details
+  action         String   // "USER_BANNED" | "REPORT_RESOLVED" | "TICKET_CLOSED" | "ANNOUNCEMENT_CREATED" | etc
+  targetId       String?  // ID of affected user/listing/report
+  details        String?  @db.Text
+  
+  createdAt      DateTime @default(now())
+
+  @@index([adminId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
 }
 
 // NextAuth Models

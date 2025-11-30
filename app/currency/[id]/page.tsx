@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, Suspense } from "react"
+import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Star, MessageCircle, Share2, Flag, Shield, Calendar, ThumbsUp, ThumbsDown } from "lucide-react"
 import Navigation from "@/components/navigation"
@@ -28,12 +28,12 @@ const mockCurrencyListings = {
     stock: 10000,
     description:
       "Robux available for sale at 3 Robux per ₱1. Will be transferred via in-game trade or gift card. No scams, trusted seller with 24 vouches.",
-    image: "/robux-currency.jpg",
-    images: ["/robux-currency.jpg", "/robux-currency-alt.jpg"],
+    image: "/placeholder.jpg",
+    images: ["/placeholder.jpg", "/placeholder.svg"],
     seller: {
       id: "seller1",
       username: "TrustTrader",
-      avatar: "/user-avatar-master-trader.jpg",
+      avatar: "/placeholder-user.jpg",
       vouch: 24,
       joinDate: "Jan 2023",
       listings: 28,
@@ -58,8 +58,8 @@ const mockCurrencyListings = {
     ratePerPeso: 2.5,
     stock: 25000,
     description: "Robux for sale at 2.5 per peso. Quick delivery available. Safe and secure transaction guaranteed.",
-    image: "/robux-5000.jpg",
-    images: ["/robux-5000.jpg"],
+    image: "/placeholder.jpg",
+    images: ["/placeholder.jpg"],
     seller: {
       id: "seller2",
       username: "FastDelivery",
@@ -89,12 +89,12 @@ const mockCurrencyListings = {
     stock: 1000000,
     description:
       "Adopt Me coins at 500 coins per peso. Perfect for new players. Can trade in-game. Proof of coins available.",
-    image: "/adopt-me-coins.jpg",
-    images: ["/adopt-me-coins.jpg"],
+    image: "/placeholder.jpg",
+    images: ["/placeholder.jpg"],
     seller: {
       id: "seller3",
       username: "CoinMaster",
-      avatar: "/user-avatar-trading.jpg",
+      avatar: "/placeholder-user.jpg",
       vouch: 31,
       joinDate: "Feb 2023",
       listings: 42,
@@ -114,11 +114,30 @@ const mockCurrencyListings = {
   },
 }
 
-function CurrencyListingDetailContent({ params }: { params: { id: string } }) {
+interface CurrencyListingDetailContentProps {
+  params: Promise<{ id: string }>
+}
+
+function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentProps) {
   const searchParams = useSearchParams()
   const router = useRouter()
   const { user } = useAuth()
-  const listing = mockCurrencyListings[params.id as keyof typeof mockCurrencyListings] || mockCurrencyListings["1"]
+  const [id, setId] = useState<string>("")
+  const [isReady, setIsReady] = useState(false)
+
+  // Initialize id from params
+  useEffect(() => {
+    ;(async () => {
+      const { id: resolvedId } = await params
+      setId(resolvedId)
+      setIsReady(true)
+    })()
+  }, [params])
+
+  // Get listing after id is ready
+  const listing = isReady
+    ? mockCurrencyListings[id as keyof typeof mockCurrencyListings] || mockCurrencyListings["1"]
+    : mockCurrencyListings["1"]
   const [selectedImage, setSelectedImage] = useState(listing.images[0])
   const [isSaved, setIsSaved] = useState(false)
   const [userVote, setUserVote] = useState<"up" | "down" | null>(null)
@@ -189,7 +208,7 @@ function CurrencyListingDetailContent({ params }: { params: { id: string } }) {
     setShowAmountDialog(false)
     setCurrencyAmount("")
     // Remove the contact=true from URL
-    router.replace(`/currency/${params.id}`)
+    router.replace(`/currency/${id}`)
   }
 
   const handleContactSeller = () => {
@@ -511,10 +530,6 @@ function CurrencyListingDetailContent({ params }: { params: { id: string } }) {
   )
 }
 
-export default function CurrencyListingDetailPage({ params }: { params: { id: string } }) {
-  return (
-    <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center">Loading...</div>}>
-      <CurrencyListingDetailContent params={params} />
-    </Suspense>
-  )
+export default function CurrencyListingDetailPage({ params }: CurrencyListingDetailContentProps) {
+  return <CurrencyListingDetailContent params={params} />
 }

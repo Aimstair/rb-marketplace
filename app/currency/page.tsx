@@ -1,11 +1,12 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Navigation from "@/components/navigation"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Star, Filter, ThumbsUp, ThumbsDown, MessageCircle } from "lucide-react"
+import { getCurrencyListings, type CurrencyListing as DBCurrencyListing } from "@/app/actions/listings"
 
 interface CurrencyListing {
   id: string
@@ -30,6 +31,7 @@ const GAME_CATEGORIES = [
   { name: "Pet Simulator", currency: "Tokens" },
 ]
 
+// Fallback mock listings in case DB is empty
 const MOCK_LISTINGS: CurrencyListing[] = [
   {
     id: "1",
@@ -42,7 +44,7 @@ const MOCK_LISTINGS: CurrencyListing[] = [
     deliveryMethods: ["In-game Trade", "Gift Card"],
     sellerId: "seller1",
     sellerName: "TrustTrader",
-    sellerAvatar: "/user-avatar-master-trader.jpg",
+    sellerAvatar: "/placeholder-user.jpg",
     upvotes: 45,
     downvotes: 2,
   },
@@ -72,7 +74,7 @@ const MOCK_LISTINGS: CurrencyListing[] = [
     deliveryMethods: ["In-game Trade"],
     sellerId: "seller3",
     sellerName: "CoinMaster",
-    sellerAvatar: "/user-avatar-trading.jpg",
+    sellerAvatar: "/placeholder-user.jpg",
     upvotes: 78,
     downvotes: 3,
   },
@@ -87,7 +89,7 @@ const MOCK_LISTINGS: CurrencyListing[] = [
     deliveryMethods: ["Gift Card"],
     sellerId: "seller4",
     sellerName: "GemTrader",
-    sellerAvatar: "/user-avatar-profile-trading.jpg",
+    sellerAvatar: "/placeholder-user.jpg",
     upvotes: 12,
     downvotes: 1,
   },
@@ -117,7 +119,7 @@ const MOCK_LISTINGS: CurrencyListing[] = [
     deliveryMethods: ["In-game Trade", "Gift Card"],
     sellerId: "seller6",
     sellerName: "RobuxPro",
-    sellerAvatar: "/user-avatar-master-trader.jpg",
+    sellerAvatar: "/placeholder-user.jpg",
     upvotes: 56,
     downvotes: 8,
   },
@@ -126,11 +128,72 @@ const MOCK_LISTINGS: CurrencyListing[] = [
 export default function CurrencyMarketplace() {
   const router = useRouter()
   const [selectedGame, setSelectedGame] = useState<string | null>(null)
+  const [listings, setListings] = useState<CurrencyListing[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [sortBy, setSortBy] = useState("rate-high")
   const [rateRange, setRateRange] = useState({ min: 0, max: 1000 })
 
-  const filteredListings = MOCK_LISTINGS.filter((listing) => {
+  // Fetch currency listings from database
+  useEffect(() => {
+    const fetchListings = async () => {
+      try {
+        console.log("[Currency Page] Fetching listings from database...")
+        setIsLoading(true)
+        const dbListings = await getCurrencyListings()
+        console.log("[Currency Page] Fetched listings:", dbListings)
+
+        if (dbListings && dbListings.length > 0) {
+          // Transform DB listings to UI format
+          const mapped: CurrencyListing[] = dbListings.map((listing: DBCurrencyListing) => {
+            // Safety check: default to empty string if description is null/undefined
+            const description = listing.description || ""
+            
+            // Parse currency details from description with safety checks
+            const currencyMatch = description.match(/Currency: (.+?)(?:\n|$)/)
+            const rateMatch = description.match(/Rate: ₱([\d.]+)/)
+            const stockMatch = description.match(/Stock: (\d+)/)
+
+            const currencyType = currencyMatch ? currencyMatch[1].trim() : "Unknown"
+            const ratePerPeso = rateMatch ? parseFloat(rateMatch[1]) : 0
+            const stock = stockMatch ? parseInt(stockMatch[1], 10) : 0
+
+            return {
+              id: listing.id,
+              game: listing.game,
+              currencyType,
+              ratePerPeso,
+              stock,
+              sellerVouches: 0,
+              status: listing.status as "Available" | "Sold" | "Pending",
+              deliveryMethods: ["Instant", "Manual"],
+              sellerId: listing.sellerId,
+              sellerName: listing.sellerUsername || "Unknown Seller",
+              sellerAvatar: "/placeholder-user.jpg",
+              upvotes: listing.upvotes || 0,
+              downvotes: listing.downvotes || 0,
+            }
+          })
+
+          console.log("[Currency Page] Transformed listings:", mapped)
+          setListings(mapped)
+        } else {
+          console.log("[Currency Page] No listings found, using mock data")
+          setListings(MOCK_LISTINGS)
+        }
+      } catch (error) {
+        console.error("[Currency Page] Error fetching listings:", error)
+        // Fallback to mock data on error
+        setListings(MOCK_LISTINGS)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchListings()
+  }, [])
+
+  const filteredListings = listings.filter((listing) => {
     const matchesGame = !selectedGame || listing.game === selectedGame
     const matchesSearch =
       searchQuery === "" ||
@@ -265,83 +328,98 @@ export default function CurrencyMarketplace() {
 
             {/* Listings */}
             <div className="lg:col-span-3">
-              <div className="mb-4 text-sm text-muted-foreground">
-                Found {sortedListings.length} listing{sortedListings.length !== 1 ? "s" : ""}
-              </div>
+              {isLoading ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
+                  <p className="text-muted-foreground">Loading currency listings...</p>
+                </div>
+              ) : (
+                <>
+                  <div className="mb-4 text-sm text-muted-foreground">
+                    Found {sortedListings.length} listing{sortedListings.length !== 1 ? "s" : ""}
+                  </div>
 
-              <div className="space-y-4">
-                {sortedListings.map((listing) => (
-                  <Card
-                    key={listing.id}
-                    className="p-4 hover:shadow-md transition cursor-pointer border-l-4 border-primary"
-                    onClick={() => handleListingClick(listing.id)}
-                  >
-                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
-                      {/* Currency Info */}
-                      <div className="md:col-span-3">
-                        <div className="font-semibold text-lg">{listing.game}</div>
-                        <div className="text-sm text-muted-foreground">{listing.currencyType}</div>
-                        <div className="text-sm font-medium mt-2 text-primary">
-                          {listing.ratePerPeso} {listing.currencyType} per ₱1
+                  <div className="space-y-4">
+                    {sortedListings.map((listing) => (
+                      <Card
+                        key={listing.id}
+                        className="p-4 hover:shadow-md transition cursor-pointer border-l-4 border-primary"
+                        onClick={() => handleListingClick(listing.id)}
+                      >
+                        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
+                          {/* Currency Info */}
+                          <div className="md:col-span-3">
+                            <div className="font-semibold text-lg">{listing.game}</div>
+                            <div className="text-sm text-muted-foreground">{listing.currencyType}</div>
+                            <div className="text-sm font-medium mt-2 text-primary">
+                              {listing.ratePerPeso} {listing.currencyType} per ₱1
+                            </div>
+                          </div>
+
+                          {/* Stock */}
+                          <div className="md:col-span-2">
+                            <div className="text-sm text-muted-foreground">Stock</div>
+                            <div className="text-2xl font-bold text-primary">{listing.stock.toLocaleString()}</div>
+                          </div>
+
+                          {/* Seller Info */}
+                          <div className="md:col-span-2">
+                            <div className="text-sm text-muted-foreground">Seller</div>
+                            <div className="flex items-center gap-1 mt-1">
+                              <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                              <span className="font-medium">{listing.sellerVouches}</span>
+                              <span className="text-xs text-muted-foreground">vouches</span>
+                            </div>
+                          </div>
+
+                          <div className="md:col-span-2">
+                            <div className="text-sm text-muted-foreground mb-1">Votes</div>
+                            <div className="flex items-center gap-3">
+                              <span className="flex items-center gap-1 text-green-600">
+                                <ThumbsUp className="w-4 h-4" />
+                                {listing.upvotes}
+                              </span>
+                              <span className="flex items-center gap-1 text-red-600">
+                                <ThumbsDown className="w-4 h-4" />
+                                {listing.downvotes}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Action - Message button */}
+                          <div className="md:col-span-3 flex gap-2">
+                            <Button
+                              className="w-full"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                const params = new URLSearchParams({
+                                  sellerId: listing.sellerId,
+                                  sellerName: listing.sellerName,
+                                  itemId: listing.id,
+                                  itemName: `${listing.currencyType} - ${listing.game}`,
+                                })
+                                router.push(`/messages?${params.toString()}`)
+                              }}
+                            >
+                              <MessageCircle className="w-4 h-4 mr-2" />
+                              Message
+                            </Button>
+                          </div>
                         </div>
-                      </div>
+                      </Card>
+                    ))}
 
-                      {/* Stock */}
-                      <div className="md:col-span-2">
-                        <div className="text-sm text-muted-foreground">Stock</div>
-                        <div className="text-2xl font-bold text-primary">{listing.stock.toLocaleString()}</div>
-                      </div>
-
-                      {/* Seller Info */}
-                      <div className="md:col-span-2">
-                        <div className="text-sm text-muted-foreground">Seller</div>
-                        <div className="flex items-center gap-1 mt-1">
-                          <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                          <span className="font-medium">{listing.sellerVouches}</span>
-                          <span className="text-xs text-muted-foreground">vouches</span>
-                        </div>
-                      </div>
-
-                      <div className="md:col-span-2">
-                        <div className="text-sm text-muted-foreground mb-1">Votes</div>
-                        <div className="flex items-center gap-3">
-                          <span className="flex items-center gap-1 text-green-600">
-                            <ThumbsUp className="w-4 h-4" />
-                            {listing.upvotes}
-                          </span>
-                          <span className="flex items-center gap-1 text-red-600">
-                            <ThumbsDown className="w-4 h-4" />
-                            {listing.downvotes}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Action - Message button */}
-                      <div className="md:col-span-3 flex gap-2">
-                        <Button
-                          className="w-full"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            router.push(`/currency/${listing.id}?contact=true`)
-                          }}
-                        >
-                          <MessageCircle className="w-4 h-4 mr-2" />
-                          Message
+                    {sortedListings.length === 0 && (
+                      <Card className="p-12 text-center">
+                        <p className="text-muted-foreground mb-4">No listings found matching your filters</p>
+                        <Button variant="outline" onClick={() => setSelectedGame(null)}>
+                          Clear Filters
                         </Button>
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-
-                {sortedListings.length === 0 && (
-                  <Card className="p-12 text-center">
-                    <p className="text-muted-foreground mb-4">No listings found matching your filters</p>
-                    <Button variant="outline" onClick={() => setSelectedGame(null)}>
-                      Clear Filters
-                    </Button>
-                  </Card>
-                )}
-              </div>
+                      </Card>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

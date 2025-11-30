@@ -19,12 +19,12 @@ const mockListingDetails = {
     description:
       "Golden Dragon Pet from Adopt Me! This is a rare pet that has been well-maintained. Perfect condition, never traded or scammed. Comes with proof of legitimacy.",
     price: 2500,
-    image: "/golden-dragon-pet-roblox.jpg",
-    images: ["/golden-dragon-pet-roblox.jpg", "/placeholder.svg?key=img1", "/placeholder.svg?key=img2"],
+    image: "/placeholder.jpg",
+    images: ["/placeholder.jpg", "/placeholder.svg?key=img1", "/placeholder.svg?key=img2"],
     seller: {
       id: 1,
       username: "NinjaTrader",
-      avatar: "/user-avatar-profile-trading.jpg",
+      avatar: "/placeholder-user.jpg",
       vouch: 42,
       joinDate: "Jan 2023",
       listings: 28,
@@ -56,10 +56,36 @@ const mockListingDetails = {
   },
 }
 
-export default function ListingDetailPage({ params }: { params: { id: string } }) {
+interface ListingDetailPageProps {
+  params: Promise<{ id: string }>
+}
+
+export default function ListingDetailPage({ params }: ListingDetailPageProps) {
+  const [id, setId] = useState<string>("")
+  const [isReady, setIsReady] = useState(false)
   const { user } = useAuth()
   const router = useRouter()
-  const listing = mockListingDetails[params.id] || mockListingDetails[1]
+
+  useEffect(() => {
+    ;(async () => {
+      const { id: resolvedId } = await params
+      setId(resolvedId)
+      setIsReady(true)
+    })()
+  }, [params])
+
+  if (!isReady) {
+    return (
+      <main className="min-h-screen bg-background">
+        <Navigation />
+        <div className="container mx-auto px-4 py-8">
+          <p className="text-center text-muted-foreground">Loading...</p>
+        </div>
+      </main>
+    )
+  }
+
+  const listing = mockListingDetails[id as keyof typeof mockListingDetails] || mockListingDetails[1]
   const [selectedImage, setSelectedImage] = useState(listing.images[0])
   const [isSaved, setIsSaved] = useState(false)
   const [userVote, setUserVote] = useState<"up" | "down" | null>(null)
@@ -67,20 +93,21 @@ export default function ListingDetailPage({ params }: { params: { id: string } }
 
   // Track view on component mount
   useEffect(() => {
+    if (!id) return
     const trackView = async () => {
       try {
-        await incrementListingView(params.id)
+        await incrementListingView(id)
       } catch (err) {
         console.error("Failed to track view:", err)
       }
     }
 
     trackView()
-  }, [params.id])
+  }, [id])
 
   const requireAuth = (action: () => void) => {
     if (!user) {
-      router.push(`/auth/login?redirect=/listing/${params.id}`)
+      router.push(`/auth/login?redirect=/listing/${id}`)
       return
     }
     action()

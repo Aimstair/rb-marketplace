@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,6 +19,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import { useToast } from "@/hooks/use-toast"
 import {
   Megaphone,
   Plus,
@@ -32,6 +33,8 @@ import {
   Info,
   Sparkles,
 } from "lucide-react"
+import { getAnnouncements, createAnnouncement, deleteAnnouncement } from "@/app/actions/admin"
+import { useSession } from "next-auth/react"
 
 const mockAnnouncements = [
   {
@@ -99,12 +102,138 @@ const statusConfig: Record<string, { color: string; label: string }> = {
 }
 
 export default function AnnouncementsPage() {
+  const { data: session } = useSession()
+  const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState("")
   const [typeFilter, setTypeFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [announcements, setAnnouncements] = useState<typeof mockAnnouncements>([])
+  const [loading, setLoading] = useState(true)
+  const [creating, setCreating] = useState(false)
+  const [deleting, setDeleting] = useState<string | null>(null)
 
-  const filteredAnnouncements = mockAnnouncements.filter((announcement) => {
+  // Form fields for create
+  const [formData, setFormData] = useState({
+    title: "",
+    content: "",
+    type: "info",
+    expiresAt: "",
+  })
+
+  useEffect(() => {
+    const fetchAnnouncements = async () => {
+      try {
+        const result = await getAnnouncements()
+        if (result.success && result.data) {
+          // Map database announcements to mock format
+          const mapped = result.data.map((ann: any) => ({
+            id: ann.id.slice(0, 8),
+            title: ann.title,
+            content: ann.content,
+            type: ann.type.toLowerCase(),
+            status: ann.isActive ? "active" : "expired",
+            createdAt: new Date(ann.createdAt).toLocaleDateString(),
+            expiresAt: ann.expiresAt ? new Date(ann.expiresAt).toLocaleDateString() : "No expiry",
+            dbId: ann.id,
+          }))
+          setAnnouncements(mapped)
+        }
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Failed to fetch announcements",
+          variant: "destructive",
+        })
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchAnnouncements()
+  }, [toast])
+
+  const handleCreate = async () => {
+    if (!session?.user?.id || !formData.title.trim() || !formData.content.trim()) {
+      toast({
+        title: "Error",
+        description: "Please fill in all required fields",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setCreating(true)
+    try {
+      const result = await createAnnouncement(
+        {
+          title: formData.title,
+          content: formData.content,
+          type: formData.type,
+          isActive: true,
+          expiresAt: formData.expiresAt ? new Date(formData.expiresAt) : undefined,
+        },
+        session.user.id
+      )
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: "Announcement created successfully",
+        })
+        setFormData({ title: "", content: "", type: "info", expiresAt: "" })
+        setIsCreateOpen(false)
+        // Refresh
+        const refreshResult = await getAnnouncements()
+        if (refreshResult.success && refreshResult.data) {
+          const mapped = refreshResult.data.map((ann: any) => ({
+            id: ann.id.slice(0, 8),
+            title: ann.title,
+            content: ann.content,
+            type: ann.type.toLowerCase(),
+            status: ann.isActive ? "active" : "expired",
+            createdAt: new Date(ann.createdAt).toLocaleDateString(),
+            expiresAt: ann.expiresAt ? new Date(ann.expiresAt).toLocaleDateString() : "No expiry",
+            dbId: ann.id,
+          }))
+          setAnnouncements(mapped)
+        }
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to create announcement",
+          variant: "destructive",
+        })
+      }
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const handleDelete = async (announcementId: string) => {
+    if (!session?.user?.id) return
+
+    setDeleting(announcementId)
+    try {
+      const result = await deleteAnnouncement(announcementId, session.user.id)
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: "Announcement deleted successfully",
+        })
+        setAnnouncements(announcements.filter((a) => a.dbId !== announcementId))
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to delete announcement",
+          variant: "destructive",
+        })
+      }
+    } finally {
+      setDeleting(null)
+    }
+  }
+
+  const filteredAnnouncements = announcements.filter((announcement) => {
     const matchesSearch =
       announcement.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       announcement.content.toLowerCase().includes(searchQuery.toLowerCase())
@@ -135,16 +264,27 @@ export default function AnnouncementsPage() {
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
                 <Label htmlFor="title">Title</Label>
-                <Input id="title" placeholder="Announcement title..." />
+                <Input
+                  id="title"
+                  placeholder="Announcement title..."
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="content">Content</Label>
-                <Textarea id="content" placeholder="Announcement content..." rows={4} />
+                <Textarea
+                  id="content"
+                  placeholder="Announcement content..."
+                  rows={4}
+                  value={formData.content}
+                  onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <Label htmlFor="type">Type</Label>
-                  <Select>
+                  <Select value={formData.type} onValueChange={(value) => setFormData({ ...formData, type: value })}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select type" />
                     </SelectTrigger>
@@ -159,7 +299,12 @@ export default function AnnouncementsPage() {
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="expires">Expires</Label>
-                  <Input id="expires" type="date" />
+                  <Input
+                    id="expires"
+                    type="date"
+                    value={formData.expiresAt}
+                    onChange={(e) => setFormData({ ...formData, expiresAt: e.target.value })}
+                  />
                 </div>
               </div>
             </div>
@@ -167,7 +312,9 @@ export default function AnnouncementsPage() {
               <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={() => setIsCreateOpen(false)}>Create</Button>
+              <Button onClick={handleCreate} disabled={creating}>
+                {creating ? "Creating..." : "Create"}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -181,7 +328,7 @@ export default function AnnouncementsPage() {
             <Eye className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockAnnouncements.filter((a) => a.status === "active").length}</div>
+            <div className="text-2xl font-bold">{announcements.filter((a) => a.status === "active").length}</div>
           </CardContent>
         </Card>
         <Card>
@@ -190,7 +337,7 @@ export default function AnnouncementsPage() {
             <Calendar className="h-4 w-4 text-blue-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockAnnouncements.filter((a) => a.status === "scheduled").length}</div>
+            <div className="text-2xl font-bold">{announcements.filter((a) => a.status === "scheduled").length}</div>
           </CardContent>
         </Card>
         <Card>
@@ -199,7 +346,7 @@ export default function AnnouncementsPage() {
             <EyeOff className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockAnnouncements.filter((a) => a.status === "expired").length}</div>
+            <div className="text-2xl font-bold">{announcements.filter((a) => a.status === "expired").length}</div>
           </CardContent>
         </Card>
         <Card>
@@ -208,7 +355,7 @@ export default function AnnouncementsPage() {
             <Megaphone className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockAnnouncements.length}</div>
+            <div className="text-2xl font-bold">{announcements.length}</div>
           </CardContent>
         </Card>
       </div>
@@ -257,46 +404,62 @@ export default function AnnouncementsPage() {
 
       {/* Announcements List */}
       <div className="space-y-4">
-        {filteredAnnouncements.map((announcement) => {
-          const TypeIcon = typeConfig[announcement.type]?.icon || Info
-          return (
-            <Card key={announcement.id}>
-              <CardContent className="pt-6">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-4">
-                    <div className={`rounded-lg p-2 ${typeConfig[announcement.type]?.color || "bg-muted"}`}>
-                      <TypeIcon className="h-5 w-5" />
+        {loading ? (
+          <Card>
+            <CardContent className="pt-6 text-center">Loading announcements...</CardContent>
+          </Card>
+        ) : filteredAnnouncements.length === 0 ? (
+          <Card>
+            <CardContent className="pt-6 text-center text-muted-foreground">No announcements found</CardContent>
+          </Card>
+        ) : (
+          filteredAnnouncements.map((announcement) => {
+            const TypeIcon = typeConfig[announcement.type]?.icon || Info
+            return (
+              <Card key={announcement.id}>
+                <CardContent className="pt-6">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-4">
+                      <div className={`rounded-lg p-2 ${typeConfig[announcement.type]?.color || "bg-muted"}`}>
+                        <TypeIcon className="h-5 w-5" />
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-semibold">{announcement.title}</h3>
+                          <Badge variant="outline" className={typeConfig[announcement.type]?.color}>
+                            {typeConfig[announcement.type]?.label || announcement.type}
+                          </Badge>
+                          <Badge variant="outline" className={statusConfig[announcement.status]?.color}>
+                            {statusConfig[announcement.status]?.label || announcement.status}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">{announcement.content}</p>
+                        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                          <span>Created: {announcement.createdAt}</span>
+                          <span>Expires: {announcement.expiresAt}</span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-semibold">{announcement.title}</h3>
-                        <Badge variant="outline" className={typeConfig[announcement.type]?.color}>
-                          {typeConfig[announcement.type]?.label || announcement.type}
-                        </Badge>
-                        <Badge variant="outline" className={statusConfig[announcement.status]?.color}>
-                          {statusConfig[announcement.status]?.label || announcement.status}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-muted-foreground">{announcement.content}</p>
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                        <span>Created: {announcement.createdAt}</span>
-                        <span>Expires: {announcement.expiresAt}</span>
-                      </div>
+                    <div className="flex items-center gap-2">
+                      <Button variant="ghost" size="icon" disabled>
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-destructive"
+                        onClick={() => handleDelete(announcement.dbId)}
+                        disabled={deleting === announcement.dbId}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button variant="ghost" size="icon">
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="text-destructive">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )
-        })}
+                </CardContent>
+              </Card>
+            )
+          })
+        )}
       </div>
     </div>
   )

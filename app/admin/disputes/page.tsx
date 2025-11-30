@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { useToast } from "@/hooks/use-toast"
 import {
   Scale,
   Search,
@@ -32,6 +33,8 @@ import {
   DollarSign,
   ExternalLink,
 } from "lucide-react"
+import { getDisputes, resolveDispute } from "@/app/actions/admin"
+import { useSession } from "next-auth/react"
 
 const mockDisputes = [
   {
@@ -123,12 +126,120 @@ const typeConfig: Record<string, { color: string; label: string }> = {
 }
 
 export default function DisputesPage() {
+  const { data: session } = useSession()
+  const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [priorityFilter, setPriorityFilter] = useState("all")
   const [selectedDispute, setSelectedDispute] = useState<(typeof mockDisputes)[0] | null>(null)
+  const [disputes, setDisputes] = useState<typeof mockDisputes>([])
+  const [loading, setLoading] = useState(true)
+  const [resolvingId, setResolvingId] = useState<string | null>(null)
+  const [resolutionText, setResolutionText] = useState("")
 
-  const filteredDisputes = mockDisputes.filter((dispute) => {
+  useEffect(() => {
+    const fetchDisputes = async () => {
+      try {
+        const result = await getDisputes()
+        if (result.success && result.data) {
+          // Map database disputes to mock format for UI
+          const mapped = result.data.map((dispute: any) => ({
+            id: dispute.id.slice(0, 8),
+            type: "trade",
+            status: dispute.status.toLowerCase() === "open" ? "in_review" : "resolved",
+            priority: "medium",
+            buyer: {
+              username: dispute.transaction?.buyer?.username || "Unknown Buyer",
+              avatar: dispute.transaction?.buyer?.profileImage || "/placeholder.svg",
+            },
+            seller: {
+              username: dispute.transaction?.seller?.username || "Unknown Seller",
+              avatar: dispute.transaction?.seller?.profileImage || "/placeholder.svg",
+            },
+            item: dispute.transaction?.listing?.title || "Unknown Item",
+            value: `$${dispute.transaction?.amount.toFixed(2)}`,
+            reason: dispute.reason,
+            createdAt: new Date(dispute.createdAt).toLocaleDateString(),
+            lastUpdate: new Date(dispute.createdAt).toLocaleDateString(),
+            messages: 0,
+            resolution: dispute.resolution || undefined,
+            dbId: dispute.id,
+          }))
+          setDisputes(mapped)
+        }
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Failed to fetch disputes",
+          variant: "destructive",
+        })
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchDisputes()
+  }, [toast])
+
+  const handleResolveDispute = async (disputeId: string) => {
+    if (!session?.user?.id || !resolutionText.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter a resolution",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setResolvingId(disputeId)
+    try {
+      const result = await resolveDispute(disputeId, resolutionText, session.user.id)
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: "Dispute resolved successfully",
+        })
+        setResolutionText("")
+        // Refresh disputes
+        const refreshResult = await getDisputes()
+        if (refreshResult.success && refreshResult.data) {
+          const mapped = refreshResult.data.map((dispute: any) => ({
+            id: dispute.id.slice(0, 8),
+            type: "trade",
+            status: dispute.status.toLowerCase() === "open" ? "in_review" : "resolved",
+            priority: "medium",
+            buyer: {
+              username: dispute.transaction?.buyer?.username || "Unknown Buyer",
+              avatar: dispute.transaction?.buyer?.profileImage || "/placeholder.svg",
+            },
+            seller: {
+              username: dispute.transaction?.seller?.username || "Unknown Seller",
+              avatar: dispute.transaction?.seller?.profileImage || "/placeholder.svg",
+            },
+            item: dispute.transaction?.listing?.title || "Unknown Item",
+            value: `$${dispute.transaction?.amount.toFixed(2)}`,
+            reason: dispute.reason,
+            createdAt: new Date(dispute.createdAt).toLocaleDateString(),
+            lastUpdate: new Date(dispute.createdAt).toLocaleDateString(),
+            messages: 0,
+            resolution: dispute.resolution || undefined,
+            dbId: dispute.id,
+          }))
+          setDisputes(mapped)
+        }
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to resolve dispute",
+          variant: "destructive",
+        })
+      }
+    } finally {
+      setResolvingId(null)
+    }
+  }
+
+  const filteredDisputes = disputes.filter((dispute) => {
     const matchesSearch =
       dispute.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       dispute.buyer.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -156,7 +267,7 @@ export default function DisputesPage() {
             <Clock className="h-4 w-4 text-yellow-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockDisputes.filter((d) => d.status === "pending").length}</div>
+            <div className="text-2xl font-bold">{disputes.filter((d) => d.status === "in_review").length}</div>
             <p className="text-xs text-muted-foreground">Awaiting review</p>
           </CardContent>
         </Card>
@@ -166,7 +277,7 @@ export default function DisputesPage() {
             <Scale className="h-4 w-4 text-blue-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockDisputes.filter((d) => d.status === "in_review").length}</div>
+            <div className="text-2xl font-bold">{disputes.filter((d) => d.status === "in_review").length}</div>
             <p className="text-xs text-muted-foreground">Being investigated</p>
           </CardContent>
         </Card>
@@ -176,7 +287,7 @@ export default function DisputesPage() {
             <AlertTriangle className="h-4 w-4 text-purple-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockDisputes.filter((d) => d.status === "escalated").length}</div>
+            <div className="text-2xl font-bold">{disputes.filter((d) => d.status === "escalated").length}</div>
             <p className="text-xs text-muted-foreground">Needs attention</p>
           </CardContent>
         </Card>
@@ -186,7 +297,7 @@ export default function DisputesPage() {
             <CheckCircle className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockDisputes.filter((d) => d.status === "resolved").length}</div>
+            <div className="text-2xl font-bold">{disputes.filter((d) => d.status === "resolved").length}</div>
             <p className="text-xs text-muted-foreground">This week</p>
           </CardContent>
         </Card>
@@ -196,7 +307,12 @@ export default function DisputesPage() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">$679</div>
+            <div className="text-2xl font-bold">
+              $
+              {disputes
+                .reduce((sum, d) => sum + parseFloat(d.value.replace("$", "")), 0)
+                .toFixed(2)}
+            </div>
             <p className="text-xs text-muted-foreground">In active disputes</p>
           </CardContent>
         </Card>
@@ -246,124 +362,132 @@ export default function DisputesPage() {
 
       {/* Disputes List */}
       <div className="space-y-4">
-        {filteredDisputes.map((dispute) => {
-          const StatusIcon = statusConfig[dispute.status]?.icon || Clock
-          return (
-            <Card key={dispute.id} className={dispute.priority === "critical" ? "border-red-500/50" : ""}>
-              <CardContent className="pt-6">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 space-y-4">
-                    {/* Header */}
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <span className="font-mono text-sm font-semibold">{dispute.id}</span>
-                      <Badge variant="outline" className={typeConfig[dispute.type]?.color}>
-                        {typeConfig[dispute.type]?.label}
-                      </Badge>
-                      <Badge variant="outline" className={statusConfig[dispute.status]?.color}>
-                        <StatusIcon className="mr-1 h-3 w-3" />
-                        {statusConfig[dispute.status]?.label}
-                      </Badge>
-                      <Badge variant="outline" className={priorityConfig[dispute.priority]?.color}>
-                        {priorityConfig[dispute.priority]?.label}
-                      </Badge>
-                    </div>
-
-                    {/* Parties */}
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-2">
-                        <Avatar className="h-8 w-8">
-                          <AvatarImage src={dispute.buyer.avatar || "/placeholder.svg"} />
-                          <AvatarFallback>{dispute.buyer.username[0]}</AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="text-sm font-medium">{dispute.buyer.username}</p>
-                          <p className="text-xs text-muted-foreground">Buyer</p>
-                        </div>
+        {loading ? (
+          <Card>
+            <CardContent className="pt-6 text-center">Loading disputes...</CardContent>
+          </Card>
+        ) : filteredDisputes.length === 0 ? (
+          <Card>
+            <CardContent className="pt-6 text-center text-muted-foreground">No disputes found</CardContent>
+          </Card>
+        ) : (
+          filteredDisputes.map((dispute) => {
+            const StatusIcon = statusConfig[dispute.status]?.icon || Clock
+            return (
+              <Card key={dispute.id} className={dispute.priority === "critical" ? "border-red-500/50" : ""}>
+                <CardContent className="pt-6">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 space-y-4">
+                      {/* Header */}
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <span className="font-mono text-sm font-semibold">{dispute.id}</span>
+                        <Badge variant="outline" className={typeConfig[dispute.type]?.color}>
+                          {typeConfig[dispute.type]?.label}
+                        </Badge>
+                        <Badge variant="outline" className={statusConfig[dispute.status]?.color}>
+                          <StatusIcon className="mr-1 h-3 w-3" />
+                          {statusConfig[dispute.status]?.label}
+                        </Badge>
+                        <Badge variant="outline" className={priorityConfig[dispute.priority]?.color}>
+                          {priorityConfig[dispute.priority]?.label}
+                        </Badge>
                       </div>
-                      <ArrowRight className="h-4 w-4 text-muted-foreground" />
-                      <div className="flex items-center gap-2">
-                        <Avatar className="h-8 w-8">
-                          <AvatarImage src={dispute.seller.avatar || "/placeholder.svg"} />
-                          <AvatarFallback>{dispute.seller.username[0]}</AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="text-sm font-medium">{dispute.seller.username}</p>
-                          <p className="text-xs text-muted-foreground">Seller</p>
-                        </div>
-                      </div>
-                    </div>
 
-                    {/* Item & Reason */}
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">{dispute.item}</span>
-                        <span className="text-sm text-muted-foreground">•</span>
-                        <span className="text-sm font-semibold text-green-500">{dispute.value}</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground">{dispute.reason}</p>
-                      {dispute.resolution && <p className="text-sm text-green-600">Resolution: {dispute.resolution}</p>}
-                    </div>
-
-                    {/* Meta */}
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                      <span>Created {dispute.createdAt}</span>
-                      <span>Updated {dispute.lastUpdate}</span>
-                      <span className="flex items-center gap-1">
-                        <MessageSquare className="h-3 w-3" />
-                        {dispute.messages} messages
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex flex-col gap-2">
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button size="sm">Review</Button>
-                      </DialogTrigger>
-                      <DialogContent className="sm:max-w-[600px]">
-                        <DialogHeader>
-                          <DialogTitle>Review Dispute {dispute.id}</DialogTitle>
-                          <DialogDescription>Review the dispute details and take action.</DialogDescription>
-                        </DialogHeader>
-                        <div className="grid gap-4 py-4">
-                          <div className="grid gap-2">
-                            <Label>Resolution Notes</Label>
-                            <Textarea placeholder="Enter your resolution notes..." rows={4} />
-                          </div>
-                          <div className="grid gap-2">
-                            <Label>Action</Label>
-                            <Select>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select action" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="favor_buyer">Rule in favor of Buyer</SelectItem>
-                                <SelectItem value="favor_seller">Rule in favor of Seller</SelectItem>
-                                <SelectItem value="partial_refund">Issue Partial Refund</SelectItem>
-                                <SelectItem value="full_refund">Issue Full Refund</SelectItem>
-                                <SelectItem value="escalate">Escalate to Senior Admin</SelectItem>
-                                <SelectItem value="close">Close - No Action</SelectItem>
-                              </SelectContent>
-                            </Select>
+                      {/* Parties */}
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-8 w-8">
+                            <AvatarImage src={dispute.buyer.avatar || "/placeholder.svg"} />
+                            <AvatarFallback>{dispute.buyer.username[0]}</AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="text-sm font-medium">{dispute.buyer.username}</p>
+                            <p className="text-xs text-muted-foreground">Buyer</p>
                           </div>
                         </div>
-                        <DialogFooter>
-                          <Button variant="outline">Cancel</Button>
-                          <Button>Submit Resolution</Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
-                    <Button variant="outline" size="sm">
-                      <ExternalLink className="mr-1 h-3 w-3" />
-                      View Trade
-                    </Button>
+                        <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-8 w-8">
+                            <AvatarImage src={dispute.seller.avatar || "/placeholder.svg"} />
+                            <AvatarFallback>{dispute.seller.username[0]}</AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="text-sm font-medium">{dispute.seller.username}</p>
+                            <p className="text-xs text-muted-foreground">Seller</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Item & Reason */}
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium">{dispute.item}</span>
+                          <span className="text-sm text-muted-foreground">•</span>
+                          <span className="text-sm font-semibold text-green-500">{dispute.value}</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">{dispute.reason}</p>
+                        {dispute.resolution && <p className="text-sm text-green-600">Resolution: {dispute.resolution}</p>}
+                      </div>
+
+                      {/* Meta */}
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                        <span>Created {dispute.createdAt}</span>
+                        <span>Updated {dispute.lastUpdate}</span>
+                        <span className="flex items-center gap-1">
+                          <MessageSquare className="h-3 w-3" />
+                          {dispute.messages} messages
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex flex-col gap-2">
+                      {dispute.status !== "resolved" && (
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button size="sm">Resolve</Button>
+                          </DialogTrigger>
+                          <DialogContent className="sm:max-w-[600px]">
+                            <DialogHeader>
+                              <DialogTitle>Resolve Dispute {dispute.id}</DialogTitle>
+                              <DialogDescription>
+                                Enter the resolution for this dispute. An audit log will be created automatically.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <div className="grid gap-4 py-4">
+                              <div className="grid gap-2">
+                                <Label>Resolution</Label>
+                                <Textarea
+                                  placeholder="Describe the resolution (e.g., Favor buyer with full refund, Favor seller - no refund, Partial refund issued)..."
+                                  rows={4}
+                                  value={resolutionText}
+                                  onChange={(e) => setResolutionText(e.target.value)}
+                                />
+                              </div>
+                            </div>
+                            <DialogFooter>
+                              <Button variant="outline">Cancel</Button>
+                              <Button
+                                onClick={() => handleResolveDispute(dispute.dbId)}
+                                disabled={resolvingId === dispute.dbId}
+                              >
+                                {resolvingId === dispute.dbId ? "Resolving..." : "Submit Resolution"}
+                              </Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                      )}
+                      <Button variant="outline" size="sm">
+                        <ExternalLink className="mr-1 h-3 w-3" />
+                        View Trade
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          )
-        })}
+                </CardContent>
+              </Card>
+            )
+          })
+        )}
       </div>
     </div>
   )

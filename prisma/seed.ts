@@ -1,12 +1,22 @@
 import { PrismaClient } from "@prisma/client"
+import bcrypt from "bcrypt"
 
 const prisma = new PrismaClient()
 
 async function main() {
   // Clear existing data
+  await prisma.auditLog.deleteMany({})
+  await prisma.announcement.deleteMany({})
+  await prisma.supportTicket.deleteMany({})
+  await prisma.dispute.deleteMany({})
   await prisma.vouch.deleteMany({})
   await prisma.listing.deleteMany({})
   await prisma.user.deleteMany({})
+
+  // Hash admin password
+  const hashedAdminPassword = await bcrypt.hash("admin123", 12)
+  const hashedUserPassword = await bcrypt.hash("password123", 12)
+  const hashedPassword = await bcrypt.hash("pass123", 12)
 
   // Create users
   const trustedTrader = await prisma.user.create({
@@ -14,7 +24,7 @@ async function main() {
       id: "user-1",
       username: "TrustedTrader",
       email: "user@test.com",
-      password: "password123",
+      password: hashedUserPassword,
       role: "user",
       profilePicture: "/diverse-user-avatars.png",
       banner: "/profile-banner.png",
@@ -30,7 +40,7 @@ async function main() {
       id: "admin-1",
       username: "AdminModerator",
       email: "admin@test.com",
-      password: "admin123",
+      password: hashedAdminPassword,
       role: "admin",
       profilePicture: "/admin-avatar.png",
       banner: "/admin-banner.jpg",
@@ -45,7 +55,7 @@ async function main() {
     data: {
       username: "PixelVault",
       email: "pixel@test.com",
-      password: "pass123",
+      password: hashedPassword,
       role: "user",
     },
   })
@@ -54,7 +64,7 @@ async function main() {
     data: {
       username: "LegitTrader",
       email: "legit@test.com",
-      password: "pass123",
+      password: hashedPassword,
       role: "user",
     },
   })
@@ -63,7 +73,7 @@ async function main() {
     data: {
       username: "UGCMaster",
       email: "ugc@test.com",
-      password: "pass123",
+      password: hashedPassword,
       role: "user",
     },
   })
@@ -72,7 +82,7 @@ async function main() {
     data: {
       username: "HatCollector",
       email: "hat@test.com",
-      password: "pass123",
+      password: hashedPassword,
       role: "user",
     },
   })
@@ -81,7 +91,7 @@ async function main() {
     data: {
       username: "NinjaTrader",
       email: "ninja@test.com",
-      password: "pass123",
+      password: hashedPassword,
       role: "user",
     },
   })
@@ -90,7 +100,7 @@ async function main() {
     data: {
       username: "SafeTrader99",
       email: "safe@test.com",
-      password: "pass123",
+      password: hashedPassword,
       role: "user",
     },
   })
@@ -99,7 +109,7 @@ async function main() {
     data: {
       username: "CasualPlayer",
       email: "casual@test.com",
-      password: "pass123",
+      password: hashedPassword,
       role: "user",
     },
   })
@@ -108,7 +118,7 @@ async function main() {
     data: {
       username: "TradeMaster",
       email: "trade@test.com",
-      password: "pass123",
+      password: hashedPassword,
       role: "user",
     },
   })
@@ -117,7 +127,7 @@ async function main() {
     data: {
       username: "GamepassKing",
       email: "gamepass@test.com",
-      password: "pass123",
+      password: hashedPassword,
       role: "user",
     },
   })
@@ -126,7 +136,7 @@ async function main() {
     data: {
       username: "VIPSeller",
       email: "vip@test.com",
-      password: "pass123",
+      password: hashedPassword,
       role: "user",
     },
   })
@@ -135,7 +145,7 @@ async function main() {
     data: {
       username: "BoostPro",
       email: "boost@test.com",
-      password: "pass123",
+      password: hashedPassword,
       role: "user",
     },
   })
@@ -144,7 +154,7 @@ async function main() {
     data: {
       username: "HelpDesk",
       email: "help@test.com",
-      password: "pass123",
+      password: hashedPassword,
       role: "user",
     },
   })
@@ -153,7 +163,7 @@ async function main() {
     data: {
       username: "AccountSeller",
       email: "accounts@test.com",
-      password: "pass123",
+      password: hashedPassword,
       role: "user",
     },
   })
@@ -162,7 +172,7 @@ async function main() {
     data: {
       username: "ProAccounts",
       email: "pro@test.com",
-      password: "pass123",
+      password: hashedPassword,
       role: "user",
     },
   })
@@ -171,7 +181,7 @@ async function main() {
     data: {
       username: "PremiumAccs",
       email: "premium@test.com",
-      password: "pass123",
+      password: hashedPassword,
       role: "user",
     },
   })
@@ -180,7 +190,7 @@ async function main() {
     data: {
       username: "StarterAccs",
       email: "starter@test.com",
-      password: "pass123",
+      password: hashedPassword,
       role: "user",
     },
   })
@@ -452,7 +462,136 @@ async function main() {
     ],
   })
 
-  console.log(`Seeding completed! Created ${listings.count} listings and ${Object.keys({ trustedTrader, adminModerator }).length} admin users`)
+  // Create some transactions for dispute examples
+  const transaction1 = await prisma.transaction.create({
+    data: {
+      buyerId: trustedTrader.id,
+      sellerId: pixelVault.id,
+      listingId: "listing-1",
+      price: 5000,
+      status: "COMPLETED",
+      buyerConfirmed: true,
+      sellerConfirmed: true,
+    },
+  })
+
+  const transaction2 = await prisma.transaction.create({
+    data: {
+      buyerId: legitTrader.id,
+      sellerId: ugcMaster.id,
+      listingId: "listing-2",
+      price: 2500,
+      status: "PENDING",
+      buyerConfirmed: false,
+      sellerConfirmed: false,
+    },
+  })
+
+  // Create sample disputes
+  await prisma.dispute.createMany({
+    data: [
+      {
+        transactionId: transaction1.id,
+        reason: "Item Not Received",
+        status: "OPEN",
+      },
+      {
+        transactionId: transaction2.id,
+        reason: "Item Different",
+        status: "OPEN",
+      },
+    ],
+  })
+
+  // Create sample support tickets
+  await prisma.supportTicket.createMany({
+    data: [
+      {
+        userId: trustedTrader.id,
+        subject: "Cannot withdraw my Robux",
+        message: "I've been trying to withdraw my Robux for 3 days now but it keeps failing. Please help!",
+        status: "OPEN",
+      },
+      {
+        userId: legitTrader.id,
+        subject: "Appeal for ban",
+        message: "I was wrongfully banned. I never scammed anyone. Please review my case.",
+        status: "OPEN",
+      },
+      {
+        userId: ugcMaster.id,
+        subject: "How do I verify my account?",
+        message: "What steps do I need to take to get verified?",
+        status: "CLOSED",
+      },
+    ],
+  })
+
+  // Create sample announcements
+  await prisma.announcement.createMany({
+    data: [
+      {
+        title: "System Maintenance Notice",
+        content: "We will be performing scheduled maintenance on December 20th from 2-4 AM UTC. Trading will be temporarily disabled during this time.",
+        type: "maintenance",
+        isActive: true,
+        expiresAt: new Date("2025-12-21"),
+      },
+      {
+        title: "New Feature: Enhanced Vouch System",
+        content: "We've upgraded our vouch system with better fraud detection. Check out the new features in your profile!",
+        type: "update",
+        isActive: true,
+        expiresAt: new Date("2026-01-10"),
+      },
+      {
+        title: "Holiday Trading Event",
+        content: "Special holiday trading event with reduced fees! Valid from Dec 20 - Jan 5.",
+        type: "event",
+        isActive: false,
+        expiresAt: new Date("2026-01-05"),
+      },
+      {
+        title: "Warning: Scam Alert",
+        content: "We've detected an increase in phishing attempts. Never share your password or 2FA codes with anyone.",
+        type: "warning",
+        isActive: true,
+        expiresAt: new Date("2025-12-31"),
+      },
+    ],
+  })
+
+  // Create sample audit logs
+  await prisma.auditLog.createMany({
+    data: [
+      {
+        adminId: adminModerator.id,
+        action: "USER_BANNED",
+        targetId: "some-user-id",
+        details: "User was banned for repeated scam attempts",
+      },
+      {
+        adminId: adminModerator.id,
+        action: "REPORT_RESOLVED",
+        targetId: "report-1",
+        details: "Report investigated and user was issued a warning",
+      },
+      {
+        adminId: adminModerator.id,
+        action: "ANNOUNCEMENT_CREATED",
+        targetId: "announcement-1",
+        details: "Created system maintenance announcement",
+      },
+      {
+        adminId: adminModerator.id,
+        action: "TICKET_CLOSED",
+        targetId: "ticket-1",
+        details: "Support ticket resolved with user assistance",
+      },
+    ],
+  })
+
+  console.log(`Seeding completed! Created ${listings.count} listings, disputes, support tickets, announcements, and audit logs`)
 }
 
 main()

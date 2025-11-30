@@ -2,52 +2,57 @@
 
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
 import Link from "next/link"
 import { Star, Shield } from "lucide-react"
 
-const topSellers = [
-  {
-    id: 1,
-    username: "NinjaTrader",
-    avatar: "/user-avatar-profile.png",
-    vouch: 342,
-    joinDate: "Jan 2023",
-    listings: 28,
-    verified: true,
-  },
-  {
-    id: 2,
-    username: "PixelVault",
-    avatar: "/user-avatar-profile-trading.jpg",
-    vouch: 289,
-    joinDate: "Mar 2023",
-    listings: 15,
-    verified: true,
-  },
-  {
-    id: 3,
-    username: "TradeMaster",
-    avatar: "/user-avatar-master-trader.jpg",
-    vouch: 567,
-    joinDate: "May 2022",
-    listings: 42,
-    verified: true,
-  },
-  {
-    id: 4,
-    username: "SafeTrader99",
-    avatar: "/user-avatar-trader-community.jpg",
-    vouch: 198,
-    joinDate: "Sep 2023",
-    listings: 12,
-    verified: false,
-  },
-]
+interface TopTrader {
+  id: string
+  username: string
+  avatar: string | null
+  vouch: number
+  joinDate: Date
+  listings: number
+  verified: boolean
+}
 
-export default function TopVouchedSellers() {
+interface TopVouchedSellersProps {
+  sellers?: TopTrader[]
+  isLoading?: boolean
+}
+
+export default function TopVouchedSellers({ sellers = [], isLoading = false }: TopVouchedSellersProps) {
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Card key={i} className="p-6 text-center">
+            <Skeleton className="w-24 h-24 rounded-full mx-auto mb-4" />
+            <Skeleton className="h-6 w-24 mx-auto mb-4" />
+            <Skeleton className="h-4 w-32 mx-auto mb-4" />
+            <Skeleton className="h-10 w-full" />
+          </Card>
+        ))}
+      </div>
+    )
+  }
+
+  if (sellers.length === 0) {
+    return (
+      <div className="text-center py-8 text-muted-foreground">
+        <p>No top traders available</p>
+      </div>
+    )
+  }
+
+  const formatDate = (date: Date) => {
+    const d = new Date(date)
+    return d.toLocaleDateString("en-US", { month: "short", year: "numeric" })
+  }
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-      {topSellers.map((seller) => (
+      {sellers.map((seller) => (
         <Card key={seller.id} className="p-6 text-center hover:shadow-lg transition-all">
           {/* Avatar */}
           <img
@@ -71,7 +76,7 @@ export default function TopVouchedSellers() {
 
           {/* Meta */}
           <div className="text-sm text-muted-foreground mb-4 space-y-1">
-            <p>Joined {seller.joinDate}</p>
+            <p>Joined {formatDate(seller.joinDate)}</p>
             <p>{seller.listings} active listings</p>
           </div>
 

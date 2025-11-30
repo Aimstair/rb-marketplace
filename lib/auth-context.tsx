@@ -42,11 +42,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoading(true)
     } else if (session?.user) {
       // Convert NextAuth session to local User format
+      const sessionUser = session.user as any
       setUser({
-        id: (session.user as any).id || "",
-        username: (session.user as any).username || session.user.name || "",
+        id: sessionUser.id || "",
+        username: sessionUser.username || session.user.name || "",
         email: session.user.email || "",
-        role: "user", // TODO: Fetch from database
+        role: sessionUser.role || "user", // Now reads from session.user.role
         profilePicture: session.user.image || undefined,
         banner: undefined, // TODO: Fetch from database
         bio: undefined, // TODO: Fetch from database

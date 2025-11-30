@@ -566,3 +566,286 @@ export async function adminUpdateListingStatus(
     return { success: false, error: "Failed to update listing status" }
   }
 }
+
+/**
+ * Get all disputes
+ * Admin only
+ */
+export async function getDisputes(): Promise<{
+  success: boolean
+  disputes?: Array<{
+    id: string
+    reason: string
+    status: string
+    resolution?: string
+    transaction: {
+      id: string
+      buyer: { id: string; username: string }
+      seller: { id: string; username: string }
+      listing: { id: string; title: string; price: number }
+      price: number
+    }
+    createdAt: Date
+  }>
+  error?: string
+}> {
+  try {
+    const disputes = await prisma.dispute.findMany({
+      include: {
+        transaction: {
+          include: {
+            buyer: { select: { id: true, username: true } },
+            seller: { select: { id: true, username: true } },
+            listing: { select: { id: true, title: true, price: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    })
+
+    return { success: true, disputes }
+  } catch (err) {
+    console.error("Failed to get disputes:", err)
+    return { success: false, error: "Failed to get disputes" }
+  }
+}
+
+/**
+ * Resolve a dispute
+ * Admin only
+ */
+export async function resolveDispute(
+  disputeId: string,
+  resolution: string,
+  adminId: string,
+): Promise<AdminResult> {
+  try {
+    const dispute = await prisma.dispute.findUnique({ where: { id: disputeId } })
+    if (!dispute) {
+      return { success: false, error: "Dispute not found" }
+    }
+
+    await prisma.dispute.update({
+      where: { id: disputeId },
+      data: {
+        status: "RESOLVED",
+        resolution,
+      },
+    })
+
+    // Log audit trail
+    await prisma.auditLog.create({
+      data: {
+        adminId,
+        action: "DISPUTE_RESOLVED",
+        targetId: disputeId,
+        details: `Dispute resolved with resolution: ${resolution}`,
+      },
+    })
+
+    return { success: true }
+  } catch (err) {
+    console.error("Failed to resolve dispute:", err)
+    return { success: false, error: "Failed to resolve dispute" }
+  }
+}
+
+/**
+ * Get all support tickets
+ * Admin only
+ */
+export async function getSupportTickets(): Promise<{
+  success: boolean
+  tickets?: Array<{
+    id: string
+    subject: string
+    message: string
+    status: string
+    user: { id: string; username: string; email: string }
+    createdAt: Date
+  }>
+  error?: string
+}> {
+  try {
+    const tickets = await prisma.supportTicket.findMany({
+      include: {
+        user: { select: { id: true, username: true, email: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    })
+
+    return { success: true, tickets }
+  } catch (err) {
+    console.error("Failed to get support tickets:", err)
+    return { success: false, error: "Failed to get support tickets" }
+  }
+}
+
+/**
+ * Close a support ticket
+ * Admin only
+ */
+export async function closeTicket(ticketId: string, adminId: string): Promise<AdminResult> {
+  try {
+    const ticket = await prisma.supportTicket.findUnique({ where: { id: ticketId } })
+    if (!ticket) {
+      return { success: false, error: "Ticket not found" }
+    }
+
+    await prisma.supportTicket.update({
+      where: { id: ticketId },
+      data: { status: "CLOSED" },
+    })
+
+    // Log audit trail
+    await prisma.auditLog.create({
+      data: {
+        adminId,
+        action: "TICKET_CLOSED",
+        targetId: ticketId,
+        details: `Support ticket closed`,
+      },
+    })
+
+    return { success: true }
+  } catch (err) {
+    console.error("Failed to close ticket:", err)
+    return { success: false, error: "Failed to close ticket" }
+  }
+}
+
+/**
+ * Get all announcements
+ * Admin only
+ */
+export async function getAnnouncements(): Promise<{
+  success: boolean
+  announcements?: Array<{
+    id: string
+    title: string
+    content: string
+    type: string
+    isActive: boolean
+    expiresAt?: Date
+    createdAt: Date
+  }>
+  error?: string
+}> {
+  try {
+    const announcements = await prisma.announcement.findMany({
+      orderBy: { createdAt: "desc" },
+    })
+
+    return { success: true, announcements }
+  } catch (err) {
+    console.error("Failed to get announcements:", err)
+    return { success: false, error: "Failed to get announcements" }
+  }
+}
+
+/**
+ * Create an announcement
+ * Admin only
+ */
+export async function createAnnouncement(
+  data: {
+    title: string
+    content: string
+    type: string
+    expiresAt?: string
+  },
+  adminId: string,
+): Promise<AdminResult & { announcementId?: string }> {
+  try {
+    if (!data.title || !data.content) {
+      return { success: false, error: "Title and content are required" }
+    }
+
+    const announcement = await prisma.announcement.create({
+      data: {
+        title: data.title,
+        content: data.content,
+        type: data.type || "info",
+        isActive: true,
+        expiresAt: data.expiresAt ? new Date(data.expiresAt) : undefined,
+      },
+    })
+
+    // Log audit trail
+    await prisma.auditLog.create({
+      data: {
+        adminId,
+        action: "ANNOUNCEMENT_CREATED",
+        targetId: announcement.id,
+        details: `Created announcement: ${data.title}`,
+      },
+    })
+
+    return { success: true, announcementId: announcement.id }
+  } catch (err) {
+    console.error("Failed to create announcement:", err)
+    return { success: false, error: "Failed to create announcement" }
+  }
+}
+
+/**
+ * Delete an announcement
+ * Admin only
+ */
+export async function deleteAnnouncement(announcementId: string, adminId: string): Promise<AdminResult> {
+  try {
+    const announcement = await prisma.announcement.findUnique({ where: { id: announcementId } })
+    if (!announcement) {
+      return { success: false, error: "Announcement not found" }
+    }
+
+    await prisma.announcement.delete({ where: { id: announcementId } })
+
+    // Log audit trail
+    await prisma.auditLog.create({
+      data: {
+        adminId,
+        action: "ANNOUNCEMENT_DELETED",
+        targetId: announcementId,
+        details: `Deleted announcement: ${announcement.title}`,
+      },
+    })
+
+    return { success: true }
+  } catch (err) {
+    console.error("Failed to delete announcement:", err)
+    return { success: false, error: "Failed to delete announcement" }
+  }
+}
+
+/**
+ * Get audit logs
+ * Admin only
+ */
+export async function getAuditLogs(limit: number = 50): Promise<{
+  success: boolean
+  logs?: Array<{
+    id: string
+    action: string
+    targetId?: string
+    details?: string
+    admin: { id: string; username: string }
+    createdAt: Date
+  }>
+  error?: string
+}> {
+  try {
+    const logs = await prisma.auditLog.findMany({
+      include: {
+        admin: { select: { id: true, username: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+    })
+
+    return { success: true, logs }
+  } catch (err) {
+    console.error("Failed to get audit logs:", err)
+    return { success: false, error: "Failed to get audit logs" }
+  }
+}
