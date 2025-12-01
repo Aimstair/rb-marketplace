@@ -61,6 +61,8 @@ export interface ListingFilters {
   page?: number
   itemsPerPage?: number
   sellerId?: string
+  status?: string // e.g., "available", "sold"
+  includeSold?: boolean // If true, include sold listings
 }
 
 export interface ListingResponse {

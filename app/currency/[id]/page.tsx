@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Star, MessageCircle, Share2, Flag, Shield, Calendar, ThumbsUp, ThumbsDown } from "lucide-react"
+import { Star, MessageCircle, Share2, Flag, Shield, Calendar, ThumbsUp, ThumbsDown, Loader2, Copy, Check } from "lucide-react"
 import Navigation from "@/components/navigation"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -18,100 +18,55 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useAuth } from "@/lib/auth-context"
+import { getListing } from "@/app/actions/listings"
+import { toggleListingVote, reportListing } from "@/app/actions/listings"
+import { useToast } from "@/hooks/use-toast"
+import { Textarea } from "@/components/ui/textarea"
 
-const mockCurrencyListings = {
-  "1": {
-    id: "1",
-    game: "Roblox",
-    currencyType: "Robux",
-    ratePerPeso: 3,
-    stock: 10000,
-    description:
-      "Robux available for sale at 3 Robux per ₱1. Will be transferred via in-game trade or gift card. No scams, trusted seller with 24 vouches.",
-    image: "/placeholder.jpg",
-    images: ["/placeholder.jpg", "/placeholder.svg"],
-    seller: {
-      id: "seller1",
-      username: "TrustTrader",
-      avatar: "/placeholder-user.jpg",
-      vouch: 24,
-      joinDate: "Jan 2023",
-      listings: 28,
-      verified: true,
-      responseRate: 98,
-      lastActive: "5 minutes ago",
-    },
-    condition: "New",
-    status: "available",
-    postedDate: "2 days ago",
-    views: 342,
-    interestedBuyers: 12,
-    deliveryMethods: ["In-game Trade", "Gift Card"],
-    paymentMethods: ["GCash", "PayPal"],
-    upvotes: 45,
-    downvotes: 2,
-  },
-  "2": {
-    id: "2",
-    game: "Roblox",
-    currencyType: "Robux",
-    ratePerPeso: 2.5,
-    stock: 25000,
-    description: "Robux for sale at 2.5 per peso. Quick delivery available. Safe and secure transaction guaranteed.",
-    image: "/placeholder.jpg",
-    images: ["/placeholder.jpg"],
-    seller: {
-      id: "seller2",
-      username: "FastDelivery",
-      avatar: "/user-avatar-profile.png",
-      vouch: 18,
-      joinDate: "Mar 2023",
-      listings: 15,
-      verified: false,
-      responseRate: 95,
-      lastActive: "10 minutes ago",
-    },
-    condition: "New",
-    status: "available",
-    postedDate: "1 day ago",
-    views: 156,
-    interestedBuyers: 5,
-    deliveryMethods: ["Account Trade", "In-game Trade"],
-    paymentMethods: ["PayPal", "Crypto"],
-    upvotes: 32,
-    downvotes: 5,
-  },
-  "3": {
-    id: "3",
-    game: "Adopt Me",
-    currencyType: "Coins",
-    ratePerPeso: 500,
-    stock: 1000000,
-    description:
-      "Adopt Me coins at 500 coins per peso. Perfect for new players. Can trade in-game. Proof of coins available.",
-    image: "/placeholder.jpg",
-    images: ["/placeholder.jpg"],
-    seller: {
-      id: "seller3",
-      username: "CoinMaster",
-      avatar: "/placeholder-user.jpg",
-      vouch: 31,
-      joinDate: "Feb 2023",
-      listings: 42,
-      verified: true,
-      responseRate: 99,
-      lastActive: "2 minutes ago",
-    },
-    condition: "New",
-    status: "available",
-    postedDate: "3 days ago",
-    views: 523,
-    interestedBuyers: 18,
-    deliveryMethods: ["In-game Trade"],
-    paymentMethods: ["GCash", "PayPal", "Gift Card"],
-    upvotes: 78,
-    downvotes: 3,
-  },
+interface ParsedCurrency {
+  currencyType: string
+  ratePerPeso: number
+  stock: number
+  minOrder?: number
+  maxOrder?: number
+  notes?: string
+}
+
+// Helper function to parse currency details from description
+function parseCurrencyDescription(description: string | null): ParsedCurrency {
+  if (!description) {
+    return {
+      currencyType: "Unknown",
+      ratePerPeso: 0,
+      stock: 0,
+    }
+  }
+
+  const lines = description.split("\n")
+  const result: ParsedCurrency = {
+    currencyType: "Unknown",
+    ratePerPeso: 0,
+    stock: 0,
+  }
+
+  for (const line of lines) {
+    if (line.startsWith("Currency:")) {
+      result.currencyType = line.replace("Currency:", "").trim()
+    } else if (line.startsWith("Rate:")) {
+      const match = line.match(/₱([\d.]+)/)
+      result.ratePerPeso = match ? parseFloat(match[1]) : 0
+    } else if (line.startsWith("Stock:")) {
+      result.stock = parseInt(line.replace("Stock:", "").trim()) || 0
+    } else if (line.startsWith("Min Order:")) {
+      result.minOrder = parseInt(line.replace("Min Order:", "").trim()) || 0
+    } else if (line.startsWith("Max Order:")) {
+      result.maxOrder = parseInt(line.replace("Max Order:", "").trim()) || 0
+    } else if (line.startsWith("Notes:")) {
+      result.notes = line.replace("Notes:", "").trim()
+    }
+  }
+
+  return result
 }
 
 interface CurrencyListingDetailContentProps {
@@ -122,8 +77,17 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
   const searchParams = useSearchParams()
   const router = useRouter()
   const { user } = useAuth()
+  const { toast } = useToast()
   const [id, setId] = useState<string>("")
   const [isReady, setIsReady] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [listing, setListing] = useState<any>(null)
+  const [currencyData, setCurrencyData] = useState<ParsedCurrency>({
+    currencyType: "Unknown",
+    ratePerPeso: 0,
+    stock: 0,
+  })
 
   // Initialize id from params
   useEffect(() => {
@@ -134,16 +98,56 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
     })()
   }, [params])
 
-  // Get listing after id is ready
-  const listing = isReady
-    ? mockCurrencyListings[id as keyof typeof mockCurrencyListings] || mockCurrencyListings["1"]
-    : mockCurrencyListings["1"]
-  const [selectedImage, setSelectedImage] = useState(listing.images[0])
+  // Fetch listing after id is ready
+  useEffect(() => {
+    if (!isReady) return
+
+    const fetchListing = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        const result = await getListing(id)
+        if (result.success && result.listing) {
+          setListing(result.listing)
+          const parsed = parseCurrencyDescription(result.listing.description)
+          setCurrencyData(parsed)
+        } else {
+          setError(result.error || "Listing not found")
+        }
+      } catch (err) {
+        console.error("Failed to load listing:", err)
+        setError("Failed to load listing")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchListing()
+  }, [id, isReady])
+
+  const [selectedImage, setSelectedImage] = useState<string>("")
   const [isSaved, setIsSaved] = useState(false)
   const [userVote, setUserVote] = useState<"up" | "down" | null>(null)
-  const [votes, setVotes] = useState({ upvotes: listing.upvotes, downvotes: listing.downvotes })
+  const [votes, setVotes] = useState({ upvotes: 0, downvotes: 0 })
   const [showAmountDialog, setShowAmountDialog] = useState(false)
+  const [showReportDialog, setShowReportDialog] = useState(false)
   const [currencyAmount, setCurrencyAmount] = useState("")
+  const [reportReason, setReportReason] = useState("")
+  const [reportDetails, setReportDetails] = useState("")
+  const [isVoting, setIsVoting] = useState(false)
+  const [isReporting, setIsReporting] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  // Initialize selectedImage and votes when listing loads
+  useEffect(() => {
+    if (listing) {
+      setSelectedImage(listing.image || "/placeholder.svg")
+      setVotes({
+        upvotes: listing.upvotes || 0,
+        downvotes: listing.downvotes || 0,
+      })
+    }
+  }, [listing])
 
   useEffect(() => {
     if (searchParams.get("contact") === "true") {
@@ -151,53 +155,87 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
     }
   }, [searchParams])
 
-  const handleVote = (type: "up" | "down") => {
+  const handleVote = async (type: "up" | "down") => {
     if (!user) {
-      alert("Please log in to vote")
+      toast({
+        title: "Authentication Required",
+        description: "Please log in to vote",
+        variant: "destructive",
+      })
       return
     }
 
-    if (userVote === type) {
-      setUserVote(null)
-      setVotes((prev) => ({
-        upvotes: type === "up" ? prev.upvotes - 1 : prev.upvotes,
-        downvotes: type === "down" ? prev.downvotes - 1 : prev.downvotes,
-      }))
-    } else {
-      setVotes((prev) => ({
-        upvotes: type === "up" ? prev.upvotes + 1 : userVote === "up" ? prev.upvotes - 1 : prev.upvotes,
-        downvotes: type === "down" ? prev.downvotes + 1 : userVote === "down" ? prev.downvotes - 1 : prev.downvotes,
-      }))
-      setUserVote(type)
+    setIsVoting(true)
+    try {
+      const result = await toggleListingVote(id, type)
+      if (result.success) {
+        setVotes({
+          upvotes: result.upvotes || 0,
+          downvotes: result.downvotes || 0,
+        })
+        // Toggle user vote
+        if (userVote === type) {
+          setUserVote(null)
+        } else {
+          setUserVote(type as "up" | "down")
+        }
+        toast({
+          title: "Vote Recorded",
+          description: `Your ${type} vote has been recorded`,
+        })
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to record vote",
+          variant: "destructive",
+        })
+      }
+    } catch (err) {
+      console.error("Error voting:", err)
+      toast({
+        title: "Error",
+        description: "Failed to record vote",
+        variant: "destructive",
+      })
+    } finally {
+      setIsVoting(false)
     }
   }
 
   const calculateCost = (amount: string) => {
     const numAmount = Number.parseInt(amount) || 0
-    return Math.ceil(numAmount / listing.ratePerPeso)
+    return Math.ceil(numAmount / currencyData.ratePerPeso)
   }
 
   const handleProceedToContact = () => {
     const amount = Number.parseInt(currencyAmount)
     if (!amount || amount <= 0) {
-      alert("Please enter a valid amount")
+      toast({
+        title: "Invalid Amount",
+        description: "Please enter a valid amount",
+        variant: "destructive",
+      })
       return
     }
-    if (amount > listing.stock) {
-      alert(`Only ${listing.stock.toLocaleString()} ${listing.currencyType} available`)
+    if (amount > currencyData.stock) {
+      toast({
+        title: "Insufficient Stock",
+        description: `Only ${currencyData.stock.toLocaleString()} ${currencyData.currencyType} available`,
+        variant: "destructive",
+      })
       return
     }
     const cost = calculateCost(currencyAmount)
     const msgParams = new URLSearchParams({
       sellerId: listing.seller.id,
       sellerName: listing.seller.username,
-      sellerAvatar: listing.seller.avatar,
+      sellerAvatar: listing.seller.profilePicture || "",
       itemId: listing.id,
-      itemTitle: `${listing.ratePerPeso} ${listing.currencyType} per ₱1`,
-      itemPrice: listing.stock.toString(),
+      itemTitle: `${currencyData.ratePerPeso} ${currencyData.currencyType} per ₱1`,
+      itemPrice: listing.price.toString(),
       itemImage: listing.image,
       type: "currency",
-      currencyType: listing.currencyType,
+      currencyType: currencyData.currencyType,
       amount: amount.toString(),
       cost: cost.toString(),
     })
@@ -207,12 +245,115 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
   const handleCloseDialog = () => {
     setShowAmountDialog(false)
     setCurrencyAmount("")
-    // Remove the contact=true from URL
     router.replace(`/currency/${id}`)
   }
 
   const handleContactSeller = () => {
+    if (!user) {
+      toast({
+        title: "Authentication Required",
+        description: "Please log in to contact the seller",
+        variant: "destructive",
+      })
+      return
+    }
     setShowAmountDialog(true)
+  }
+
+  const handleShare = async () => {
+    const url = typeof window !== "undefined" ? window.location.href : ""
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      toast({
+        title: "Copied",
+        description: "Listing URL copied to clipboard",
+      })
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: "Failed to copy URL",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleReport = async () => {
+    if (!user) {
+      toast({
+        title: "Authentication Required",
+        description: "Please log in to report a listing",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!reportReason) {
+      toast({
+        title: "Missing Information",
+        description: "Please select a reason for the report",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsReporting(true)
+    try {
+      const result = await reportListing(id, reportReason, reportDetails)
+      if (result.success) {
+        toast({
+          title: "Report Submitted",
+          description: "Thank you for reporting. Our team will review this.",
+        })
+        setShowReportDialog(false)
+        setReportReason("")
+        setReportDetails("")
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to submit report",
+          variant: "destructive",
+        })
+      }
+    } catch (err) {
+      console.error("Error reporting:", err)
+      toast({
+        title: "Error",
+        description: "Failed to submit report",
+        variant: "destructive",
+      })
+    } finally {
+      setIsReporting(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-background">
+        <Navigation />
+        <div className="container mx-auto px-4 py-8 flex items-center justify-center h-[600px]">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="w-12 h-12 animate-spin text-primary" />
+            <p className="text-muted-foreground">Loading listing...</p>
+          </div>
+        </div>
+      </main>
+    )
+  }
+
+  if (error || !listing) {
+    return (
+      <main className="min-h-screen bg-background">
+        <Navigation />
+        <div className="container mx-auto px-4 py-8 flex items-center justify-center h-[600px]">
+          <div className="flex flex-col items-center gap-4">
+            <p className="text-lg font-semibold text-destructive">{error || "Listing not found"}</p>
+            <Button onClick={() => router.push("/currency")}>Back to Listings</Button>
+          </div>
+        </div>
+      </main>
+    )
   }
 
   return (
@@ -228,56 +369,58 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
               <div className="relative w-full bg-muted rounded-lg overflow-hidden mb-4">
                 <img
                   src={selectedImage || "/placeholder.svg"}
-                  alt={`${listing.stock} ${listing.currencyType}`}
+                  alt={`${currencyData.currencyType}`}
                   className="w-full h-96 object-cover"
                 />
-                <Badge className="absolute top-4 left-4 bg-primary text-primary-foreground">{listing.condition}</Badge>
+                <Badge className="absolute top-4 left-4 bg-primary text-primary-foreground">{listing?.condition || "New"}</Badge>
               </div>
 
               {/* Thumbnail Gallery */}
-              <div className="flex gap-2">
-                {listing.images.map((img, idx) => (
+              {listing?.images && listing.images.length > 0 && (
+                <div className="flex gap-2">
                   <button
-                    key={idx}
-                    onClick={() => setSelectedImage(img)}
+                    onClick={() => setSelectedImage(listing.image || "/placeholder.svg")}
                     className={`w-20 h-20 rounded-lg overflow-hidden border-2 transition ${
-                      selectedImage === img ? "border-primary" : "border-border hover:border-primary/50"
+                      selectedImage === listing.image ? "border-primary" : "border-border hover:border-primary/50"
                     }`}
                   >
                     <img
-                      src={img || "/placeholder.svg"}
-                      alt={`View ${idx + 1}`}
+                      src={listing.image || "/placeholder.svg"}
+                      alt="Main"
                       className="w-full h-full object-cover"
                     />
                   </button>
-                ))}
-              </div>
+                </div>
+              )}
             </div>
 
             {/* Currency Info Cards */}
             <div className="grid grid-cols-2 gap-4 mb-6">
               <Card className="p-4">
-                <p className="text-sm text-muted-foreground mb-1">Game</p>
-                <p className="font-bold">{listing.game}</p>
-              </Card>
-              <Card className="p-4">
                 <p className="text-sm text-muted-foreground mb-1">Currency Type</p>
-                <p className="font-bold">{listing.currencyType}</p>
+                <p className="font-bold">{currencyData.currencyType}</p>
               </Card>
               <Card className="p-4">
                 <p className="text-sm text-muted-foreground mb-1">Rate</p>
                 <p className="font-bold text-primary">
-                  {listing.ratePerPeso} {listing.currencyType} per ₱1
+                  {currencyData.ratePerPeso} {currencyData.currencyType} per ₱1
                 </p>
               </Card>
               <Card className="p-4">
                 <p className="text-sm text-muted-foreground mb-1">Stock Available</p>
                 <p className="font-bold">
-                  {listing.stock.toLocaleString()} {listing.currencyType}
+                  {currencyData.stock.toLocaleString()} {currencyData.currencyType}
                 </p>
+              </Card>
+              <Card className="p-4">
+                <p className="text-sm text-muted-foreground mb-1">Status</p>
+                <Badge variant={listing?.status === "available" ? "default" : "secondary"}>
+                  {listing?.status || "Available"}
+                </Badge>
               </Card>
             </div>
 
+            {/* Rate Listing */}
             <Card className="p-6 mb-6">
               <h2 className="text-xl font-bold mb-4">Rate this Listing</h2>
               <div className="flex items-center gap-6">
@@ -285,16 +428,18 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
                   variant={userVote === "up" ? "default" : "outline"}
                   className={`flex items-center gap-2 ${userVote === "up" ? "bg-green-600 hover:bg-green-700" : ""}`}
                   onClick={() => handleVote("up")}
+                  disabled={isVoting}
                 >
-                  <ThumbsUp className="w-5 h-5" />
+                  {isVoting ? <Loader2 className="w-5 h-5 animate-spin" /> : <ThumbsUp className="w-5 h-5" />}
                   <span className="font-bold">{votes.upvotes}</span>
                 </Button>
                 <Button
                   variant={userVote === "down" ? "default" : "outline"}
                   className={`flex items-center gap-2 ${userVote === "down" ? "bg-red-600 hover:bg-red-700" : ""}`}
                   onClick={() => handleVote("down")}
+                  disabled={isVoting}
                 >
-                  <ThumbsDown className="w-5 h-5" />
+                  {isVoting ? <Loader2 className="w-5 h-5 animate-spin" /> : <ThumbsDown className="w-5 h-5" />}
                   <span className="font-bold">{votes.downvotes}</span>
                 </Button>
                 <span className="text-sm text-muted-foreground">{votes.upvotes + votes.downvotes} total votes</span>
@@ -304,30 +449,35 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
             {/* Description */}
             <Card className="p-6 mb-6">
               <h2 className="text-xl font-bold mb-4">Description</h2>
-              <p className="text-foreground leading-relaxed">{listing.description}</p>
+              <p className="text-foreground leading-relaxed whitespace-pre-wrap">{listing?.description || "No description available"}</p>
+              {currencyData.notes && (
+                <div className="mt-4 p-4 bg-muted/50 rounded-lg">
+                  <p className="text-sm font-semibold mb-1">Additional Notes:</p>
+                  <p className="text-sm text-muted-foreground">{currencyData.notes}</p>
+                </div>
+              )}
             </Card>
 
             {/* Delivery Methods */}
             <Card className="p-6 mb-6">
-              <h2 className="text-xl font-bold mb-4">Delivery Methods</h2>
-              <div className="flex flex-wrap gap-2">
-                {listing.deliveryMethods.map((method) => (
-                  <Badge key={method} variant="secondary" className="px-3 py-2">
-                    {method}
+              <h2 className="text-xl font-bold mb-4">Listing Information</h2>
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Posted:</span>
+                  <span className="font-medium">
+                    {listing?.createdAt ? new Date(listing.createdAt).toLocaleDateString() : "Recently"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Views:</span>
+                  <span className="font-medium">{listing?.views || 0}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Status:</span>
+                  <Badge variant={listing?.status === "available" ? "default" : "secondary"}>
+                    {listing?.status || "Available"}
                   </Badge>
-                ))}
-              </div>
-            </Card>
-
-            {/* Payment Methods */}
-            <Card className="p-6">
-              <h2 className="text-xl font-bold mb-4">Payment Methods Accepted</h2>
-              <div className="flex flex-wrap gap-2">
-                {listing.paymentMethods.map((method) => (
-                  <Badge key={method} variant="secondary" className="px-3 py-2">
-                    {method}
-                  </Badge>
-                ))}
+                </div>
               </div>
             </Card>
           </div>
@@ -335,51 +485,53 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
           {/* Right Column - Seller & Action */}
           <div className="lg:col-span-1">
             <div className="mb-6 p-6 bg-primary text-primary-foreground rounded-lg">
-              <p className="text-sm mb-2 opacity-90">Rate</p>
+              <p className="text-sm mb-2 opacity-90">Exchange Rate</p>
               <p className="text-4xl font-bold">
-                {listing.ratePerPeso} {listing.currencyType}
+                {currencyData.ratePerPeso} {currencyData.currencyType}
               </p>
               <p className="text-lg mt-1">per ₱1 PHP</p>
-              <p className="text-sm mt-3 opacity-75">Stock: {listing.stock.toLocaleString()}</p>
+              <p className="text-sm mt-3 opacity-75">Stock: {currencyData.stock.toLocaleString()}</p>
             </div>
 
             <div className="space-y-3 mb-6">
-              <Button size="lg" className="w-full" onClick={handleContactSeller}>
+              <Button size="lg" className="w-full" onClick={handleContactSeller} disabled={!user}>
                 <MessageCircle className="w-5 h-5 mr-2" />
-                Message
+                Buy Now
               </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className="w-full bg-transparent"
-                onClick={() => setIsSaved(!isSaved)}
-              >
-                {isSaved ? "★ Saved" : "☆ Save Item"}
-              </Button>
-              <Button size="lg" variant="outline" className="w-full bg-transparent">
-                <Share2 className="w-5 h-5 mr-2" />
-                Share
-              </Button>
-              <Button size="lg" variant="outline" className="w-full text-destructive bg-transparent">
-                <Flag className="w-5 h-5 mr-2" />
-                Report
-              </Button>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant="outline"
+                  onClick={handleShare}
+                  disabled={copied}
+                >
+                  {copied ? <Check className="w-4 h-4 mr-1" /> : <Share2 className="w-4 h-4 mr-1" />}
+                  {copied ? "Copied" : "Share"}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowReportDialog(true)}
+                  className="text-red-600 hover:text-red-700"
+                >
+                  <Flag className="w-4 h-4 mr-1" />
+                  Report
+                </Button>
+              </div>
             </div>
 
             {/* Seller Card */}
             <Card className="p-6">
               <div className="flex items-center gap-4 mb-4">
                 <img
-                  src={listing.seller.avatar || "/placeholder.svg"}
-                  alt={listing.seller.username}
+                  src={listing?.seller?.profilePicture || "/placeholder.svg"}
+                  alt={listing?.seller?.username || "Seller"}
                   className="w-16 h-16 rounded-full object-cover"
                 />
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="font-bold text-lg">{listing.seller.username}</h3>
-                    {listing.seller.verified && <Shield className="w-4 h-4 text-primary" />}
+                    <h3 className="font-bold text-lg">{listing?.seller?.username || "Unknown"}</h3>
+                    {listing?.seller?.verified && <Shield className="w-4 h-4 text-primary" />}
                   </div>
-                  <p className="text-sm text-muted-foreground">Joined {listing.seller.joinDate}</p>
+                  <p className="text-sm text-muted-foreground">Trusted Seller</p>
                 </div>
               </div>
 
@@ -390,79 +542,39 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
                     <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
                     Vouches
                   </span>
-                  <span className="font-bold">{listing.seller.vouch}</span>
+                  <span className="font-bold">{listing?.seller?.vouchCount || 0}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Response Rate</span>
-                  <span className="font-bold">{listing.seller.responseRate}%</span>
+                  <span className="text-sm text-muted-foreground">Listings</span>
+                  <span className="font-bold">{listing?.seller?.listings || 0}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Active Listings</span>
-                  <span className="font-bold">{listing.seller.listings}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Last Active</span>
-                  <span className="font-bold text-sm">{listing.seller.lastActive}</span>
+                  <span className="text-sm text-muted-foreground">Member Since</span>
+                  <span className="text-sm font-medium">
+                    {listing?.seller?.joinDate
+                      ? new Date(listing.seller.joinDate).toLocaleDateString()
+                      : "Recently"}
+                  </span>
                 </div>
               </div>
 
-              <Button size="sm" variant="outline" className="w-full mt-4 bg-transparent">
+              <Button 
+                size="sm" 
+                variant="outline" 
+                className="w-full mt-4" 
+                onClick={() => router.push(`/profile/${listing?.seller?.id}`)} 
+                disabled={!user}
+              >
+                <MessageCircle className="w-4 h-4 mr-1" />
                 View Profile
               </Button>
             </Card>
 
-            {/* Listing Info */}
-            <Card className="p-6 mt-6">
-              <div className="space-y-3 text-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground flex items-center gap-2">
-                    <Calendar className="w-4 h-4" />
-                    Posted
-                  </span>
-                  <span>{listing.postedDate}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Views</span>
-                  <span>{listing.views}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Interested</span>
-                  <span>{listing.interestedBuyers} buyers</span>
-                </div>
-              </div>
-            </Card>
           </div>
         </div>
-
-        {/* Safety Tips Section */}
-        <Card className="mt-12 p-6 bg-secondary/5 border-secondary">
-          <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-            <Shield className="w-5 h-5" />
-            Safety Tips for Currency Trading
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-            <div>
-              <p className="font-semibold mb-2">Verify Amount</p>
-              <p className="text-muted-foreground">
-                Always confirm the exact amount of currency you're purchasing before payment.
-              </p>
-            </div>
-            <div>
-              <p className="font-semibold mb-2">Choose Safe Delivery</p>
-              <p className="text-muted-foreground">
-                Use in-game trade or gift card methods. Avoid direct account sharing when possible.
-              </p>
-            </div>
-            <div>
-              <p className="font-semibold mb-2">Vouch After Trade</p>
-              <p className="text-muted-foreground">
-                Once currency is received, vouch for the seller to help build community trust.
-              </p>
-            </div>
-          </div>
-        </Card>
       </div>
 
+      {/* Purchase Dialog */}
       <Dialog
         open={showAmountDialog}
         onOpenChange={(open) => {
@@ -472,23 +584,23 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Specify Purchase Amount</DialogTitle>
-            <DialogDescription>Enter how much {listing.currencyType} you would like to buy</DialogDescription>
+            <DialogTitle>Purchase {currencyData.currencyType}</DialogTitle>
+            <DialogDescription>Enter how much {currencyData.currencyType} you would like to buy</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <Label htmlFor="amount">Amount of {listing.currencyType}</Label>
+              <Label htmlFor="amount">Amount of {currencyData.currencyType}</Label>
               <Input
                 id="amount"
                 type="number"
-                placeholder={`Enter amount (max ${listing.stock.toLocaleString()})`}
+                placeholder={`Enter amount (max ${currencyData.stock.toLocaleString()})`}
                 value={currencyAmount}
                 onChange={(e) => setCurrencyAmount(e.target.value)}
                 className="mt-2"
-                max={listing.stock}
+                max={currencyData.stock}
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Available: {listing.stock.toLocaleString()} {listing.currencyType}
+                Available: {currencyData.stock.toLocaleString()} {currencyData.currencyType}
               </p>
             </div>
 
@@ -497,13 +609,13 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
                 <div className="flex justify-between mb-2">
                   <span className="text-muted-foreground">Amount:</span>
                   <span className="font-medium">
-                    {Number.parseInt(currencyAmount).toLocaleString()} {listing.currencyType}
+                    {Number.parseInt(currencyAmount).toLocaleString()} {currencyData.currencyType}
                   </span>
                 </div>
                 <div className="flex justify-between mb-2">
                   <span className="text-muted-foreground">Rate:</span>
                   <span className="font-medium">
-                    {listing.ratePerPeso} {listing.currencyType} per ₱1
+                    {currencyData.ratePerPeso} {currencyData.currencyType} per ₱1
                   </span>
                 </div>
                 <div className="flex justify-between pt-2 border-t">
@@ -522,6 +634,61 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
             <Button onClick={handleProceedToContact} disabled={!currencyAmount || Number.parseInt(currencyAmount) <= 0}>
               <MessageCircle className="w-4 h-4 mr-2" />
               Continue to Chat
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Report Dialog */}
+      <Dialog open={showReportDialog} onOpenChange={setShowReportDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Report Listing</DialogTitle>
+            <DialogDescription>Help us keep the marketplace safe by reporting this listing</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label htmlFor="reason">Reason for Report *</Label>
+              <select
+                id="reason"
+                value={reportReason}
+                onChange={(e) => setReportReason(e.target.value)}
+                className="w-full mt-2 px-3 py-2 border border-input rounded-md bg-background text-foreground"
+              >
+                <option value="">Select a reason...</option>
+                <option value="scam">Scam or Fraud</option>
+                <option value="inappropriate">Inappropriate Content</option>
+                <option value="fake">Fake or Misleading</option>
+                <option value="spam">Spam</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="details">Additional Details</Label>
+              <Textarea
+                id="details"
+                placeholder="Please provide any additional information..."
+                value={reportDetails}
+                onChange={(e) => setReportDetails(e.target.value)}
+                className="mt-2"
+                rows={4}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowReportDialog(false)}
+              disabled={isReporting}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleReport}
+              disabled={isReporting || !reportReason}
+            >
+              {isReporting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Submit Report
             </Button>
           </DialogFooter>
         </DialogContent>

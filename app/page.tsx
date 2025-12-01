@@ -160,7 +160,7 @@ export default function HomePage() {
               <p className="text-muted-foreground">Community Members</p>
             </div>
             <div className="text-center">
-              <div className="text-3xl font-bold text-primary mb-2">₱{(stats.totalVolume / 100000).toFixed(1)}k</div>
+              <div className="text-3xl font-bold text-primary mb-2">₱{(stats.totalVolume / 1000).toFixed(1)}k</div>
               <p className="text-muted-foreground">Trade Volume</p>
             </div>
             <div className="text-center">

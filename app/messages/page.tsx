@@ -142,6 +142,7 @@ export default function MessagesPage() {
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [sendingMessage, setSendingMessage] = useState(false)
   const [vouchSubmitting, setVouchSubmitting] = useState(false)
+  const [amountQueryParam, setAmountQueryParam] = useState<number | null>(null)
 
   useEffect(() => {
     if (isAuthLoading) return
@@ -149,6 +150,14 @@ export default function MessagesPage() {
       router.push("/auth/login")
     }
   }, [user, isAuthLoading, router])
+
+  // Read amount query parameter from URL
+  useEffect(() => {
+    const amount = searchParams.get("amount")
+    if (amount) {
+      setAmountQueryParam(parseInt(amount, 10))
+    }
+  }, [searchParams])
 
   // Load conversations on mount
   useEffect(() => {
@@ -254,7 +263,7 @@ export default function MessagesPage() {
               type: isCounteroffer ? "counteroffer" : msg.attachmentUrl ? "image" : ("text" as const),
               imageUrl: msg.attachmentUrl || undefined,
               offerAmount: isCounteroffer ? (msg as any).offerAmount : undefined,
-              offerStatus: isCounteroffer ? "pending" : undefined,
+              offerStatus: isCounteroffer ? ((msg as any).offerStatus || "pending") : undefined,
             }
           })
           setMessages(convertedMessages)
@@ -331,6 +340,7 @@ export default function MessagesPage() {
       if (messageText.trim()) {
         const result = await sendMessage(messageText, {
           conversationId: selectedConversationId,
+          quantity: amountQueryParam || undefined,
         })
         if (!result.success) {
           console.error("Error sending message:", result.error)
@@ -348,6 +358,9 @@ export default function MessagesPage() {
           type: "text",
         }
         setMessages((prev) => [...prev, newMessage])
+        
+        // Clear amount query param after first message
+        setAmountQueryParam(null)
       }
 
       // If transaction was just created or transaction state is null, load it immediately
@@ -921,7 +934,7 @@ export default function MessagesPage() {
                       size="icon"
                       onClick={() => setShowCounterOfferInput(!showCounterOfferInput)}
                       title="Make a counteroffer"
-                      disabled={selectedContact.blocked}
+                      disabled={selectedContact.blocked || selectedContact.status === "completed" || selectedContact.status === "sold"}
                       className="h-10 w-10"
                     >
                       <DollarSign className="w-5 h-5" />
@@ -1026,6 +1039,11 @@ export default function MessagesPage() {
                           ) : null}
                         </div>
                       </>
+                    ) : selectedContact.status === "sold" && user?.id !== transaction?.buyerId ? (
+                      <div className="flex items-center gap-2 text-sm text-orange-600 bg-orange-500/10 px-3 py-2 rounded-lg">
+                        <AlertTriangle className="w-4 h-4" />
+                        Item sold to another user
+                      </div>
                     ) : (
                       <span className="text-sm text-muted-foreground">No active transaction</span>
                     )}
@@ -1207,20 +1225,25 @@ export default function MessagesPage() {
                     size="icon"
                     onClick={() => fileInputRef.current?.click()}
                     title="Attach image"
-                    disabled={selectedContact.blocked}
+                    disabled={selectedContact.blocked || selectedContact.status === "completed" || selectedContact.status === "sold"}
                   >
                     <Paperclip className="w-4 h-4" />
                   </Button>
                   <Input
                     type="text"
-                    placeholder={selectedContact.blocked ? "You have blocked this user" : "Type a message..."}
+                    placeholder={
+                      selectedContact.blocked ? "You have blocked this user" : 
+                      selectedContact.status === "completed" ? "Transaction completed" :
+                      selectedContact.status === "sold" ? "Item sold" :
+                      "Type a message..."
+                    }
                     value={messageText}
                     onChange={(e) => setMessageText(e.target.value)}
                     onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
                     className="flex-1"
-                    disabled={selectedContact.blocked}
+                    disabled={selectedContact.blocked || selectedContact.status === "completed" || selectedContact.status === "sold"}
                   />
-                  <Button onClick={handleSendMessage} size="icon" disabled={selectedContact.blocked || sendingMessage}>
+                  <Button onClick={handleSendMessage} size="icon" disabled={selectedContact.blocked || sendingMessage || selectedContact.status === "completed" || selectedContact.status === "sold"}>
                     {sendingMessage ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (

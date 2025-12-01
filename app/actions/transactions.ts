@@ -48,10 +48,12 @@ export interface SubmitVouchResult {
 /**
  * Create a new transaction for a listing
  * Current user becomes the buyer, listing owner becomes the seller
+ * Accepts optional conversationId to link the transaction to a conversation
  */
 export async function createTransaction(
   listingId: string,
-  price: number
+  price: number,
+  conversationId?: string
 ): Promise<CreateTransactionResult> {
   try {
     // Get the current user (placeholder - first user in DB)
@@ -95,23 +97,24 @@ export async function createTransaction(
       }
     }
 
-    // Check if transaction already exists
-    const existingTransaction = await (prisma.transaction as any).findFirst({
+    // Check if PENDING transaction already exists
+    // Allow creation if existing transactions are COMPLETED or CANCELLED
+    const existingPendingTransaction = await (prisma.transaction as any).findFirst({
       where: {
         listingId,
         buyerId: currentUser.id,
-        status: { in: ["PENDING", "COMPLETED"] },
+        status: "PENDING",
       },
     })
 
-    if (existingTransaction) {
+    if (existingPendingTransaction) {
       return {
         success: false,
-        error: "You already have an active transaction for this listing",
+        error: "You already have a pending transaction for this listing",
       }
     }
 
-    // Create the transaction
+    // Create the transaction with optional conversationId
     const transaction = await (prisma.transaction as any).create({
       data: {
         buyerId: currentUser.id,
@@ -119,6 +122,7 @@ export async function createTransaction(
         listingId,
         price,
         status: "PENDING",
+        conversationId: conversationId || undefined,
       },
     })
 
@@ -275,11 +279,14 @@ export async function getTransactionById(transactionId: string): Promise<{
       }
     }
 
-    // Check if current user has already vouched for this transaction
-    const userVouch = await prisma.vouch.findFirst({
+    // Check if current user has already vouched for the counterparty (global vouch rule)
+    const counterpartyId = transaction.buyerId === currentUser.id ? transaction.sellerId : transaction.buyerId
+    const userVouch = await prisma.vouch.findUnique({
       where: {
-        transactionId,
-        fromUserId: currentUser.id,
+        fromUserId_toUserId: {
+          fromUserId: currentUser.id,
+          toUserId: counterpartyId,
+        },
       },
     })
 
@@ -390,6 +397,17 @@ export async function getTransactionByPeers(
       }
     }
 
+    // Check if current user has already vouched for the counterparty (global vouch rule)
+    const counterpartyId = transaction.buyerId === currentUser.id ? transaction.sellerId : transaction.buyerId
+    const userVouch = await prisma.vouch.findUnique({
+      where: {
+        fromUserId_toUserId: {
+          fromUserId: currentUser.id,
+          toUserId: counterpartyId,
+        },
+      },
+    })
+
     return {
       success: true,
       transaction: {
@@ -403,6 +421,7 @@ export async function getTransactionByPeers(
         status: transaction.status,
         buyerConfirmed: transaction.buyerConfirmed,
         sellerConfirmed: transaction.sellerConfirmed,
+        userVouched: !!userVouch,
         createdAt: transaction.createdAt,
         updatedAt: transaction.updatedAt,
       },
@@ -446,7 +465,7 @@ export async function toggleTransactionConfirmation(
       }
     }
 
-    // Find the transaction
+    // Find the transaction with quantity field
     const transaction = await (prisma.transaction as any).findUnique({
       where: { id: transactionId },
     })
@@ -503,11 +522,91 @@ export async function toggleTransactionConfirmation(
         },
       })
 
-      // Update listing status to sold
-      await prisma.listing.update({
+      // Update listing status based on stock for currency listings
+      const completedListing = await prisma.listing.findUnique({
         where: { id: completedTransaction.listingId },
-        data: { status: "sold" },
+        select: { description: true, game: true, status: true },
       })
+
+      if (completedListing) {
+        let newListingStatus = "sold"
+        
+        // Check if this is a currency listing (by game name)
+        const isCurrencyListing = completedListing.game === "Currency Exchange"
+        
+        if (isCurrencyListing && completedListing.description) {
+          // Parse current stock from description
+          const stockMatch = completedListing.description.match(/Stock:\s*(\d+)/i)
+          const currentStock = stockMatch ? parseInt(stockMatch[1], 10) : 0
+          
+          // Deduct transaction quantity (or 1 if quantity not specified)
+          const deductedQuantity = transaction.quantity || 1
+          const newStock = Math.max(0, currentStock - deductedQuantity)
+          
+          // Update description with new stock value
+          let updatedDescription = completedListing.description
+          if (stockMatch) {
+            updatedDescription = updatedDescription.replace(/Stock:\s*\d+/i, `Stock: ${newStock}`)
+          } else {
+            // Append stock info if it doesn't exist
+            updatedDescription = `${updatedDescription}\nStock: ${newStock}`
+          }
+          
+          // Only mark as sold if stock is <= 0, otherwise keep available
+          newListingStatus = newStock <= 0 ? "sold" : "available"
+          
+          // Update listing with new stock in description
+          await prisma.listing.update({
+            where: { id: completedTransaction.listingId },
+            data: { 
+              status: newListingStatus,
+              description: updatedDescription,
+            },
+          })
+        } else {
+          // For non-currency listings, always mark as sold
+          await prisma.listing.update({
+            where: { id: completedTransaction.listingId },
+            data: { status: newListingStatus },
+          })
+        }
+      }
+
+      // Auto-decline all pending counteroffers for other conversations on this listing
+      console.log("[toggleTransactionConfirmation] Auto-declining pending offers for listing:", completedTransaction.listingId)
+      
+      // Find all conversations for this listing (excluding the current one)
+      const otherConversations = await prisma.conversation.findMany({
+        where: {
+          listingId: completedTransaction.listingId,
+          NOT: {
+            AND: [
+              { buyerId: completedTransaction.buyerId },
+              { sellerId: completedTransaction.sellerId },
+            ],
+          },
+        },
+      })
+
+      // For each conversation, find and decline pending offers
+      for (const conv of otherConversations) {
+        const pendingOffers = await prisma.message.findMany({
+          where: {
+            conversationId: conv.id,
+            offerAmount: { not: null },
+            offerStatus: "pending",
+          },
+        })
+
+        // Update all pending offers to declined
+        for (const offer of pendingOffers) {
+          await prisma.message.update({
+            where: { id: offer.id },
+            data: { offerStatus: "declined" },
+          })
+          console.log("[toggleTransactionConfirmation] Declined offer:", offer.id)
+        }
+      }
 
       // Create notification to both parties about completion
       await createNotification(

@@ -79,6 +79,9 @@ export async function getListing(id: string, currentUserId?: string): Promise<{
             vouchesReceived: {
               select: { id: true },
             },
+            _count: {
+              select: { listings: true },
+            },
           },
         },
       },
@@ -133,6 +136,7 @@ export async function getListing(id: string, currentUserId?: string): Promise<{
           joinDate: listing.seller.joinDate,
           lastActive: listing.seller.lastActive,
           vouchCount: listing.seller.vouchesReceived.length,
+          listings: listing.seller._count.listings,
         },
         upvotes: listing.upvotes || 0,
         downvotes: listing.downvotes || 0,
@@ -159,13 +163,27 @@ export async function getListings(
     page = 1,
     itemsPerPage = 9,
     sellerId = undefined,
+    status = undefined,
+    includeSold = false,
   } = filters
 
   try {
-    // Build where clause
+    // Build where clause - filter to ITEM listings only
     const where: any = {
-      status: "available",
-      game: { not: "Currency Exchange" },
+      type: "ITEM",
+    }
+
+    // Status filter: if sellerId is provided (profile view), allow sold listings by default
+    // Otherwise, default to "available" only
+    if (includeSold || sellerId) {
+      // Include both available and sold when viewing a profile or when includeSold is true
+      if (status) {
+        where.status = status
+      }
+      // else: don't filter by status, show both
+    } else {
+      // Default to available only for marketplace view
+      where.status = status || "available"
     }
 
     // Filter by seller if provided
@@ -376,7 +394,7 @@ export async function getCurrencyListings(): Promise<CurrencyListing[]> {
     const listings = await prisma.listing.findMany({
       where: {
         status: "available",
-        game: "Currency Exchange", // ONLY currency
+        type: "CURRENCY", // Filter by type instead of game
       },
       include: {
         seller: {
@@ -452,7 +470,7 @@ export async function createListing(input: CreateItemListingInput): Promise<Crea
     // Validate input
     const validatedData = createItemListingSchema.parse(input)
 
-    // Create the listing
+    // Create the listing with type "ITEM"
     const listing = await prisma.listing.create({
       data: {
         title: validatedData.title,
@@ -465,6 +483,7 @@ export async function createListing(input: CreateItemListingInput): Promise<Crea
         condition: validatedData.condition,
         sellerId: seller.id,
         status: "available",
+        type: "ITEM",
       },
     })
 
@@ -732,6 +751,7 @@ ${validatedData.description ? `Notes: ${validatedData.description}` : ""}`
         condition: "New",
         sellerId: seller.id,
         status: "available",
+        type: "CURRENCY",
       },
     })
 

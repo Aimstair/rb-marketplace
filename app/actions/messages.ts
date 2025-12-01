@@ -43,6 +43,7 @@ export interface MessageData {
   isRead: boolean
   attachmentUrl: string | null
   offerAmount?: number | null
+  offerStatus?: string | null
 }
 
 export interface GetConversationsResult {
@@ -62,6 +63,7 @@ export interface SendMessageResult {
   messageId?: string
   conversationId?: string
   transactionCreated?: boolean
+  quantity?: number
   error?: string
 }
 
@@ -226,6 +228,7 @@ export async function getMessages(conversationId: string): Promise<GetMessagesRe
       isRead: msg.isRead,
       attachmentUrl: msg.attachmentUrl,
       offerAmount: msg.offerAmount,
+      offerStatus: msg.offerStatus,
     }))
 
     return {
@@ -253,6 +256,7 @@ export async function sendMessage(
     listingId?: string
     attachmentUrl?: string
     offerAmount?: number
+    quantity?: number
   } = {}
 ): Promise<SendMessageResult> {
   try {
@@ -311,14 +315,12 @@ export async function sendMessage(
       const buyerId = currentUser.id
       const sellerId = options.otherUserId
 
-      // Try to find existing conversation
-      let conversation = await prisma.conversation.findUnique({
+      // Try to find existing conversation using findFirst (since unique constraint is removed)
+      let conversation = await prisma.conversation.findFirst({
         where: {
-          buyerId_sellerId_listingId: {
-            buyerId,
-            sellerId,
-            listingId: options.listingId || null,
-          },
+          buyerId,
+          sellerId,
+          listingId: options.listingId || null,
         },
       })
 
@@ -358,6 +360,50 @@ export async function sendMessage(
       }
     }
 
+    // Validate quantity for currency listings
+    let quantity = options.quantity
+    if (quantity !== undefined) {
+      if (conversation.listingId) {
+        const listing = await prisma.listing.findUnique({
+          where: { id: conversation.listingId },
+          select: { description: true, game: true },
+        })
+
+        if (listing && listing.game === "Currency Exchange" && listing.description) {
+          // Parse Stock, Min Order, and Max Order from description
+          const stockMatch = listing.description.match(/Stock:\s*(\d+)/i)
+          const minOrderMatch = listing.description.match(/Min Order:\s*(\d+)/i)
+          const maxOrderMatch = listing.description.match(/Max Order:\s*(\d+)/i)
+
+          const stock = stockMatch ? parseInt(stockMatch[1], 10) : 0
+          const minOrder = minOrderMatch ? parseInt(minOrderMatch[1], 10) : 1
+          const maxOrder = maxOrderMatch ? parseInt(maxOrderMatch[1], 10) : stock
+
+          // Validate quantity
+          if (quantity > stock) {
+            return {
+              success: false,
+              error: `Quantity exceeds available stock (${stock} available)`,
+            }
+          }
+
+          if (quantity < minOrder) {
+            return {
+              success: false,
+              error: `Quantity is below minimum order (${minOrder} required)`,
+            }
+          }
+
+          if (quantity > maxOrder) {
+            return {
+              success: false,
+              error: `Quantity exceeds maximum order (${maxOrder} maximum)`,
+            }
+          }
+        }
+      }
+    }
+
     // Create the message
     const message = await prisma.message.create({
       data: {
@@ -366,6 +412,7 @@ export async function sendMessage(
         senderId: currentUser.id,
         attachmentUrl: options.attachmentUrl,
         offerAmount: options.offerAmount,
+        quantity: options.quantity,
       },
     })
 
@@ -397,7 +444,7 @@ export async function sendMessage(
             const trueSellerId = listing.sellerId
             const trueBuyerId = conversation.buyerId === trueSellerId ? conversation.sellerId : conversation.buyerId
 
-            // Create transaction with correct roles
+            // Create transaction with correct roles and quantity
             await (prisma.transaction as any).create({
               data: {
                 buyerId: trueBuyerId,
@@ -405,12 +452,13 @@ export async function sendMessage(
                 listingId: conversation.listingId,
                 price: listing.price || 0,
                 status: "PENDING",
+                quantity: options.quantity,
               },
             })
 
             transactionCreated = true
             console.log(
-              `✅ Transaction auto-created: buyer=${trueBuyerId}, seller=${trueSellerId}, listing=${conversation.listingId}`
+              `✅ Transaction auto-created: buyer=${trueBuyerId}, seller=${trueSellerId}, listing=${conversation.listingId}, quantity=${options.quantity}`
             )
           }
         } catch (error) {
@@ -444,6 +492,7 @@ export async function sendMessage(
       messageId: message.id,
       conversationId,
       transactionCreated,
+      quantity: options.quantity,
     }
   } catch (error) {
     console.error("Error sending message:", error)
@@ -552,16 +601,35 @@ export async function getOrCreateConversation(
 
     // Try to find existing conversation
     const whereClause: any = {
-      buyerId_sellerId_listingId: {
-        buyerId: currentUser.id,
-        sellerId: sellerId,
-        listingId: listingId || null,
-      },
+      buyerId: currentUser.id,
+      sellerId: sellerId,
+      listingId: listingId || null,
     }
 
-    let conversation = await prisma.conversation.findUnique({
+    // Fetch all conversations for this buyer/seller/listing combo
+    const existingConversations = await prisma.conversation.findMany({
       where: whereClause,
+      include: {
+        transactions: {
+          where: { status: "PENDING" },
+        },
+      },
     })
+
+    let conversation = null
+
+    // Look for a conversation with a PENDING transaction
+    if (existingConversations.length > 0) {
+      const pendingConversation = existingConversations.find(
+        (conv) => conv.transactions && conv.transactions.length > 0
+      )
+      if (pendingConversation) {
+        conversation = pendingConversation
+      } else {
+        // If no PENDING transaction, use the first one (or create new)
+        conversation = existingConversations[0]
+      }
+    }
 
     // If not found, create new conversation
     if (!conversation) {
@@ -598,6 +666,7 @@ export async function getOrCreateConversation(
                 buyerId: currentUser.id,
                 sellerId: sellerId,
                 listingId: listingId,
+                conversationId: conversation.id,
                 price: listing.price,
                 status: "PENDING",
               },
@@ -672,14 +741,12 @@ export async function getOrCreateListingConversation(
       }
     }
 
-    // Find or create conversation
-    let conversation = await prisma.conversation.findUnique({
+    // Find or create conversation using findFirst (unique constraint removed)
+    let conversation = await prisma.conversation.findFirst({
       where: {
-        buyerId_sellerId_listingId: {
-          buyerId: currentUser.id,
-          sellerId: listing.sellerId,
-          listingId,
-        },
+        buyerId: currentUser.id,
+        sellerId: listing.sellerId,
+        listingId,
       },
     })
 
@@ -717,8 +784,11 @@ export interface AcceptCounterOfferResult {
  */
 export async function acceptCounterOffer(messageId: string): Promise<AcceptCounterOfferResult> {
   try {
+    console.log("[acceptCounterOffer] Starting - messageId:", messageId)
+
     const session = await auth()
     if (!session?.user?.email) {
+      console.log("[acceptCounterOffer] No session found")
       return {
         success: false,
         error: "You must be logged in to accept a counteroffer",
@@ -730,11 +800,14 @@ export async function acceptCounterOffer(messageId: string): Promise<AcceptCount
     })
 
     if (!currentUser) {
+      console.log("[acceptCounterOffer] Current user not found")
       return {
         success: false,
         error: "User account not found",
       }
     }
+
+    console.log("[acceptCounterOffer] Current user found:", currentUser.id)
 
     // Get the message with offer
     const message = await prisma.message.findUnique({
@@ -745,13 +818,17 @@ export async function acceptCounterOffer(messageId: string): Promise<AcceptCount
     })
 
     if (!message) {
+      console.log("[acceptCounterOffer] Message not found:", messageId)
       return {
         success: false,
         error: "Message not found",
       }
     }
 
+    console.log("[acceptCounterOffer] Message found, offerAmount:", message.offerAmount)
+
     if (!message.offerAmount) {
+      console.log("[acceptCounterOffer] No offer amount in message")
       return {
         success: false,
         error: "This message does not contain a counteroffer",
@@ -760,10 +837,36 @@ export async function acceptCounterOffer(messageId: string): Promise<AcceptCount
 
     const conversation = message.conversation
 
+    if (!conversation) {
+      console.log("[acceptCounterOffer] Conversation not found for message")
+      return {
+        success: false,
+        error: "Conversation not found",
+      }
+    }
+
+    if (!conversation.listingId) {
+      console.log("[acceptCounterOffer] No listing ID in conversation")
+      return {
+        success: false,
+        error: "This conversation is not associated with a listing",
+      }
+    }
+
+    console.log("[acceptCounterOffer] Conversation details - buyerId:", conversation.buyerId, "sellerId:", conversation.sellerId, "listingId:", conversation.listingId)
+
+    // Update the message offerStatus to "accepted"
+    console.log("[acceptCounterOffer] Updating message offerStatus to accepted")
+    await prisma.message.update({
+      where: { id: messageId },
+      data: { offerStatus: "accepted" },
+    })
+
     // Find the transaction for this conversation's listing and users
     let transaction = await (prisma.transaction as any).findFirst({
       where: {
         listingId: conversation.listingId,
+        status: "PENDING",
         OR: [
           {
             buyerId: conversation.buyerId,
@@ -777,8 +880,11 @@ export async function acceptCounterOffer(messageId: string): Promise<AcceptCount
       },
     })
 
-    // If no transaction found, create one with the offer price
+    console.log("[acceptCounterOffer] Existing PENDING transaction found:", transaction?.id)
+
+    // If no transaction found, create one with the offer price and quantity
     if (!transaction) {
+      console.log("[acceptCounterOffer] Creating new transaction with offer price:", message.offerAmount)
       transaction = await (prisma.transaction as any).create({
         data: {
           buyerId: conversation.buyerId,
@@ -786,15 +892,29 @@ export async function acceptCounterOffer(messageId: string): Promise<AcceptCount
           listingId: conversation.listingId,
           price: message.offerAmount,
           status: "PENDING",
+          quantity: message.quantity,
         },
       })
+      console.log("[acceptCounterOffer] New transaction created:", transaction.id)
     } else {
-      // Update existing transaction price
+      // Update existing transaction price and quantity
+      console.log("[acceptCounterOffer] Updating existing transaction price:", transaction.id, "new price:", message.offerAmount)
       transaction = await (prisma.transaction as any).update({
         where: { id: transaction.id },
-        data: { price: message.offerAmount },
+        data: { 
+          price: message.offerAmount,
+          quantity: message.quantity,
+        },
       })
+      console.log("[acceptCounterOffer] Transaction updated successfully")
     }
+
+    // Update the listing price to the new offer amount
+    console.log("[acceptCounterOffer] Updating listing price to:", message.offerAmount)
+    await prisma.listing.update({
+      where: { id: conversation.listingId },
+      data: { price: message.offerAmount },
+    })
 
     // Create system message
     await prisma.message.create({
@@ -806,12 +926,13 @@ export async function acceptCounterOffer(messageId: string): Promise<AcceptCount
       },
     })
 
+    console.log("[acceptCounterOffer] Success - Counteroffer accepted")
     return {
       success: true,
       message: "Counteroffer accepted successfully",
     }
   } catch (error) {
-    console.error("Error accepting counteroffer:", error)
+    console.error("[acceptCounterOffer] Error accepting counteroffer:", error)
     return {
       success: false,
       error: "Failed to accept counteroffer",
@@ -824,8 +945,11 @@ export async function acceptCounterOffer(messageId: string): Promise<AcceptCount
  */
 export async function declineCounterOffer(messageId: string): Promise<AcceptCounterOfferResult> {
   try {
+    console.log("[declineCounterOffer] Starting - messageId:", messageId)
+
     const session = await auth()
     if (!session?.user?.email) {
+      console.log("[declineCounterOffer] No session found")
       return {
         success: false,
         error: "You must be logged in to decline a counteroffer",
@@ -837,11 +961,14 @@ export async function declineCounterOffer(messageId: string): Promise<AcceptCoun
     })
 
     if (!currentUser) {
+      console.log("[declineCounterOffer] Current user not found")
       return {
         success: false,
         error: "User account not found",
       }
     }
+
+    console.log("[declineCounterOffer] Current user found:", currentUser.id)
 
     // Get the message with offer
     const message = await prisma.message.findUnique({
@@ -852,18 +979,29 @@ export async function declineCounterOffer(messageId: string): Promise<AcceptCoun
     })
 
     if (!message) {
+      console.log("[declineCounterOffer] Message not found:", messageId)
       return {
         success: false,
         error: "Message not found",
       }
     }
 
+    console.log("[declineCounterOffer] Message found, offerAmount:", message.offerAmount)
+
     if (!message.offerAmount) {
+      console.log("[declineCounterOffer] No offer amount in message")
       return {
         success: false,
         error: "This message does not contain a counteroffer",
       }
     }
+
+    // Update the message offerStatus to "declined"
+    console.log("[declineCounterOffer] Updating message offerStatus to declined")
+    await prisma.message.update({
+      where: { id: messageId },
+      data: { offerStatus: "declined" },
+    })
 
     // Create system message
     await prisma.message.create({
@@ -875,12 +1013,13 @@ export async function declineCounterOffer(messageId: string): Promise<AcceptCoun
       },
     })
 
+    console.log("[declineCounterOffer] Success - Counteroffer declined")
     return {
       success: true,
       message: "Counteroffer declined",
     }
   } catch (error) {
-    console.error("Error declining counteroffer:", error)
+    console.error("[declineCounterOffer] Error declining counteroffer:", error)
     return {
       success: false,
       error: "Failed to decline counteroffer",

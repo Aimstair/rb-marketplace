@@ -294,13 +294,7 @@ export default function CurrencyMarketplace() {
                               className="w-full"
                               onClick={(e) => {
                                 e.stopPropagation()
-                                const params = new URLSearchParams({
-                                  sellerId: listing.sellerId,
-                                  sellerName: listing.sellerName,
-                                  itemId: listing.id,
-                                  itemName: `${listing.currencyType} - ${listing.game}`,
-                                })
-                                router.push(`/messages?${params.toString()}`)
+                                router.push(`/currency/${listing.id}?contact=true`)
                               }}
                             >
                               <MessageCircle className="w-4 h-4 mr-2" />

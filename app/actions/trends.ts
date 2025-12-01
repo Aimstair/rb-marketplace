@@ -68,13 +68,20 @@ export async function getLandingStats(): Promise<{
     // Total users (excluding admins for active trader count)
     const totalUsers = await prisma.user.count()
 
-    // Total listings
-    const totalListings = await prisma.listing.count()
+    // Active listings: only count listings where status is "available"
+    const totalListings = await prisma.listing.count({
+      where: {
+        status: "available",
+      },
+    })
 
-    // Total volume from transactions
+    // Total volume from completed transactions only
     const volumeResult = await prisma.transaction.aggregate({
       _sum: {
         price: true,
+      },
+      where: {
+        status: "COMPLETED",
       },
     })
     const totalVolume = volumeResult._sum.price || 0
@@ -97,6 +104,60 @@ export async function getLandingStats(): Promise<{
     }
   } catch (err) {
     console.error("Failed to get landing stats:", err)
+    return { success: false, error: "Failed to load marketplace statistics" }
+  }
+}
+
+/**
+ * Get real analytics for landing page
+ * activeListings: Available listings from non-banned sellers
+ * tradeVolume: Sum of prices from completed transactions
+ * happyUsers: Count of all users
+ */
+export async function getLandingPageStats(): Promise<{
+  success: boolean
+  data?: {
+    activeListings: number
+    tradeVolume: number
+    happyUsers: number
+  }
+  error?: string
+}> {
+  try {
+    // Active listings: status is "available" AND seller is not banned
+    const activeListings = await prisma.listing.count({
+      where: {
+        status: "available",
+        seller: {
+          isBanned: false,
+        },
+      },
+    })
+
+    // Trade volume: sum of prices from completed transactions
+    const volumeResult = await prisma.transaction.aggregate({
+      _sum: {
+        price: true,
+      },
+      where: {
+        status: "COMPLETED",
+      },
+    })
+    const tradeVolume = volumeResult._sum.price || 0
+
+    // Happy users: count of all users
+    const happyUsers = await prisma.user.count()
+
+    return {
+      success: true,
+      data: {
+        activeListings,
+        tradeVolume,
+        happyUsers,
+      },
+    }
+  } catch (err) {
+    console.error("Failed to get landing page stats:", err)
     return { success: false, error: "Failed to load marketplace statistics" }
   }
 }
