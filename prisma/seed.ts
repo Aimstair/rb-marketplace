@@ -13,6 +13,55 @@ async function main() {
   await prisma.listing.deleteMany({})
   await prisma.user.deleteMany({})
 
+  // Seed FilterOptions if table is empty
+  const filterCount = await prisma.filterOption.count()
+  if (filterCount === 0) {
+    console.log("Seeding FilterOptions...")
+    
+    // CATEGORY filters
+    await prisma.filterOption.createMany({
+      data: [
+        { type: "CATEGORY", label: "Accessories", value: "Accessories", order: 1 },
+        { type: "CATEGORY", label: "Games", value: "Games", order: 2 },
+        { type: "CATEGORY", label: "Accounts", value: "Accounts", order: 3 },
+      ],
+    })
+
+    // GAME filters
+    await prisma.filterOption.createMany({
+      data: [
+        { type: "GAME", label: "Roblox", value: "Roblox", order: 1 },
+        { type: "GAME", label: "Adopt Me", value: "Adopt Me", order: 2 },
+        { type: "GAME", label: "Blox Fruits", value: "Blox Fruits", order: 3 },
+        { type: "GAME", label: "MM2", value: "MM2", order: 4 },
+        { type: "GAME", label: "Currency Exchange", value: "Currency Exchange", order: 5 },
+      ],
+    })
+
+    // ITEM_TYPE filters
+    await prisma.filterOption.createMany({
+      data: [
+        { type: "ITEM_TYPE", label: "Limited", value: "Limited", order: 1 },
+        { type: "ITEM_TYPE", label: "UGC", value: "UGC", order: 2 },
+        { type: "ITEM_TYPE", label: "In-Game Items", value: "In-Game Items", order: 3 },
+        { type: "ITEM_TYPE", label: "Gamepasses", value: "Gamepasses", order: 4 },
+        { type: "ITEM_TYPE", label: "Services", value: "Services", order: 5 },
+        { type: "ITEM_TYPE", label: "Account", value: "Account", order: 6 },
+      ],
+    })
+
+    // CONDITION filters
+    await prisma.filterOption.createMany({
+      data: [
+        { type: "CONDITION", label: "Mint", value: "Mint", order: 1 },
+        { type: "CONDITION", label: "New", value: "New", order: 2 },
+        { type: "CONDITION", label: "Used", value: "Used", order: 3 },
+      ],
+    })
+
+    console.log("FilterOptions seeded successfully!")
+  }
+
   // Hash admin password
   const hashedAdminPassword = await bcrypt.hash("admin123", 12)
   const hashedUserPassword = await bcrypt.hash("password123", 12)

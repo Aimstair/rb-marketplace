@@ -101,6 +101,7 @@ model Listing {
   description  String?
   game         String
   price        Int
+  stock        Int      @default(1)
   image        String
   category     String   // "Accessories" | "Games" | "Accounts"
   itemType     String   // "Limited" | "UGC" | "In-Game Items" | "Gamepasses" | "Services" | "Account"
@@ -230,7 +231,7 @@ model Message {
   
   // Counteroffer
   offerAmount    Int?
-  quantity       Int?     // For partial currency sales or bulk orders
+  amount         Int?     // For partial currency sales or bulk orders
   
   // Status
   isRead         Boolean  @default(false)
@@ -263,7 +264,7 @@ model Transaction {
   
   // Transaction details
   price            Int
-  quantity         Int?     // For partial currency sales
+  amount           Int?     // Quantity/amount of currency or items for this transaction
   status           String   @default("PENDING") // "PENDING" | "COMPLETED" | "CANCELLED"
   
   // Confirmation flags
@@ -499,4 +500,18 @@ model VerificationToken {
 
   @@unique([identifier, token])
   @@map("verification_tokens")
+}
+
+model FilterOption {
+  id        String   @id @default(cuid())
+  type      String   // "CATEGORY" | "GAME" | "ITEM_TYPE" | "CONDITION"
+  label     String
+  value     String
+  order     Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type])
+  @@map("filter_options")
 }

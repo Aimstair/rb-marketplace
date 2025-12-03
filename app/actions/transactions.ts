@@ -13,6 +13,7 @@ export interface TransactionData {
   seller: { id: string; username: string }
   listing: { id: string; title: string; price: number; image: string }
   price: number
+  amount?: number
   status: "PENDING" | "COMPLETED" | "CANCELLED"
   buyerConfirmed: boolean
   sellerConfirmed: boolean
@@ -465,7 +466,7 @@ export async function toggleTransactionConfirmation(
       }
     }
 
-    // Find the transaction with quantity field
+    // Find the transaction with amount field
     const transaction = await (prisma.transaction as any).findUnique({
       where: { id: transactionId },
     })
@@ -522,54 +523,28 @@ export async function toggleTransactionConfirmation(
         },
       })
 
-      // Update listing status based on stock for currency listings
+      // Update listing stock and status
       const completedListing = await prisma.listing.findUnique({
         where: { id: completedTransaction.listingId },
-        select: { description: true, game: true, status: true },
+        select: { stock: true, type: true },
       })
 
       if (completedListing) {
-        let newListingStatus = "sold"
+        // Deduct transaction amount (or 1 if amount not specified)
+        const deductedAmount = transaction.amount || 1
+        const newStock = Math.max(0, completedListing.stock - deductedAmount)
         
-        // Check if this is a currency listing (by game name)
-        const isCurrencyListing = completedListing.game === "Currency Exchange"
+        // Only mark as sold if stock is <= 0, otherwise keep available
+        const newListingStatus = newStock <= 0 ? "sold" : "available"
         
-        if (isCurrencyListing && completedListing.description) {
-          // Parse current stock from description
-          const stockMatch = completedListing.description.match(/Stock:\s*(\d+)/i)
-          const currentStock = stockMatch ? parseInt(stockMatch[1], 10) : 0
-          
-          // Deduct transaction quantity (or 1 if quantity not specified)
-          const deductedQuantity = transaction.quantity || 1
-          const newStock = Math.max(0, currentStock - deductedQuantity)
-          
-          // Update description with new stock value
-          let updatedDescription = completedListing.description
-          if (stockMatch) {
-            updatedDescription = updatedDescription.replace(/Stock:\s*\d+/i, `Stock: ${newStock}`)
-          } else {
-            // Append stock info if it doesn't exist
-            updatedDescription = `${updatedDescription}\nStock: ${newStock}`
-          }
-          
-          // Only mark as sold if stock is <= 0, otherwise keep available
-          newListingStatus = newStock <= 0 ? "sold" : "available"
-          
-          // Update listing with new stock in description
-          await prisma.listing.update({
-            where: { id: completedTransaction.listingId },
-            data: { 
-              status: newListingStatus,
-              description: updatedDescription,
-            },
-          })
-        } else {
-          // For non-currency listings, always mark as sold
-          await prisma.listing.update({
-            where: { id: completedTransaction.listingId },
-            data: { status: newListingStatus },
-          })
-        }
+        // Update listing with new stock
+        await prisma.listing.update({
+          where: { id: completedTransaction.listingId },
+          data: { 
+            stock: newStock,
+            status: newListingStatus,
+          },
+        })
       }
 
       // Auto-decline all pending counteroffers for other conversations on this listing

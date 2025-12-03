@@ -100,7 +100,7 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
 
   // Fetch listing after id is ready
   useEffect(() => {
-    if (!isReady) return
+    if (!isReady || !id) return
 
     const fetchListing = async () => {
       try {
@@ -109,8 +109,14 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
         const result = await getListing(id)
         if (result.success && result.listing) {
           setListing(result.listing)
+          // Use DB stock and parsed description data
           const parsed = parseCurrencyDescription(result.listing.description)
-          setCurrencyData(parsed)
+          setCurrencyData({
+            ...parsed,
+            stock: result.listing.stock, // Use DB stock
+            minOrder: result.listing.minOrder,
+            maxOrder: result.listing.maxOrder,
+          })
         } else {
           setError(result.error || "Listing not found")
         }
@@ -221,6 +227,22 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
       toast({
         title: "Insufficient Stock",
         description: `Only ${currencyData.stock.toLocaleString()} ${currencyData.currencyType} available`,
+        variant: "destructive",
+      })
+      return
+    }
+    if (currencyData.minOrder && amount < currencyData.minOrder) {
+      toast({
+        title: "Below Minimum Order",
+        description: `Minimum order is ${currencyData.minOrder.toLocaleString()} ${currencyData.currencyType}`,
+        variant: "destructive",
+      })
+      return
+    }
+    if (currencyData.maxOrder && amount > currencyData.maxOrder) {
+      toast({
+        title: "Exceeds Maximum Order",
+        description: `Maximum order is ${currencyData.maxOrder.toLocaleString()} ${currencyData.currencyType}`,
         variant: "destructive",
       })
       return
@@ -599,9 +621,15 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
                 className="mt-2"
                 max={currencyData.stock}
               />
-              <p className="text-xs text-muted-foreground mt-1">
-                Available: {currencyData.stock.toLocaleString()} {currencyData.currencyType}
-              </p>
+              <div className="text-xs text-muted-foreground mt-1 space-y-1">
+                <p>Available: {currencyData.stock.toLocaleString()} {currencyData.currencyType}</p>
+                {currencyData.minOrder && (
+                  <p>Minimum Order: {currencyData.minOrder.toLocaleString()} {currencyData.currencyType}</p>
+                )}
+                {currencyData.maxOrder && (
+                  <p>Maximum Order: {currencyData.maxOrder.toLocaleString()} {currencyData.currencyType}</p>
+                )}
+              </div>
             </div>
 
             {currencyAmount && Number.parseInt(currencyAmount) > 0 && (

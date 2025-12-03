@@ -40,6 +40,7 @@ export const createCurrencyListingSchema = z.object({
   stock: z.number().min(1, "Stock must be at least 1"),
   minOrder: z.number().min(1, "Minimum order must be at least 1"),
   maxOrder: z.number().min(1, "Maximum order must be at least 1"),
+  image: z.string().url("Please provide a valid image URL"),
   description: z.string().max(500, "Description must be at most 500 characters").optional(),
   paymentMethods: z.array(z.string()).min(1, "Select at least one payment method"),
 })

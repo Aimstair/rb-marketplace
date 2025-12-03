@@ -63,7 +63,7 @@ export interface SendMessageResult {
   messageId?: string
   conversationId?: string
   transactionCreated?: boolean
-  quantity?: number
+  amount?: number
   error?: string
 }
 
@@ -256,7 +256,7 @@ export async function sendMessage(
     listingId?: string
     attachmentUrl?: string
     offerAmount?: number
-    quantity?: number
+    amount?: number
   } = {}
 ): Promise<SendMessageResult> {
   try {
@@ -360,9 +360,9 @@ export async function sendMessage(
       }
     }
 
-    // Validate quantity for currency listings
-    let quantity = options.quantity
-    if (quantity !== undefined) {
+    // Validate amount for currency listings
+    let amount = options.amount
+    if (amount !== undefined) {
       if (conversation.listingId) {
         const listing = await prisma.listing.findUnique({
           where: { id: conversation.listingId },
@@ -379,25 +379,25 @@ export async function sendMessage(
           const minOrder = minOrderMatch ? parseInt(minOrderMatch[1], 10) : 1
           const maxOrder = maxOrderMatch ? parseInt(maxOrderMatch[1], 10) : stock
 
-          // Validate quantity
-          if (quantity > stock) {
+          // Validate amount
+          if (amount > stock) {
             return {
               success: false,
-              error: `Quantity exceeds available stock (${stock} available)`,
+              error: `Amount exceeds available stock (${stock} available)`,
             }
           }
 
-          if (quantity < minOrder) {
+          if (amount < minOrder) {
             return {
               success: false,
-              error: `Quantity is below minimum order (${minOrder} required)`,
+              error: `Amount is below minimum order (${minOrder} required)`,
             }
           }
 
-          if (quantity > maxOrder) {
+          if (amount > maxOrder) {
             return {
               success: false,
-              error: `Quantity exceeds maximum order (${maxOrder} maximum)`,
+              error: `Amount exceeds maximum order (${maxOrder} maximum)`,
             }
           }
         }
@@ -412,7 +412,7 @@ export async function sendMessage(
         senderId: currentUser.id,
         attachmentUrl: options.attachmentUrl,
         offerAmount: options.offerAmount,
-        quantity: options.quantity,
+        amount: options.amount,
       },
     })
 
@@ -444,7 +444,7 @@ export async function sendMessage(
             const trueSellerId = listing.sellerId
             const trueBuyerId = conversation.buyerId === trueSellerId ? conversation.sellerId : conversation.buyerId
 
-            // Create transaction with correct roles and quantity
+            // Create transaction with correct roles and amount
             await (prisma.transaction as any).create({
               data: {
                 buyerId: trueBuyerId,
@@ -452,13 +452,13 @@ export async function sendMessage(
                 listingId: conversation.listingId,
                 price: listing.price || 0,
                 status: "PENDING",
-                quantity: options.quantity,
+                amount: options.amount,
               },
             })
 
             transactionCreated = true
             console.log(
-              `✅ Transaction auto-created: buyer=${trueBuyerId}, seller=${trueSellerId}, listing=${conversation.listingId}, quantity=${options.quantity}`
+              `✅ Transaction auto-created: buyer=${trueBuyerId}, seller=${trueSellerId}, listing=${conversation.listingId}, amount=${options.amount}`
             )
           }
         } catch (error) {
@@ -492,7 +492,7 @@ export async function sendMessage(
       messageId: message.id,
       conversationId,
       transactionCreated,
-      quantity: options.quantity,
+      amount: options.amount,
     }
   } catch (error) {
     console.error("Error sending message:", error)
@@ -556,7 +556,8 @@ export async function markMessagesAsRead(conversationId: string): Promise<{ succ
  */
 export async function getOrCreateConversation(
   sellerId: string,
-  listingId?: string
+  listingId?: string,
+  transactionDetails?: { price: number; amount: number }
 ): Promise<{ success: boolean; conversationId?: string; error?: string }> {
   try {
     // Get the current authenticated user
@@ -641,7 +642,7 @@ export async function getOrCreateConversation(
         },
       })
 
-      // If a listingId is provided, create a transaction
+      // If a listingId is provided, create or update a transaction
       if (listingId) {
         // Check if listing exists
         const listing = await prisma.listing.findUnique({
@@ -650,24 +651,41 @@ export async function getOrCreateConversation(
         })
 
         if (listing) {
-          // Check if transaction already exists
-          const existingTransaction = await prisma.transaction.findFirst({
+          // Check if a PENDING transaction already exists
+          const existingPendingTransaction = await prisma.transaction.findFirst({
             where: {
               buyerId: currentUser.id,
               sellerId: sellerId,
               listingId: listingId,
+              status: "PENDING",
             },
           })
 
-          // Create transaction only if it doesn't exist
-          if (!existingTransaction) {
+          // Use transactionDetails if provided; otherwise fall back to listing price
+          const txPrice = transactionDetails?.price ?? listing.price
+          const txAmount = transactionDetails?.amount
+
+          if (existingPendingTransaction) {
+            // Update existing PENDING transaction with new price and amount
+            await prisma.transaction.update({
+              where: { id: existingPendingTransaction.id },
+              data: {
+                price: txPrice,
+                amount: txAmount,
+              },
+            }).catch((err) => {
+              console.error("Failed to update transaction:", err)
+            })
+          } else {
+            // Create new transaction if no PENDING one exists
             await prisma.transaction.create({
               data: {
                 buyerId: currentUser.id,
                 sellerId: sellerId,
                 listingId: listingId,
                 conversationId: conversation.id,
-                price: listing.price,
+                price: txPrice,
+                amount: txAmount,
                 status: "PENDING",
               },
             }).catch((err) => {
@@ -882,7 +900,7 @@ export async function acceptCounterOffer(messageId: string): Promise<AcceptCount
 
     console.log("[acceptCounterOffer] Existing PENDING transaction found:", transaction?.id)
 
-    // If no transaction found, create one with the offer price and quantity
+    // If no transaction found, create one with the offer price and amount
     if (!transaction) {
       console.log("[acceptCounterOffer] Creating new transaction with offer price:", message.offerAmount)
       transaction = await (prisma.transaction as any).create({
@@ -892,18 +910,18 @@ export async function acceptCounterOffer(messageId: string): Promise<AcceptCount
           listingId: conversation.listingId,
           price: message.offerAmount,
           status: "PENDING",
-          quantity: message.quantity,
+          amount: message.amount,
         },
       })
       console.log("[acceptCounterOffer] New transaction created:", transaction.id)
     } else {
-      // Update existing transaction price and quantity
+      // Update existing transaction price and amount
       console.log("[acceptCounterOffer] Updating existing transaction price:", transaction.id, "new price:", message.offerAmount)
       transaction = await (prisma.transaction as any).update({
         where: { id: transaction.id },
         data: { 
           price: message.offerAmount,
-          quantity: message.quantity,
+          amount: message.amount,
         },
       })
       console.log("[acceptCounterOffer] Transaction updated successfully")

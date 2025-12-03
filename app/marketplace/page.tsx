@@ -1,21 +1,25 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
-import { Search, Filter, ThumbsUp, ThumbsDown, ChevronLeft, ChevronRight, StarIcon } from "lucide-react"
+import { useState, useEffect } from "react"
+import { Search, Filter, ThumbsUp, ThumbsDown, ChevronLeft, ChevronRight, StarIcon, Star, MessageCircle } from "lucide-react"
 import Navigation from "@/components/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
-import { Star, MessageCircle } from "lucide-react"
 import { useSearchParams } from "next/navigation"
-import { getListings, getAvailableGames } from "@/app/actions/listings"
+import { getListings, getFilterOptions } from "@/app/actions/listings"
 import type { ListingResponse } from "@/app/actions/listings"
 
-const mainCategories = ["All", "Featured", "Accessories", "Games", "Accounts"]
+// Define interface for filter options based on your schema
+interface FilterOption {
+  id: string
+  label: string
+  value: string
+}
 
-const gameItemTypes = ["All", "In-Game Items", "Gamepasses", "Services"]
+const ITEMS_PER_PAGE = 9
 
 const sortOptions = [
   { label: "Newest", value: "newest" },
@@ -26,10 +30,10 @@ const sortOptions = [
   { label: "Trending", value: "trending" },
 ]
 
-const ITEMS_PER_PAGE = 9
-
 export default function MarketplacePage() {
   const searchParams = useSearchParams()
+  
+  // Filter States
   const [searchQuery, setSearchQuery] = useState("")
   const [mainCategory, setMainCategory] = useState("All")
   const [selectedGame, setSelectedGame] = useState("All Games")
@@ -37,12 +41,20 @@ export default function MarketplacePage() {
   const [sortBy, setSortBy] = useState("newest")
   const [priceRange, setPriceRange] = useState({ min: 0, max: 1000000 })
   const [showFilters, setShowFilters] = useState(false)
+  
+  // Data States
   const [currentPage, setCurrentPage] = useState(1)
   const [listings, setListings] = useState<ListingResponse[]>([])
   const [totalListings, setTotalListings] = useState(0)
-  const [availableGames, setAvailableGames] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  
+  // Dynamic Filter Options States
+  const [categoryOptions, setCategoryOptions] = useState<FilterOption[]>([])
+  const [gameOptions, setGameOptions] = useState<FilterOption[]>([])
+  const [itemTypeOptions, setItemTypeOptions] = useState<FilterOption[]>([])
+  const [areFiltersLoading, setAreFiltersLoading] = useState(true)
 
+  // Initialize Search from URL
   useEffect(() => {
     const itemParam = searchParams.get("item")
     if (itemParam) {
@@ -50,6 +62,29 @@ export default function MarketplacePage() {
     }
   }, [searchParams])
 
+  // Fetch Dynamic Filter Options on Mount
+  useEffect(() => {
+    const loadFilters = async () => {
+      setAreFiltersLoading(true)
+      try {
+        const [categories, games, itemTypes] = await Promise.all([
+          getFilterOptions("CATEGORY"),
+          getFilterOptions("GAME"),
+          getFilterOptions("ITEM_TYPE"),
+        ])
+        setCategoryOptions(categories)
+        setGameOptions(games)
+        setItemTypeOptions(itemTypes)
+      } catch (error) {
+        console.error("Error loading filter options:", error)
+      } finally {
+        setAreFiltersLoading(false)
+      }
+    }
+    loadFilters()
+  }, [])
+
+  // Reset dependent filters when parent filter changes
   useEffect(() => {
     setSelectedGame("All Games")
     setSelectedItemType("All")
@@ -59,7 +94,7 @@ export default function MarketplacePage() {
     setCurrentPage(1)
   }, [searchQuery, mainCategory, selectedGame, selectedItemType, sortBy, priceRange])
 
-  // Fetch listings from Server Action
+  // Fetch listings
   useEffect(() => {
     const fetchListings = async () => {
       setIsLoading(true)
@@ -87,23 +122,20 @@ export default function MarketplacePage() {
     fetchListings()
   }, [searchQuery, mainCategory, selectedGame, selectedItemType, sortBy, priceRange, currentPage])
 
-  // Fetch available games
-  useEffect(() => {
-    const fetchGames = async () => {
-      try {
-        const games = await getAvailableGames(mainCategory)
-        setAvailableGames(games)
-      } catch (error) {
-        console.error("Error fetching games:", error)
-        setAvailableGames(["All Games"])
-      }
-    }
-
-    fetchGames()
-  }, [mainCategory])
-
   const totalPages = Math.ceil(totalListings / ITEMS_PER_PAGE)
-  const paginatedListings = listings
+
+  // Helper to get display list with "All" option
+  const getDisplayCategories = () => {
+    return [{ id: "all", label: "All", value: "All" }, ...categoryOptions]
+  }
+
+  const getDisplayGames = () => {
+    return [{ id: "all-games", label: "All Games", value: "All Games" }, ...gameOptions]
+  }
+
+  const getDisplayItemTypes = () => {
+    return [{ id: "all-types", label: "All", value: "All" }, ...itemTypeOptions]
+  }
 
   const activeFilters = [
     mainCategory !== "All" ? { name: "Category", value: mainCategory } : null,
@@ -159,67 +191,78 @@ export default function MarketplacePage() {
                 </div>
               </div>
 
-              {/* Main Categories */}
+              {/* Main Categories - Dynamic */}
               <div className="mb-6">
                 <label className="text-sm font-medium mb-3 block">Categories</label>
                 <div className="space-y-1">
-                  {mainCategories.map((cat) => (
-                    <button
-                      key={cat}
-                      onClick={() => setMainCategory(cat)}
-                      className={`w-full text-left px-3 py-2 rounded transition flex items-center gap-2 ${
-                        mainCategory === cat ? "bg-primary text-primary-foreground" : "hover:bg-secondary"
-                      }`}
-                    >
-                      {cat === "Featured" && <StarIcon className="w-4 h-4" />}
-                      {cat}
-                    </button>
-                  ))}
+                  {areFiltersLoading ? (
+                    <div className="h-20 animate-pulse bg-muted rounded" />
+                  ) : (
+                    getDisplayCategories().map((cat) => (
+                      <button
+                        key={cat.id}
+                        onClick={() => setMainCategory(cat.value)}
+                        className={`w-full text-left px-3 py-2 rounded transition flex items-center gap-2 ${
+                          mainCategory === cat.value ? "bg-primary text-primary-foreground" : "hover:bg-secondary"
+                        }`}
+                      >
+                        {cat.value === "Featured" && <StarIcon className="w-4 h-4" />}
+                        {cat.label}
+                      </button>
+                    ))
+                  )}
                 </div>
               </div>
 
-              {/* Game Selection - only show for Games/Accounts/All categories */}
-              {(mainCategory === "Games" || mainCategory === "Accounts" || mainCategory === "All") &&
-                availableGames.length > 0 && (
-                  <div className="mb-6">
-                    <label className="text-sm font-medium mb-3 block">Game</label>
-                    <div className="space-y-1">
-                      {availableGames.map((game) => (
+              {/* Game Selection - Dynamic */}
+              {(mainCategory === "Games" || mainCategory === "Accounts" || mainCategory === "All") && (
+                <div className="mb-6">
+                  <label className="text-sm font-medium mb-3 block">Game</label>
+                  <div className="space-y-1">
+                    {areFiltersLoading ? (
+                       <div className="h-20 animate-pulse bg-muted rounded" />
+                    ) : (
+                      getDisplayGames().map((game) => (
                         <button
-                          key={game}
-                          onClick={() => setSelectedGame(game)}
+                          key={game.id}
+                          onClick={() => setSelectedGame(game.value)}
                           className={`w-full text-left px-3 py-2 rounded transition text-sm ${
-                            selectedGame === game ? "bg-primary text-primary-foreground" : "hover:bg-secondary"
+                            selectedGame === game.value ? "bg-primary text-primary-foreground" : "hover:bg-secondary"
                           }`}
                         >
-                          {game}
+                          {game.label}
                         </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-              {/* Item Type Selection - only show for Games category */}
-              {mainCategory === "Games" && (
-                <div className="mb-6">
-                  <label className="text-sm font-medium mb-3 block">Item Type</label>
-                  <div className="space-y-1">
-                    {gameItemTypes.map((type) => (
-                      <button
-                        key={type}
-                        onClick={() => setSelectedItemType(type)}
-                        className={`w-full text-left px-3 py-2 rounded transition text-sm ${
-                          selectedItemType === type ? "bg-primary text-primary-foreground" : "hover:bg-secondary"
-                        }`}
-                      >
-                        {type}
-                      </button>
-                    ))}
+                      ))
+                    )}
                   </div>
                 </div>
               )}
 
-              {/* Price Range - input fields for 0 to 1 million */}
+              {/* Item Type Selection - Dynamic */}
+              {mainCategory === "Games" && (
+                <div className="mb-6">
+                  <label className="text-sm font-medium mb-3 block">Item Type</label>
+                  <div className="space-y-1">
+                    {areFiltersLoading ? (
+                       <div className="h-20 animate-pulse bg-muted rounded" />
+                    ) : (
+                      getDisplayItemTypes().map((type) => (
+                        <button
+                          key={type.id}
+                          onClick={() => setSelectedItemType(type.value)}
+                          className={`w-full text-left px-3 py-2 rounded transition text-sm ${
+                            selectedItemType === type.value ? "bg-primary text-primary-foreground" : "hover:bg-secondary"
+                          }`}
+                        >
+                          {type.label}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Price Range */}
               <div className="mb-6">
                 <label className="text-sm font-medium mb-3 block">Price Range</label>
                 <div className="space-y-2">
@@ -313,21 +356,21 @@ export default function MarketplacePage() {
                   <div>
                     <label className="text-sm font-medium mb-2 block">Category</label>
                     <div className="flex flex-wrap gap-2">
-                      {mainCategories.map((cat) => (
+                      {getDisplayCategories().map((cat) => (
                         <Button
-                          key={cat}
+                          key={cat.id}
                           size="sm"
-                          variant={mainCategory === cat ? "default" : "outline"}
-                          onClick={() => setMainCategory(cat)}
+                          variant={mainCategory === cat.value ? "default" : "outline"}
+                          onClick={() => setMainCategory(cat.value)}
                         >
-                          {cat}
+                          {cat.label}
                         </Button>
                       ))}
                     </div>
                   </div>
 
                   {/* Game */}
-                  {availableGames.length > 0 && (
+                  {(mainCategory === "Games" || mainCategory === "Accounts" || mainCategory === "All") && (
                     <div>
                       <label className="text-sm font-medium mb-2 block">Game</label>
                       <select
@@ -335,9 +378,9 @@ export default function MarketplacePage() {
                         onChange={(e) => setSelectedGame(e.target.value)}
                         className="w-full px-3 py-2 rounded-md border bg-background text-sm"
                       >
-                        {availableGames.map((game) => (
-                          <option key={game} value={game}>
-                            {game}
+                        {getDisplayGames().map((game) => (
+                          <option key={game.id} value={game.value}>
+                            {game.label}
                           </option>
                         ))}
                       </select>
@@ -349,14 +392,14 @@ export default function MarketplacePage() {
                     <div>
                       <label className="text-sm font-medium mb-2 block">Item Type</label>
                       <div className="flex flex-wrap gap-2">
-                        {gameItemTypes.map((type) => (
+                        {getDisplayItemTypes().map((type) => (
                           <Button
-                            key={type}
+                            key={type.id}
                             size="sm"
-                            variant={selectedItemType === type ? "default" : "outline"}
-                            onClick={() => setSelectedItemType(type)}
+                            variant={selectedItemType === type.value ? "default" : "outline"}
+                            onClick={() => setSelectedItemType(type.value)}
                           >
-                            {type}
+                            {type.label}
                           </Button>
                         ))}
                       </div>
@@ -428,10 +471,10 @@ export default function MarketplacePage() {
                   </Card>
                 ))}
               </div>
-            ) : paginatedListings.length > 0 ? (
+            ) : listings.length > 0 ? (
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {paginatedListings.map((listing) => (
+                  {listings.map((listing) => (
                     <Link key={listing.id} href={`/listing/${listing.id}`}>
                       <Card className="overflow-hidden hover:shadow-lg transition-all duration-300 cursor-pointer group h-full flex flex-col">
                         {/* Image */}

@@ -85,7 +85,7 @@ type Message = {
   timestamp: string
   type?: "text" | "counteroffer" | "image"
   offerAmount?: number
-  offerStatus?: "pending" | "accepted" | "rejected"
+  offerStatus?: "pending" | "accepted" | "rejected" | "declined"
   imageUrl?: string
 }
 
@@ -166,6 +166,32 @@ export default function MessagesPage() {
     const loadConversations = async () => {
       setLoadingConversations(true)
       try {
+        // Auto-open conversation BEFORE loading list if sellerId is in searchParams
+        const sellerId = searchParams.get("sellerId")
+        const itemId = searchParams.get("itemId")
+
+        if (sellerId) {
+          try {
+            // Try to read transaction details from URL: `amount` and `cost`
+            const amountParam = searchParams.get("amount")
+            const costParam = searchParams.get("cost")
+            let txDetails: { price: number; amount: number } | undefined = undefined
+
+            if (amountParam && costParam) {
+              const parsedAmount = parseInt(amountParam, 10)
+              const parsedCost = parseInt(costParam, 10)
+              if (!isNaN(parsedAmount) && !isNaN(parsedCost)) {
+                txDetails = { price: parsedCost, amount: parsedAmount }
+              }
+            }
+
+            await getOrCreateConversation(sellerId, itemId || undefined, txDetails)
+          } catch (error) {
+            console.error("Error auto-opening conversation:", error)
+          }
+        }
+
+        // Now load all conversations (including the newly created one)
         const result = await getConversations()
         if (result.success && result.conversations) {
           const convertedContacts: Contact[] = result.conversations.map((conv) => ({
@@ -198,31 +224,14 @@ export default function MessagesPage() {
           }))
           setContacts(convertedContacts)
 
-          // Auto-open conversation if sellerId is in searchParams
-          const sellerId = searchParams.get("sellerId")
-          const itemId = searchParams.get("itemId")
-
+          // Select the conversation that was just created
           if (sellerId) {
-            try {
-              const result = await getOrCreateConversation(sellerId, itemId || undefined)
-              if (result.success && result.conversationId) {
-                // Find the contact in the list or use the new conversation ID
-                const targetContact =
-                  convertedContacts.find((c) => c.id === result.conversationId) ||
-                  convertedContacts.find((c) => {
-                    // Try to find by seller relationship
-                    return (
-                      (c.role === "seller" && sellerId) ||
-                      (c.role === "buyer" && sellerId)
-                    )
-                  })
+            const targetContact = convertedContacts.find((c) => {
+              return c.otherUserId === sellerId && (itemId ? c.item.id === itemId : true)
+            })
 
-                if (targetContact) {
-                  handleSelectContact(targetContact)
-                }
-              }
-            } catch (error) {
-              console.error("Error auto-opening conversation:", error)
+            if (targetContact) {
+              handleSelectContact(targetContact)
             }
           }
         }
@@ -340,7 +349,7 @@ export default function MessagesPage() {
       if (messageText.trim()) {
         const result = await sendMessage(messageText, {
           conversationId: selectedConversationId,
-          quantity: amountQueryParam || undefined,
+          amount: amountQueryParam || undefined,
         })
         if (!result.success) {
           console.error("Error sending message:", result.error)
@@ -927,7 +936,10 @@ export default function MessagesPage() {
                         </span>
                       </div>
                       <p className="font-semibold truncate">{selectedContact.item.title}</p>
-                      <p className="text-primary font-bold">PHP {selectedContact.item.price.toLocaleString()}</p>
+                      <p className="text-primary font-bold">
+                        PHP {(transaction?.price ?? selectedContact.item.price).toLocaleString()}
+                        {transaction?.amount && ` (${transaction.amount.toLocaleString()} units)`}
+                      </p>
                     </div>
                     <Button
                       variant="outline"
@@ -1039,7 +1051,7 @@ export default function MessagesPage() {
                           ) : null}
                         </div>
                       </>
-                    ) : selectedContact.status === "sold" && user?.id !== transaction?.buyerId ? (
+                    ) : selectedContact.status === "sold" ? (
                       <div className="flex items-center gap-2 text-sm text-orange-600 bg-orange-500/10 px-3 py-2 rounded-lg">
                         <AlertTriangle className="w-4 h-4" />
                         Item sold to another user

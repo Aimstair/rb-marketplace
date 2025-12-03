@@ -21,6 +21,7 @@ export async function getListing(id: string, currentUserId?: string): Promise<{
     title: string
     description: string | null
     price: number
+    stock: number
     image: string
     images?: string[]
     game: string
@@ -29,6 +30,8 @@ export async function getListing(id: string, currentUserId?: string): Promise<{
     condition: string
     status: string
     views: number
+    minOrder?: number
+    maxOrder?: number
     seller: {
       id: string
       username: string
@@ -66,7 +69,23 @@ export async function getListing(id: string, currentUserId?: string): Promise<{
 
     const listing = await prisma.listing.findUnique({
       where: { id },
-      include: {
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        price: true,
+        stock: true,
+        image: true,
+        game: true,
+        category: true,
+        itemType: true,
+        condition: true,
+        status: true,
+        views: true,
+        upvotes: true,
+        downvotes: true,
+        type: true,
+        createdAt: true,
         seller: {
           select: {
             id: true,
@@ -112,6 +131,16 @@ export async function getListing(id: string, currentUserId?: string): Promise<{
       userVote = (vote?.type as "UP" | "DOWN") || null
     }
 
+    // Parse minOrder and maxOrder from description if it's a currency listing
+    let minOrder: number | undefined
+    let maxOrder: number | undefined
+    if (listing.type === "CURRENCY" && listing.description) {
+      const minOrderMatch = listing.description.match(/Min Order:\s*(\d+)/i)
+      const maxOrderMatch = listing.description.match(/Max Order:\s*(\d+)/i)
+      minOrder = minOrderMatch ? parseInt(minOrderMatch[1], 10) : undefined
+      maxOrder = maxOrderMatch ? parseInt(maxOrderMatch[1], 10) : undefined
+    }
+
     return {
       success: true,
       listing: {
@@ -119,6 +148,7 @@ export async function getListing(id: string, currentUserId?: string): Promise<{
         title: listing.title,
         description: listing.description,
         price: listing.price,
+        stock: listing.stock || 1,
         image: listing.image,
         images: [listing.image], // Single image for now; extend if multi-image support added
         game: listing.game,
@@ -127,6 +157,8 @@ export async function getListing(id: string, currentUserId?: string): Promise<{
         condition: listing.condition,
         status: listing.status,
         views: (listing.views || 0) + 1,
+        minOrder,
+        maxOrder,
         seller: {
           id: listing.seller.id,
           username: listing.seller.username,
@@ -136,7 +168,6 @@ export async function getListing(id: string, currentUserId?: string): Promise<{
           joinDate: listing.seller.joinDate,
           lastActive: listing.seller.lastActive,
           vouchCount: listing.seller.vouchesReceived.length,
-          listings: listing.seller._count.listings,
         },
         upvotes: listing.upvotes || 0,
         downvotes: listing.downvotes || 0,
@@ -419,7 +450,8 @@ export async function getCurrencyListings(): Promise<CurrencyListing[]> {
 
       const currencyType = currencyMatch ? currencyMatch[1].trim() : "Unknown"
       const ratePerPeso = rateMatch ? parseFloat(rateMatch[1]) : 0
-      const stock = stockMatch ? parseInt(stockMatch[1], 10) : 0
+      // Use DB stock if available, otherwise fall back to parsed stock
+      const stock = listing.stock ?? (stockMatch ? parseInt(stockMatch[1], 10) : 0)
 
       return {
         id: listing.id,
@@ -687,9 +719,10 @@ export async function reportListing(
     const report = await prisma.report.create({
       data: {
         listingId,
+        reporterId: reporter.id,
         reportedId: reporter.id,
         reason,
-        description: details || null,
+        details: details || null,
         status: "PENDING",
       },
       select: { id: true },
@@ -745,7 +778,8 @@ ${validatedData.description ? `Notes: ${validatedData.description}` : ""}`
         description: currencyDescription,
         game: "Currency Exchange",
         price: Math.round(validatedData.ratePerPeso * 100),
-        image: "/currency-placeholder.svg",
+        stock: validatedData.stock,
+        image: validatedData.image,
         category: "Games",
         itemType: "Services",
         condition: "New",
@@ -771,5 +805,33 @@ ${validatedData.description ? `Notes: ${validatedData.description}` : ""}`
       success: false,
       error: "Failed to create currency listing. Please try again.",
     }
+  }
+}
+
+/**
+ * Get filter options from database
+ * @param type - Optional filter type (CATEGORY, GAME, ITEM_TYPE, CONDITION)
+ * @returns Array of filter options
+ */
+export async function getFilterOptions(type?: string): Promise<{
+  label: string
+  value: string
+}[]> {
+  try {
+    const where = type ? { type, isActive: true } : { isActive: true }
+    
+    const options = await prisma.filterOption.findMany({
+      where,
+      orderBy: { order: "asc" },
+      select: {
+        label: true,
+        value: true,
+      },
+    })
+
+    return options
+  } catch (error) {
+    console.error("Error fetching filter options:", error)
+    return []
   }
 }

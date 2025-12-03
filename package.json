@@ -9,7 +9,7 @@
     "start": "next start",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:seed": "node --loader tsx prisma/seed.ts",
+    "prisma:seed": "node --import tsx prisma/seed.ts",
     "db:seed": "prisma db seed"
   },
   "dependencies": {
@@ -86,6 +86,6 @@
     "typescript": "^5"
   },
   "prisma": {
-    "seed": "node --loader tsx prisma/seed.ts"
+    "seed": "node --import tsx prisma/seed.ts"
   }
 }

@@ -59,11 +59,10 @@ export default function CurrencyMarketplace() {
           // Parse currency details from description with safety checks
           const currencyMatch = description.match(/Currency: (.+?)(?:\n|$)/)
           const rateMatch = description.match(/Rate: ₱([\d.]+)/)
-          const stockMatch = description.match(/Stock: (\d+)/)
 
           const currencyType = currencyMatch ? currencyMatch[1].trim() : "Unknown"
           const ratePerPeso = rateMatch ? parseFloat(rateMatch[1]) : 0
-          const stock = stockMatch ? parseInt(stockMatch[1], 10) : 0
+          const stock = listing.stock || 0
 
           return {
             id: listing.id,

@@ -13,34 +13,46 @@ import { Badge } from "@/components/ui/badge"
 import { FileUpload } from "@/components/file-upload"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
-import { createListing, createCurrencyListing } from "@/app/actions/listings"
-
-const itemCategories = ["Accessories", "Games", "Accounts"]
-
-const gameItemTypes = ["In-Game Items", "Gamepasses", "Services"]
-
-const games = ["Adopt Me", "Pet Simulator X", "Blox Fruits", "Roblox Limited", "Brookhaven RP", "Jailbreak", "Other"]
+import { createListing, createCurrencyListing, getFilterOptions } from "@/app/actions/listings"
 
 const paymentMethods = ["GCash", "PayPal", "Robux Gift Cards", "Cross-Trade", "Venmo"]
-
-const currencyTypes = [
-  "Robux",
-  "Blox Fruits Money",
-  "Adopt Me Bucks",
-  "Pet Simulator X Gems",
-  "MeepCity Coins",
-  "Other",
-]
 
 export default function SellPage() {
   const { user } = useAuth()
   const router = useRouter()
+
+  // Dynamic filter states
+  const [categories, setCategories] = useState<{ label: string; value: string }[]>([])
+  const [games, setGames] = useState<{ label: string; value: string }[]>([])
+  const [itemTypes, setItemTypes] = useState<{ label: string; value: string }[]>([])
+  const [conditions, setConditions] = useState<{ label: string; value: string }[]>([])
 
   useEffect(() => {
     if (!user) {
       router.push("/auth/login?redirect=/sell")
     }
   }, [user, router])
+
+  // Fetch filter options on mount
+  useEffect(() => {
+    const fetchFilters = async () => {
+      try {
+        const [categoriesData, gamesData, itemTypesData, conditionsData] = await Promise.all([
+          getFilterOptions("CATEGORY"),
+          getFilterOptions("GAME"),
+          getFilterOptions("ITEM_TYPE"),
+          getFilterOptions("CONDITION"),
+        ])
+        setCategories(categoriesData)
+        setGames(gamesData)
+        setItemTypes(itemTypesData)
+        setConditions(conditionsData)
+      } catch (error) {
+        console.error("Error fetching filter options:", error)
+      }
+    }
+    fetchFilters()
+  }, [])
 
   const [listingType, setListingType] = useState<"item" | "currency">("item")
 
@@ -64,6 +76,7 @@ export default function SellPage() {
     stock: "",
     minOrder: "",
     maxOrder: "",
+    image: "",
     description: "",
     paymentMethods: [] as string[],
   })
@@ -179,7 +192,7 @@ export default function SellPage() {
         }
       } else {
         // Currency listing
-        if (!currencyFormData.currencyType || !currencyFormData.ratePerPeso || !currencyFormData.stock || !currencyFormData.minOrder || !currencyFormData.maxOrder) {
+        if (!currencyFormData.currencyType || !currencyFormData.ratePerPeso || !currencyFormData.stock || !currencyFormData.minOrder || !currencyFormData.maxOrder || !currencyFormData.image) {
           setError("Please fill in all required fields")
           setIsLoading(false)
           return
@@ -197,6 +210,7 @@ export default function SellPage() {
           stock: Number(currencyFormData.stock),
           minOrder: Number(currencyFormData.minOrder),
           maxOrder: Number(currencyFormData.maxOrder),
+          image: currencyFormData.image,
           description: currencyFormData.description || undefined,
           paymentMethods: currencyFormData.paymentMethods,
         })
@@ -314,9 +328,9 @@ export default function SellPage() {
                           className="w-full px-3 py-2 border border-border rounded-lg bg-background"
                         >
                           <option value="">Select category</option>
-                          {itemCategories.map((cat) => (
-                            <option key={cat} value={cat}>
-                              {cat}
+                          {categories.map((cat) => (
+                            <option key={cat.value} value={cat.value}>
+                              {cat.label}
                             </option>
                           ))}
                         </select>
@@ -332,9 +346,9 @@ export default function SellPage() {
                             className="w-full px-3 py-2 border border-border rounded-lg bg-background"
                           >
                             <option value="">Select item type</option>
-                            {gameItemTypes.map((type) => (
-                              <option key={type} value={type}>
-                                {type}
+                            {itemTypes.map((type) => (
+                              <option key={type.value} value={type.value}>
+                                {type.label}
                               </option>
                             ))}
                           </select>
@@ -351,8 +365,8 @@ export default function SellPage() {
                         >
                           <option value="">Select game</option>
                           {games.map((g) => (
-                            <option key={g} value={g}>
-                              {g}
+                            <option key={g.value} value={g.value}>
+                              {g.label}
                             </option>
                           ))}
                         </select>
@@ -366,10 +380,11 @@ export default function SellPage() {
                           onChange={handleItemChange}
                           className="w-full px-3 py-2 border border-border rounded-lg bg-background"
                         >
-                          <option value="New">New</option>
-                          <option value="Mint">Mint</option>
-                          <option value="Used">Used</option>
-                          <option value="Damaged">Damaged</option>
+                          {conditions.map((cond) => (
+                            <option key={cond.value} value={cond.value}>
+                              {cond.label}
+                            </option>
+                          ))}
                         </select>
                       </div>
 
@@ -457,9 +472,9 @@ export default function SellPage() {
                           className="w-full px-3 py-2 border border-border rounded-lg bg-background"
                         >
                           <option value="">Select currency type</option>
-                          {currencyTypes.map((type) => (
-                            <option key={type} value={type}>
-                              {type}
+                          {games.map((game) => (
+                            <option key={game.value} value={game.label}>
+                              {game.label}
                             </option>
                           ))}
                         </select>
@@ -635,9 +650,20 @@ export default function SellPage() {
               ) : (
                 <div className="border rounded-lg p-4">
                   <div className="flex items-center gap-3 mb-3">
-                    <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-                      <Coins className="w-6 h-6 text-primary" />
-                    </div>
+                    {currencyFormData.image ? (
+                      <img
+                        src={currencyFormData.image}
+                        alt="Currency"
+                        className="w-12 h-12 rounded-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.src = "/placeholder.svg"
+                        }}
+                      />
+                    ) : (
+                      <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
+                        <Coins className="w-6 h-6 text-primary" />
+                      </div>
+                    )}
                     <div>
                       <p className="font-semibold">{currencyFormData.currencyType || "Currency Type"}</p>
                       <p className="text-sm text-muted-foreground">
