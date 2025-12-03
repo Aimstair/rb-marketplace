@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { getListings, getFilterOptions } from "@/app/actions/listings"
-import type { ListingResponse } from "@/app/actions/listings"
+import type { ListingResponse } from "@/lib/schemas"
 
 // Define interface for filter options based on your schema
 interface FilterOption {
@@ -434,18 +434,20 @@ export default function MarketplacePage() {
             {activeFilters.length > 0 && (
               <div className="mb-6 flex flex-wrap items-center gap-2">
                 <span className="text-sm text-muted-foreground">Active filters:</span>
-                {activeFilters.map((filter, idx) => (
-                  <Badge key={idx} variant="secondary">
-                    {filter.name}: {filter.value}
-                  </Badge>
-                ))}
+                {activeFilters.map((filter, idx) => 
+                  filter ? (
+                    <Badge key={idx} variant="secondary">
+                      {filter.name}: {filter.value}
+                    </Badge>
+                  ) : null
+                )}
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={clearFilters}
-                  className="text-destructive hover:text-destructive"
+                  className="text-xs"
                 >
-                  Clear all
+                  Clear All
                 </Button>
               </div>
             )}

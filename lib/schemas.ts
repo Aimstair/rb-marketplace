@@ -66,6 +66,7 @@ export interface ListingFilters {
   includeSold?: boolean // If true, include sold listings
 }
 
+export type { ListingResponse }
 export interface ListingResponse {
   id: string
   title: string

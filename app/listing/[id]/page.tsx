@@ -67,6 +67,13 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
           downvotes: result.listing.downvotes || 0 
         })
         
+        // Initialize user's vote from database
+        if (result.listing.userVote) {
+          setUserVote(result.listing.userVote.toLowerCase() as "up" | "down")
+        } else {
+          setUserVote(null)
+        }
+        
         // Set first image as default
         if (result.listing.image) {
           setSelectedImage(result.listing.image)

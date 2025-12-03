@@ -144,7 +144,7 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
   const [isReporting, setIsReporting] = useState(false)
   const [copied, setCopied] = useState(false)
 
-  // Initialize selectedImage and votes when listing loads
+  // Initialize selectedImage, votes, and userVote when listing loads
   useEffect(() => {
     if (listing) {
       setSelectedImage(listing.image || "/placeholder.svg")
@@ -152,6 +152,12 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
         upvotes: listing.upvotes || 0,
         downvotes: listing.downvotes || 0,
       })
+      // Initialize user's vote from database
+      if (listing.userVote) {
+        setUserVote(listing.userVote.toLowerCase() as "up" | "down")
+      } else {
+        setUserVote(null)
+      }
     }
   }, [listing])
 

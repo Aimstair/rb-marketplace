@@ -814,6 +814,7 @@ ${validatedData.description ? `Notes: ${validatedData.description}` : ""}`
  * @returns Array of filter options
  */
 export async function getFilterOptions(type?: string): Promise<{
+  id: string
   label: string
   value: string
 }[]> {
@@ -824,6 +825,7 @@ export async function getFilterOptions(type?: string): Promise<{
       where,
       orderBy: { order: "asc" },
       select: {
+        id: true,
         label: true,
         value: true,
       },
