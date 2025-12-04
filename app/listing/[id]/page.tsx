@@ -301,21 +301,42 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
 
             {/* Action Buttons */}
             <div className="space-y-3 mb-6">
-              <Button size="lg" className="w-full" onClick={handleMessageSeller}>
+              <Button 
+                size="lg" 
+                className={user?.id === listing.sellerId ? "w-full pointer-events-none opacity-50" : "w-full"}
+                onClick={handleMessageSeller}
+                disabled={user?.id === listing.sellerId}
+              >
                 <MessageCircle className="w-5 h-5 mr-2" />
-                Message Seller
+                {user?.id === listing.sellerId ? "Your Listing" : "Message Seller"}
               </Button>
-              <Button size="lg" variant="outline" className="w-full bg-transparent" onClick={handleSaveItem}>
+              <Button 
+                size="lg" 
+                variant="outline" 
+                className={user?.id === listing.sellerId ? "w-full bg-transparent pointer-events-none opacity-50" : "w-full bg-transparent"}
+                disabled={user?.id === listing.sellerId}
+                onClick={handleSaveItem}
+              >
                 {isSaved ? "★ Saved" : "☆ Save Item"}
               </Button>
-              <Button size="lg" variant="outline" className="w-full bg-transparent">
+              <Button 
+                disabled={user?.id === listing.sellerId}
+                size="lg" 
+                variant="outline" 
+                className={user?.id === listing.sellerId ? "w-full bg-transparent pointer-events-none opacity-50" : "w-full bg-transparent"}
+                onClick={() => {
+                  const url = typeof window !== "undefined" ? window.location.href : ""
+                  navigator.clipboard.writeText(url)
+                }}
+              >
                 <Share2 className="w-5 h-5 mr-2" />
                 Share
               </Button>
               <Button
                 size="lg"
                 variant="outline"
-                className="w-full text-destructive bg-transparent"
+                className={user?.id === listing.sellerId ? "w-full text-destructive bg-transparent pointer-events-none opacity-50" : "w-full text-destructive bg-transparent"}
+                disabled={user?.id === listing.sellerId}
                 onClick={handleReport}
               >
                 <Flag className="w-5 h-5 mr-2" />
@@ -367,9 +388,11 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
                 </div>
               </div>
 
-              <Button size="sm" variant="outline" className="w-full mt-4 bg-transparent">
-                View Profile
-              </Button>
+              <Link href={`/profile/${listing.seller?.id || listing.sellerId}`}>
+                <Button size="sm" variant="outline" className="w-full mt-4 bg-transparent">
+                  View Profile
+                </Button>
+              </Link>
             </Card>
 
             {/* Listing Info */}

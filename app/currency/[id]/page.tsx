@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
+import Link from "next/link"
 import { Star, MessageCircle, Share2, Flag, Shield, Calendar, ThumbsUp, ThumbsDown, Loader2, Copy, Check } from "lucide-react"
 import Navigation from "@/components/navigation"
 import { Button } from "@/components/ui/button"
@@ -138,6 +139,7 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
   const [showAmountDialog, setShowAmountDialog] = useState(false)
   const [showReportDialog, setShowReportDialog] = useState(false)
   const [currencyAmount, setCurrencyAmount] = useState("")
+  const [amountError, setAmountError] = useState("")
   const [reportReason, setReportReason] = useState("")
   const [reportDetails, setReportDetails] = useState("")
   const [isVoting, setIsVoting] = useState(false)
@@ -221,36 +223,22 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
 
   const handleProceedToContact = () => {
     const amount = Number.parseInt(currencyAmount)
+    setAmountError("")
+    
     if (!amount || amount <= 0) {
-      toast({
-        title: "Invalid Amount",
-        description: "Please enter a valid amount",
-        variant: "destructive",
-      })
+      setAmountError("Please enter a valid amount")
       return
     }
     if (amount > currencyData.stock) {
-      toast({
-        title: "Insufficient Stock",
-        description: `Only ${currencyData.stock.toLocaleString()} ${currencyData.currencyType} available`,
-        variant: "destructive",
-      })
+      setAmountError(`Only ${currencyData.stock.toLocaleString()} ${currencyData.currencyType} available`)
       return
     }
     if (currencyData.minOrder && amount < currencyData.minOrder) {
-      toast({
-        title: "Below Minimum Order",
-        description: `Minimum order is ${currencyData.minOrder.toLocaleString()} ${currencyData.currencyType}`,
-        variant: "destructive",
-      })
+      setAmountError(`Minimum order is ${currencyData.minOrder.toLocaleString()} ${currencyData.currencyType}`)
       return
     }
     if (currencyData.maxOrder && amount > currencyData.maxOrder) {
-      toast({
-        title: "Exceeds Maximum Order",
-        description: `Maximum order is ${currencyData.maxOrder.toLocaleString()} ${currencyData.currencyType}`,
-        variant: "destructive",
-      })
+      setAmountError(`Maximum order is ${currencyData.maxOrder.toLocaleString()} ${currencyData.currencyType}`)
       return
     }
     const cost = calculateCost(currencyAmount)
@@ -273,6 +261,7 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
   const handleCloseDialog = () => {
     setShowAmountDialog(false)
     setCurrencyAmount("")
+    setAmountError("")
     router.replace(`/currency/${id}`)
   }
 
@@ -522,15 +511,21 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
             </div>
 
             <div className="space-y-3 mb-6">
-              <Button size="lg" className="w-full" onClick={handleContactSeller} disabled={!user}>
+              <Button 
+                size="lg" 
+                className={user?.id === listing?.sellerId ? "w-full pointer-events-none opacity-50" : "w-full"}
+                onClick={handleContactSeller} 
+                disabled={!user || user?.id === listing?.sellerId}
+              >
                 <MessageCircle className="w-5 h-5 mr-2" />
-                Buy Now
+                {user?.id === listing?.sellerId ? "Your Listing" : "Buy Now"}
               </Button>
               <div className="grid grid-cols-2 gap-2">
                 <Button
                   variant="outline"
                   onClick={handleShare}
-                  disabled={copied}
+                  disabled={copied || user?.id === listing?.sellerId}
+                  className={copied || user?.id === listing?.sellerId ? "pointer-events-none opacity-50" : ""}
                 >
                   {copied ? <Check className="w-4 h-4 mr-1" /> : <Share2 className="w-4 h-4 mr-1" />}
                   {copied ? "Copied" : "Share"}
@@ -538,7 +533,8 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
                 <Button
                   variant="outline"
                   onClick={() => setShowReportDialog(true)}
-                  className="text-red-600 hover:text-red-700"
+                  className={user?.id === listing?.sellerId ? "text-red-600 hover:text-red-700 pointer-events-none opacity-50" : "text-red-600 hover:text-red-700"}
+                  disabled={user?.id === listing?.sellerId}
                 >
                   <Flag className="w-4 h-4 mr-1" />
                   Report
@@ -586,16 +582,15 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
                 </div>
               </div>
 
-              <Button 
-                size="sm" 
-                variant="outline" 
-                className="w-full mt-4" 
-                onClick={() => router.push(`/profile/${listing?.seller?.id}`)} 
-                disabled={!user}
-              >
-                <MessageCircle className="w-4 h-4 mr-1" />
-                View Profile
-              </Button>
+              <Link href={`/profile/${listing?.seller?.id || listing?.sellerId}`}>
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="w-full mt-4"
+                >
+                  View Profile
+                </Button>
+              </Link>
             </Card>
 
           </div>
@@ -623,10 +618,16 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
                 type="number"
                 placeholder={`Enter amount (max ${currencyData.stock.toLocaleString()})`}
                 value={currencyAmount}
-                onChange={(e) => setCurrencyAmount(e.target.value)}
-                className="mt-2"
+                onChange={(e) => {
+                  setCurrencyAmount(e.target.value)
+                  setAmountError("")
+                }}
+                className={`mt-2 ${amountError ? "border-red-500" : ""}`}
                 max={currencyData.stock}
               />
+              {amountError && (
+                <p className="text-sm text-red-500 mt-1">{amountError}</p>
+              )}
               <div className="text-xs text-muted-foreground mt-1 space-y-1">
                 <p>Available: {currencyData.stock.toLocaleString()} {currencyData.currencyType}</p>
                 {currencyData.minOrder && (

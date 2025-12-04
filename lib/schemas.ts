@@ -29,6 +29,7 @@ export const createItemListingSchema = z.object({
   game: z.string().min(1, "Please select a game"),
   itemType: z.string().min(1, "Please select an item type"),
   price: z.number().min(1, "Price must be at least 1").max(1000000, "Price must be at most 1,000,000"),
+  stock: z.number().min(1, "Stock must be at least 1").optional().default(1),
   image: z.string().url("Please provide a valid image URL"),
   condition: z.enum(["Mint", "New", "Used"]),
   paymentMethods: z.array(z.string()).min(1, "Select at least one payment method"),

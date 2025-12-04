@@ -63,6 +63,7 @@ export default function SellPage() {
     itemType: "",
     game: "",
     price: "",
+    stock: "1",
     image: "",
     images: [] as File[],
     condition: "New",
@@ -176,6 +177,7 @@ export default function SellPage() {
           game: itemFormData.game,
           itemType: itemFormData.itemType,
           price: Number(itemFormData.price),
+          stock: Number(itemFormData.stock) || 1,
           image: itemFormData.image,
           condition: itemFormData.condition as "Mint" | "New" | "Used",
           paymentMethods: itemFormData.paymentMethods,
@@ -217,9 +219,9 @@ export default function SellPage() {
 
         if (result.success) {
           setSuccess(true)
-          // Redirect to the new listing or marketplace
+          // Redirect to the new listing
           setTimeout(() => {
-            router.push(`/listing/${result.listingId}`)
+            router.push(`/currency/${result.listingId}`)
           }, 1500)
         } else {
           setError(result.error || "Failed to create listing")
@@ -399,6 +401,21 @@ export default function SellPage() {
                           min="0"
                         />
                       </div>
+
+                      <div>
+                        <label className="text-sm font-semibold mb-2 block">Stock/Quantity *</label>
+                        <Input
+                          type="number"
+                          name="stock"
+                          placeholder="1"
+                          value={itemFormData.stock}
+                          onChange={handleItemChange}
+                          min="1"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          How many of this item do you have available?
+                        </p>
+                      </div>
                     </div>
                   </Card>
 
@@ -554,6 +571,28 @@ export default function SellPage() {
                           rows={4}
                         />
                         <p className="text-xs text-muted-foreground mt-1">{currencyFormData.description.length}/500</p>
+                      </div>
+                    </div>
+                  </Card>
+
+                  <Card className="p-6">
+                    <h2 className="text-xl font-bold mb-4">Currency Image</h2>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-sm font-semibold mb-2 block">Currency Image *</label>
+                        <FileUpload
+                          endpoint="listingImage"
+                          value={currencyFormData.image}
+                          onChange={(url) =>
+                            setCurrencyFormData({
+                              ...currencyFormData,
+                              image: url || "",
+                            })
+                          }
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Upload a clear image of your currency
+                        </p>
                       </div>
                     </div>
                   </Card>

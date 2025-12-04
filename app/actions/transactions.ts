@@ -160,15 +160,24 @@ export async function getTransactions(
   role?: "buyer" | "seller"
 ): Promise<GetTransactionsResult> {
   try {
-    // Get the current user (placeholder - first user in DB)
-    const currentUser = await prisma.user.findFirst({
-      where: { role: "user" },
+    // Get authenticated user from session
+    const session = await auth()
+    if (!session?.user?.email) {
+      return {
+        success: false,
+        error: "You must be logged in to view transactions.",
+      }
+    }
+
+    const currentUser = await prisma.user.findUnique({
+      where: { email: session.user.email },
+      select: { id: true },
     })
 
     if (!currentUser) {
       return {
         success: false,
-        error: "No user found. Please contact support.",
+        error: "User account not found.",
       }
     }
 
@@ -301,6 +310,7 @@ export async function getTransactionById(transactionId: string): Promise<{
         seller: transaction.seller,
         listing: transaction.listing,
         price: transaction.price,
+        amount: transaction.amount,
         status: transaction.status,
         buyerConfirmed: transaction.buyerConfirmed,
         sellerConfirmed: transaction.sellerConfirmed,
@@ -362,9 +372,11 @@ export async function getTransactionByPeers(
     // Find transaction where listing matches AND participants are currentUser and otherUserId
     // This covers both viewing angles:
     // (currentUser as buyer, otherUser as seller) OR (otherUser as buyer, currentUser as seller)
-    const transaction = await (prisma.transaction as any).findFirst({
+    // ALWAYS prioritize PENDING transactions - check for them first
+    let transaction = await (prisma.transaction as any).findFirst({
       where: {
         listingId,
+        status: "PENDING", // Only look for PENDING transactions
         OR: [
           // Current user is buyer, other user is seller
           {
@@ -378,6 +390,9 @@ export async function getTransactionByPeers(
           },
         ],
       },
+      orderBy: {
+        createdAt: 'desc', // Most recent PENDING transaction
+      },
       include: {
         buyer: {
           select: { id: true, username: true },
@@ -390,6 +405,41 @@ export async function getTransactionByPeers(
         },
       },
     })
+
+    // If no PENDING transaction found, fall back to most recent transaction of any status
+    if (!transaction) {
+      transaction = await (prisma.transaction as any).findFirst({
+        where: {
+          listingId,
+          OR: [
+            // Current user is buyer, other user is seller
+            {
+              buyerId: currentUser.id,
+              sellerId: otherUserId,
+            },
+            // Other user is buyer, current user is seller
+            {
+              buyerId: otherUserId,
+              sellerId: currentUser.id,
+            },
+          ],
+        },
+        orderBy: {
+          createdAt: 'desc', // Most recent transaction
+        },
+        include: {
+          buyer: {
+            select: { id: true, username: true },
+          },
+          seller: {
+            select: { id: true, username: true },
+          },
+          listing: {
+            select: { id: true, title: true, price: true, image: true },
+          },
+        },
+      })
+    }
 
     if (!transaction) {
       return {
@@ -419,6 +469,7 @@ export async function getTransactionByPeers(
         seller: transaction.seller,
         listing: transaction.listing,
         price: transaction.price,
+        amount: transaction.amount,
         status: transaction.status,
         buyerConfirmed: transaction.buyerConfirmed,
         sellerConfirmed: transaction.sellerConfirmed,

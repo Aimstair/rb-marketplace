@@ -513,6 +513,7 @@ export async function createListing(input: CreateItemListingInput): Promise<Crea
         category: validatedData.category,
         itemType: validatedData.itemType,
         condition: validatedData.condition,
+        stock: validatedData.stock,
         sellerId: seller.id,
         status: "available",
         type: "ITEM",

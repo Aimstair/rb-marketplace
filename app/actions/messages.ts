@@ -120,6 +120,18 @@ export async function getConversations(): Promise<GetConversationsResult> {
             isRead: true,
           },
         },
+        transactions: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: {
+            id: true,
+            price: true,
+            amount: true,
+            status: true,
+            buyerConfirmed: true,
+            sellerConfirmed: true,
+          },
+        },
       },
       orderBy: { updatedAt: "desc" },
     }) as any[]
@@ -178,6 +190,7 @@ export async function getConversations(): Promise<GetConversationsResult> {
           latestMessage: conv.messages[0] || null,
           unreadCount: unreadMessages.length,
           status,
+          transaction: conv.transactions && conv.transactions.length > 0 ? conv.transactions[0] : null,
         }
       })
     )
@@ -611,9 +624,7 @@ export async function getOrCreateConversation(
     const existingConversations = await prisma.conversation.findMany({
       where: whereClause,
       include: {
-        transactions: {
-          where: { status: "PENDING" },
-        },
+        transactions: true,
       },
     })
 
@@ -622,17 +633,34 @@ export async function getOrCreateConversation(
     // Look for a conversation with a PENDING transaction
     if (existingConversations.length > 0) {
       const pendingConversation = existingConversations.find(
-        (conv) => conv.transactions && conv.transactions.length > 0
+        (conv) => conv.transactions && conv.transactions.some((tx: any) => tx.status === "PENDING")
       )
       if (pendingConversation) {
+        // Reuse existing conversation with PENDING transaction
         conversation = pendingConversation
+        
+        // Update the PENDING transaction with new details if transaction details provided
+        if (listingId && transactionDetails) {
+          const pendingTx = pendingConversation.transactions.find((tx: any) => tx.status === "PENDING")
+          if (pendingTx) {
+            await prisma.transaction.update({
+              where: { id: pendingTx.id },
+              data: {
+                price: transactionDetails.price,
+                amount: transactionDetails.amount,
+              },
+            }).catch((err) => {
+              console.error("Failed to update pending transaction:", err)
+            })
+          }
+        }
       } else {
-        // If no PENDING transaction, use the first one (or create new)
-        conversation = existingConversations[0]
+        // All previous transactions are COMPLETED/CANCELLED - create new conversation
+        conversation = null
       }
     }
 
-    // If not found, create new conversation
+    // If not found or all transactions completed, create new conversation
     if (!conversation) {
       conversation = await prisma.conversation.create({
         data: {
@@ -651,48 +679,26 @@ export async function getOrCreateConversation(
         })
 
         if (listing) {
-          // Check if a PENDING transaction already exists
-          const existingPendingTransaction = await prisma.transaction.findFirst({
-            where: {
-              buyerId: currentUser.id,
-              sellerId: sellerId,
-              listingId: listingId,
-              status: "PENDING",
-            },
-          })
-
           // Use transactionDetails if provided; otherwise fall back to listing price
           const txPrice = transactionDetails?.price ?? listing.price
           const txAmount = transactionDetails?.amount
 
-          if (existingPendingTransaction) {
-            // Update existing PENDING transaction with new price and amount
-            await prisma.transaction.update({
-              where: { id: existingPendingTransaction.id },
-              data: {
-                price: txPrice,
-                amount: txAmount,
-              },
-            }).catch((err) => {
-              console.error("Failed to update transaction:", err)
-            })
-          } else {
-            // Create new transaction if no PENDING one exists
-            await prisma.transaction.create({
-              data: {
-                buyerId: currentUser.id,
-                sellerId: sellerId,
-                listingId: listingId,
-                conversationId: conversation.id,
-                price: txPrice,
-                amount: txAmount,
-                status: "PENDING",
-              },
-            }).catch((err) => {
-              console.error("Failed to create transaction:", err)
-              // Don't fail conversation creation if transaction fails
-            })
-          }
+          // Create new transaction for this new conversation
+          // (No need to check for existing - this conversation was just created)
+          await prisma.transaction.create({
+            data: {
+              buyerId: currentUser.id,
+              sellerId: sellerId,
+              listingId: listingId,
+              conversationId: conversation.id,
+              price: txPrice,
+              amount: txAmount,
+              status: "PENDING",
+            },
+          }).catch((err) => {
+            console.error("Failed to create transaction:", err)
+            // Don't fail conversation creation if transaction fails
+          })
         }
       }
     }

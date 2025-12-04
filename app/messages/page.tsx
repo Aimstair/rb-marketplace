@@ -76,6 +76,14 @@ type Contact = {
     buyerVouched: boolean
     sellerVouched: boolean
   }
+  transaction?: {
+    id: string
+    price: number
+    amount: number | null
+    status: string
+    buyerConfirmed: boolean
+    sellerConfirmed: boolean
+  } | null
 }
 
 type Message = {
@@ -194,34 +202,64 @@ export default function MessagesPage() {
         // Now load all conversations (including the newly created one)
         const result = await getConversations()
         if (result.success && result.conversations) {
-          const convertedContacts: Contact[] = result.conversations.map((conv) => ({
-            id: conv.id,
-            otherUserId: conv.otherUser.id,
-            name: conv.otherUser.username,
-            lastMessage: conv.latestMessage?.content || "No messages yet",
-            timestamp: conv.latestMessage
-              ? new Date(conv.latestMessage.createdAt).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              : "Just now",
-            online: false,
-            role: conv.buyerId === user.id ? "seller" : "buyer",
-            status: conv.status as any,
-            blocked: false,
-            item: conv.listing || {
-              id: "unknown",
-              title: "Unknown Item",
-              price: 0,
-              image: "/placeholder.svg",
-            },
-            transactionStatus: {
-              buyerConfirmed: false,
-              sellerConfirmed: false,
-              buyerVouched: false,
-              sellerVouched: false,
-            },
-          }))
+          // Load transactions for all conversations to get accurate status
+          const convertedContacts: Contact[] = await Promise.all(
+            result.conversations.map(async (conv) => {
+              let transactionData = {
+                buyerConfirmed: false,
+                sellerConfirmed: false,
+                buyerVouched: false,
+                sellerVouched: false,
+              }
+              
+              // Use conversation-specific transaction data if available
+              let contactStatus: "ongoing" | "completed" | "sold" = "ongoing"
+              if ((conv as any).transaction) {
+                const tx = (conv as any).transaction
+                transactionData = {
+                  buyerConfirmed: tx.buyerConfirmed || false,
+                  sellerConfirmed: tx.sellerConfirmed || false,
+                  buyerVouched: false, // Would need additional query
+                  sellerVouched: false, // Would need additional query
+                }
+                // Set status based on actual transaction status
+                if (tx.status === "COMPLETED") {
+                  contactStatus = "completed"
+                } else if (tx.status === "CANCELLED") {
+                  contactStatus = "sold"
+                } else {
+                  contactStatus = "ongoing"
+                }
+              } else if (conv.listing?.status === "sold") {
+                contactStatus = "sold"
+              }
+              
+              return {
+                id: conv.id,
+                otherUserId: conv.otherUser.id,
+                name: conv.otherUser.username,
+                lastMessage: conv.latestMessage?.content || "No messages yet",
+                timestamp: conv.latestMessage
+                  ? new Date(conv.latestMessage.createdAt).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                  : "Just now",
+                online: false,
+                role: conv.buyerId === user.id ? "seller" : "buyer",
+                status: contactStatus,
+                blocked: false,
+                item: conv.listing || {
+                  id: "unknown",
+                  title: "Unknown Item",
+                  price: 0,
+                  image: "/placeholder.svg",
+                },
+                transactionStatus: transactionData,
+                transaction: (conv as any).transaction || null,
+              }
+            })
+          )
           setContacts(convertedContacts)
 
           // Select the conversation that was just created
@@ -375,11 +413,36 @@ export default function MessagesPage() {
       // If transaction was just created or transaction state is null, load it immediately
       if (messageResult?.transactionCreated || !transaction) {
         console.log("🔄 Loading transaction after message send...")
-        if (selectedContact?.item.id && selectedContact?.item.id !== "unknown") {
-          const result = await getTransactionByPeers(selectedContact.item.id, selectedContact.otherUserId)
-          if (result.success && result.transaction) {
-            setTransaction(result.transaction)
-            console.log("✅ Transaction loaded after message:", result.transaction)
+        // Reload the full conversation to get updated transaction
+        const conversationsResult = await getConversations()
+        if (conversationsResult.success && conversationsResult.conversations && selectedConversationId) {
+          const updatedConv = conversationsResult.conversations.find(c => c.id === selectedConversationId)
+          if (updatedConv && (updatedConv as any).transaction) {
+            const tx = (updatedConv as any).transaction
+            const fullTransaction: TransactionData = {
+              id: tx.id,
+              buyerId: updatedConv.buyerId,
+              sellerId: updatedConv.sellerId,
+              buyer: {
+                id: updatedConv.buyerId,
+                username: updatedConv.buyerId === user.id ? user.username || "You" : selectedContact?.name || "Buyer",
+              },
+              seller: {
+                id: updatedConv.sellerId,
+                username: updatedConv.sellerId === user.id ? user.username || "You" : selectedContact?.name || "Seller",
+              },
+              listing: updatedConv.listing || selectedContact?.item || { id: "", title: "", price: 0, image: "" },
+              price: tx.price,
+              amount: tx.amount,
+              status: tx.status,
+              buyerConfirmed: tx.buyerConfirmed,
+              sellerConfirmed: tx.sellerConfirmed,
+              userVouched: false,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            }
+            setTransaction(fullTransaction)
+            console.log("✅ Transaction loaded after message:", fullTransaction)
           }
         }
       }
@@ -389,34 +452,64 @@ export default function MessagesPage() {
         console.log("🔄 New conversation created, refreshing contacts...")
         const conversationsResult = await getConversations()
         if (conversationsResult.success && conversationsResult.conversations) {
-          const convertedContacts: Contact[] = conversationsResult.conversations.map((conv) => ({
-            id: conv.id,
-            otherUserId: conv.otherUser.id,
-            name: conv.otherUser.username,
-            lastMessage: conv.latestMessage?.content || "No messages yet",
-            timestamp: conv.latestMessage
-              ? new Date(conv.latestMessage.createdAt).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              : "Just now",
-            online: false,
-            role: conv.buyerId === user?.id ? "seller" : "buyer",
-            status: "ongoing" as const,
-            blocked: false,
-            item: conv.listing || {
-              id: "unknown",
-              title: "Unknown Item",
-              price: 0,
-              image: "/placeholder.svg",
-            },
-            transactionStatus: {
-              buyerConfirmed: false,
-              sellerConfirmed: false,
-              buyerVouched: false,
-              sellerVouched: false,
-            },
-          }))
+          // Load transactions for all conversations to get accurate status
+          const convertedContacts: Contact[] = await Promise.all(
+            conversationsResult.conversations.map(async (conv) => {
+              let transactionData = {
+                buyerConfirmed: false,
+                sellerConfirmed: false,
+                buyerVouched: false,
+                sellerVouched: false,
+              }
+              
+              // Use conversation-specific transaction data if available
+              let contactStatus: "ongoing" | "completed" | "sold" = "ongoing"
+              if ((conv as any).transaction) {
+                const tx = (conv as any).transaction
+                transactionData = {
+                  buyerConfirmed: tx.buyerConfirmed || false,
+                  sellerConfirmed: tx.sellerConfirmed || false,
+                  buyerVouched: false, // Would need additional query
+                  sellerVouched: false, // Would need additional query
+                }
+                // Set status based on actual transaction status
+                if (tx.status === "COMPLETED") {
+                  contactStatus = "completed"
+                } else if (tx.status === "CANCELLED") {
+                  contactStatus = "sold"
+                } else {
+                  contactStatus = "ongoing"
+                }
+              } else if (conv.listing?.status === "sold") {
+                contactStatus = "sold"
+              }
+              
+              return {
+                id: conv.id,
+                otherUserId: conv.otherUser.id,
+                name: conv.otherUser.username,
+                lastMessage: conv.latestMessage?.content || "No messages yet",
+                timestamp: conv.latestMessage
+                  ? new Date(conv.latestMessage.createdAt).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                  : "Just now",
+                online: false,
+                role: conv.buyerId === user?.id ? "seller" : "buyer",
+                status: contactStatus,
+                blocked: false,
+                item: conv.listing || {
+                  id: "unknown",
+                  title: "Unknown Item",
+                  price: 0,
+                  image: "/placeholder.svg",
+                },
+                transactionStatus: transactionData,
+                transaction: (conv as any).transaction || null,
+              }
+            })
+          )
           setContacts(convertedContacts)
         }
       }
@@ -676,50 +769,53 @@ export default function MessagesPage() {
     setShowCounterOfferInput(false)
     setConversationSearch("")
     setMessages([])
-    setTransaction(null)
-
-    // Load transaction for this conversation (linked by listing)
-    const loadTransaction = async () => {
-      if (contact.item.id === "unknown") return
-
-      try {
-        // Get transaction by listing ID and other user ID
-        const result = await getTransactionByPeers(contact.item.id, contact.otherUserId)
-        if (result.success && result.transaction) {
-          setTransaction(result.transaction)
-          // Update contact status if transaction exists
-          setSelectedContact((prev) => {
-            if (!prev) return null
-            return {
-              ...prev,
-              status: result.transaction?.status === "COMPLETED" ? "completed" : result.transaction?.status === "CANCELLED" ? "sold" : "ongoing",
-              transactionStatus: {
-                buyerConfirmed: result.transaction?.buyerConfirmed || false,
-                sellerConfirmed: result.transaction?.sellerConfirmed || false,
-                buyerVouched: false, // These would need to be fetched separately if needed
-                sellerVouched: false,
-              },
-            }
-          })
-        }
-      } catch (error) {
-        console.error("Error loading transaction:", error)
+    
+    // Use conversation-specific transaction from contact data
+    if (contact.transaction) {
+      // Map the simplified transaction to full TransactionData format
+      const fullTransaction: TransactionData = {
+        id: contact.transaction.id,
+        buyerId: contact.role === "buyer" ? user.id : contact.otherUserId,
+        sellerId: contact.role === "seller" ? user.id : contact.otherUserId,
+        buyer: {
+          id: contact.role === "buyer" ? user.id : contact.otherUserId,
+          username: contact.role === "buyer" ? user.username || "You" : contact.name,
+        },
+        seller: {
+          id: contact.role === "seller" ? user.id : contact.otherUserId,
+          username: contact.role === "seller" ? user.username || "You" : contact.name,
+        },
+        listing: {
+          id: contact.item.id,
+          title: contact.item.title,
+          price: contact.item.price,
+          image: contact.item.image,
+        },
+        price: contact.transaction.price,
+        amount: contact.transaction.amount,
+        status: contact.transaction.status,
+        buyerConfirmed: contact.transaction.buyerConfirmed,
+        sellerConfirmed: contact.transaction.sellerConfirmed,
+        userVouched: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       }
+      setTransaction(fullTransaction)
+    } else {
+      setTransaction(null)
     }
-
-    loadTransaction()
   }
 
   const canMarkComplete = selectedContact
     ? selectedContact.role === "seller"
-      ? !selectedContact.transactionStatus.buyerConfirmed
-      : !selectedContact.transactionStatus.sellerConfirmed
+      ? !selectedContact.transactionStatus.sellerConfirmed
+      : !selectedContact.transactionStatus.buyerConfirmed
     : false
 
   const hasUserConfirmed = selectedContact
     ? selectedContact.role === "seller"
-      ? selectedContact.transactionStatus.buyerConfirmed
-      : selectedContact.transactionStatus.sellerConfirmed
+      ? selectedContact.transactionStatus.sellerConfirmed
+      : selectedContact.transactionStatus.buyerConfirmed
     : false
 
   const bothConfirmed = selectedContact
@@ -936,10 +1032,16 @@ export default function MessagesPage() {
                         </span>
                       </div>
                       <p className="font-semibold truncate">{selectedContact.item.title}</p>
-                      <p className="text-primary font-bold">
-                        PHP {(transaction?.price ?? selectedContact.item.price).toLocaleString()}
-                        {transaction?.amount && ` (${transaction.amount.toLocaleString()} units)`}
-                      </p>
+                      <div className="flex flex-col gap-0.5">
+                        <p className="text-primary font-bold">
+                          PHP {(transaction?.price ?? selectedContact.item.price).toLocaleString()}
+                        </p>
+                        {transaction?.amount && (
+                          <p className="text-xs text-muted-foreground">
+                            Quantity: {transaction.amount.toLocaleString()} units
+                          </p>
+                        )}
+                      </div>
                     </div>
                     <Button
                       variant="outline"
