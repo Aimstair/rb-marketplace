@@ -6,8 +6,8 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     // Await params since it's a Promise in Next.js 15+
     const { id } = await params
     
-    // Fetch listing from database
-    const listing = await prisma.listing.findUnique({
+    // Try to fetch from ItemListing first
+    let listing = await prisma.itemListing.findUnique({
       where: { id },
       include: {
         seller: {
@@ -15,8 +15,45 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
             username: true,
           },
         },
+        game: {
+          select: {
+            displayName: true,
+          },
+        },
       },
     })
+
+    let listingType = "ITEM"
+    let gameName = listing?.game?.displayName || "Roblox"
+    let price = listing?.price || 0
+    let category = "item"
+
+    // If not found in ItemListing, try CurrencyListing
+    if (!listing) {
+      const currencyListing = await prisma.currencyListing.findUnique({
+        where: { id },
+        include: {
+          seller: {
+            select: {
+              username: true,
+            },
+          },
+          game: {
+            select: {
+              displayName: true,
+            },
+          },
+        },
+      })
+
+      if (currencyListing) {
+        listing = currencyListing as any
+        listingType = "CURRENCY"
+        gameName = currencyListing.game?.displayName || "Roblox"
+        price = (currencyListing as any).ratePerPeso || 0
+        category = "currency"
+      }
+    }
 
     if (!listing) {
       return {
@@ -25,15 +62,15 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
       }
     }
 
-    const price = (listing.price / 100).toFixed(2)
+    const formattedPrice = price.toLocaleString()
 
     return {
       title: `${listing.title} - Buy on RB Marketplace`,
-      description: `Buy ${listing.title} from ${listing.seller.username} for ₱${price}. ${listing.description?.substring(0, 120)}...`,
-      keywords: [listing.title, listing.game, listing.category, "Roblox", "marketplace", "buy", "sell"],
+      description: `Buy ${listing.title} from ${listing.seller.username} for ₱${formattedPrice}. ${listing.description?.substring(0, 120)}...`,
+      keywords: [listing.title, gameName, category, "Roblox", "marketplace", "buy", "sell"],
       openGraph: {
         title: `${listing.title} - RB Marketplace`,
-        description: `Buy ${listing.title} for ₱${price} on RB Marketplace`,
+        description: `Buy ${listing.title} for ₱${formattedPrice} on RB Marketplace`,
         type: "website",
         images: [
           {
@@ -47,7 +84,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
       twitter: {
         card: "summary_large_image",
         title: `${listing.title} - RB Marketplace`,
-        description: `Buy ${listing.title} for ₱${price}`,
+        description: `Buy ${listing.title} for ₱${formattedPrice}`,
         images: [listing.image],
       },
     }

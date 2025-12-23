@@ -112,10 +112,10 @@ export default function HomePage() {
         <div className="container mx-auto px-4">
           <div className="max-w-3xl mx-auto">
             <h1 className="text-4xl md:text-5xl font-bold text-center mb-4 text-balance">
-              Trade Roblox Items Safely & Anonymously
+              Trade In-Game Items Safely & Anonymously
             </h1>
             <p className="text-center text-muted-foreground mb-8 text-lg">
-              Connect with buyers and sellers in the Roblox community. No hidden fees, just trusted trading.
+              Connect with buyers and sellers in the gaming community. No hidden fees, just trusted trading.
             </p>
 
             {/* Search Bar */}

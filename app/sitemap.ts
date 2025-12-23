@@ -51,8 +51,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ]
 
   try {
-    // Fetch latest 50 active listings for sitemap
-    const listings = await prisma.listing.findMany({
+    // Fetch latest 50 active listings from both tables
+    const itemListings = await prisma.itemListing.findMany({
       where: {
         status: "available",
       },
@@ -63,10 +63,28 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       orderBy: {
         updatedAt: "desc",
       },
-      take: 50,
+      take: 25,
     })
 
-    const listingRoutes: MetadataRoute.Sitemap = listings.map((listing) => ({
+    const currencyListings = await prisma.currencyListing.findMany({
+      where: {
+        status: "available",
+      },
+      select: {
+        id: true,
+        updatedAt: true,
+      },
+      orderBy: {
+        updatedAt: "desc",
+      },
+      take: 25,
+    })
+
+    const allListings = [...itemListings, ...currencyListings]
+      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+      .slice(0, 50)
+
+    const listingRoutes: MetadataRoute.Sitemap = allListings.map((listing) => ({
       url: `${baseUrl}/listing/${listing.id}`,
       changeFrequency: "weekly" as const,
       priority: 0.7,

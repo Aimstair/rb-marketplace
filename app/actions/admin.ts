@@ -88,10 +88,14 @@ export async function getDashboardStats(): Promise<{ success: boolean; data?: Da
     // Get total users count
     const totalUsers = await prisma.user.count()
 
-    // Get active listings count
-    const activeListings = await prisma.listing.count({
+    // Get active listings count from both tables
+    const itemListingsCount = await prisma.itemListing.count({
       where: { status: "available" },
     })
+    const currencyListingsCount = await prisma.currencyListing.count({
+      where: { status: "available" },
+    })
+    const activeListings = itemListingsCount + currencyListingsCount
 
     // Get pending reports count
     const pendingReports = await prisma.report.count({
@@ -116,13 +120,37 @@ export async function getDashboardStats(): Promise<{ success: boolean; data?: Da
         id: true,
         price: true,
         createdAt: true,
+        listingId: true,
+        listingType: true,
         buyer: { select: { username: true } },
         seller: { select: { username: true } },
-        listing: { select: { title: true } },
       },
       orderBy: { createdAt: "desc" },
       take: 5,
     })
+
+    // Manually fetch listing titles
+    const transactionsWithListings = await Promise.all(
+      recentTransactions.map(async (t) => {
+        let listingTitle = "Unknown Item"
+        if (t.listingId && t.listingType) {
+          if (t.listingType === "ITEM") {
+            const listing = await prisma.itemListing.findUnique({
+              where: { id: t.listingId },
+              select: { title: true },
+            })
+            if (listing) listingTitle = listing.title
+          } else if (t.listingType === "CURRENCY") {
+            const listing = await prisma.currencyListing.findUnique({
+              where: { id: t.listingId },
+              select: { title: true },
+            })
+            if (listing) listingTitle = listing.title
+          }
+        }
+        return { ...t, listingTitle }
+      })
+    )
 
     // Combine and sort by date (most recent first)
     const recentActivity = [
@@ -132,7 +160,7 @@ export async function getDashboardStats(): Promise<{ success: boolean; data?: Da
         user: { id: u.id, username: u.username, avatar: u.profilePicture },
         createdAt: u.joinDate,
       })),
-      ...recentTransactions.map((t) => ({
+      ...transactionsWithListings.map((t) => ({
         id: t.id,
         type: "transaction_completed" as const,
         transaction: {
@@ -140,7 +168,7 @@ export async function getDashboardStats(): Promise<{ success: boolean; data?: Da
           price: t.price,
           buyer: { username: t.buyer.username },
           seller: { username: t.seller.username },
-          listing: { title: t.listing.title },
+          listing: { title: t.listingTitle },
         },
         createdAt: t.createdAt,
       })),
@@ -279,9 +307,13 @@ export async function banUser(userId: string, ban: boolean = true, adminId?: str
       data: { isBanned: ban },
     })
 
-    // If banning, also hide their active listings
+    // If banning, also hide their active listings from both tables
     if (ban) {
-      await prisma.listing.updateMany({
+      await prisma.itemListing.updateMany({
+        where: { sellerId: userId, status: "available" },
+        data: { status: "hidden" },
+      })
+      await prisma.currencyListing.updateMany({
         where: { sellerId: userId, status: "available" },
         data: { status: "hidden" },
       })

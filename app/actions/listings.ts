@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import { z } from "zod"
+import { headers } from "next/headers"
 import {
   createItemListingSchema,
   createCurrencyListingSchema,
@@ -67,7 +68,8 @@ export async function getListing(id: string, currentUserId?: string): Promise<{
       }
     }
 
-    const listing = await prisma.listing.findUnique({
+    // Try ItemListing first
+    let listing: any = await prisma.itemListing.findUnique({
       where: { id },
       select: {
         id: true,
@@ -76,16 +78,25 @@ export async function getListing(id: string, currentUserId?: string): Promise<{
         price: true,
         stock: true,
         image: true,
-        game: true,
-        category: true,
-        itemType: true,
         condition: true,
         status: true,
         views: true,
         upvotes: true,
         downvotes: true,
-        type: true,
         createdAt: true,
+        game: {
+          select: {
+            name: true,
+            displayName: true,
+          },
+        },
+        gameItem: {
+          select: {
+            displayName: true,
+            category: true,
+            itemType: true,
+          },
+        },
         seller: {
           select: {
             id: true,
@@ -99,22 +110,126 @@ export async function getListing(id: string, currentUserId?: string): Promise<{
               select: { id: true },
             },
             _count: {
-              select: { listings: true },
+              select: { itemListings: true },
             },
           },
         },
       },
     })
 
+    let listingType: "ITEM" | "CURRENCY" = "ITEM"
+    let minOrder: number | undefined
+    let maxOrder: number | undefined
+
+    // If not found, try CurrencyListing
+    if (!listing) {
+      listing = await prisma.currencyListing.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          ratePerPeso: true,
+          stock: true,
+          image: true,
+          status: true,
+          views: true,
+          upvotes: true,
+          downvotes: true,
+          minOrder: true,
+          maxOrder: true,
+          createdAt: true,
+          game: {
+            select: {
+              name: true,
+              displayName: true,
+            },
+          },
+          gameCurrency: {
+            select: {
+              displayName: true,
+            },
+          },
+          seller: {
+            select: {
+              id: true,
+              username: true,
+              profilePicture: true,
+              role: true,
+              isVerified: true,
+              joinDate: true,
+              lastActive: true,
+              vouchesReceived: {
+                select: { id: true },
+              },
+              _count: {
+                select: { currencyListings: true },
+              },
+            },
+          },
+        },
+      })
+      
+      if (listing) {
+        listingType = "CURRENCY"
+        minOrder = listing.minOrder
+        maxOrder = listing.maxOrder
+      }
+    }
+
     if (!listing) {
       return { success: false, error: "Listing not found" }
     }
 
-    // Increment view count
-    await prisma.listing.update({
-      where: { id },
-      data: { views: { increment: 1 } },
-    }).catch((err) => console.error("Failed to increment views:", err))
+    // Track unique view - only increment if this user/session hasn't viewed before
+    try {
+      const headersList = await headers()
+      const ipAddress = headersList.get("x-forwarded-for") || headersList.get("x-real-ip") || "unknown"
+      
+      // Generate session identifier for anonymous users
+      const sessionId = userId ? null : `${ipAddress}-${headersList.get("user-agent") || "unknown"}`
+      
+      // Check if this user/session has already viewed this listing
+      const existingView = await prisma.listingView.findFirst({
+        where: {
+          listingId: id,
+          OR: [
+            userId ? { userId } : { userId: null },
+            sessionId ? { sessionId } : { sessionId: null },
+          ].filter(condition => Object.values(condition)[0] !== null)
+        }
+      })
+
+      // Only increment view count if this is a new unique view
+      if (!existingView) {
+        // Create view record
+        await prisma.listingView.create({
+          data: {
+            listingId: id,
+            listingType,
+            userId,
+            sessionId,
+            ipAddress,
+          }
+        }).catch((err: unknown) => console.error("Failed to create view record:", err))
+
+        // Increment view counter
+        if (listingType === "ITEM") {
+          await prisma.itemListing.update({
+            where: { id },
+            data: { views: { increment: 1 } },
+          }).catch((err) => console.error("Failed to increment views:", err))
+        } else {
+          await prisma.currencyListing.update({
+            where: { id },
+            data: { views: { increment: 1 } },
+          }).catch((err) => console.error("Failed to increment views:", err))
+        }
+      }
+    } catch (err) {
+      console.error("Error tracking view:", err)
+      // Continue even if view tracking fails
+    }
 
     // Get user's vote if they're logged in
     let userVote: "UP" | "DOWN" | null = null
@@ -131,32 +246,22 @@ export async function getListing(id: string, currentUserId?: string): Promise<{
       userVote = (vote?.type as "UP" | "DOWN") || null
     }
 
-    // Parse minOrder and maxOrder from description if it's a currency listing
-    let minOrder: number | undefined
-    let maxOrder: number | undefined
-    if (listing.type === "CURRENCY" && listing.description) {
-      const minOrderMatch = listing.description.match(/Min Order:\s*(\d+)/i)
-      const maxOrderMatch = listing.description.match(/Max Order:\s*(\d+)/i)
-      minOrder = minOrderMatch ? parseInt(minOrderMatch[1], 10) : undefined
-      maxOrder = maxOrderMatch ? parseInt(maxOrderMatch[1], 10) : undefined
-    }
-
     return {
       success: true,
       listing: {
         id: listing.id,
         title: listing.title,
         description: listing.description,
-        price: listing.price,
+        price: listingType === "ITEM" ? listing.price : listing.ratePerPeso,
         stock: listing.stock || 1,
         image: listing.image,
         images: [listing.image], // Single image for now; extend if multi-image support added
-        game: listing.game,
-        category: listing.category,
-        itemType: listing.itemType,
-        condition: listing.condition,
+        game: listing.game.displayName,
+        category: listingType === "ITEM" ? listing.gameItem.category : "Currency",
+        itemType: listingType === "ITEM" ? listing.gameItem.itemType : listing.gameCurrency.displayName,
+        condition: listingType === "ITEM" ? listing.condition : "New",
         status: listing.status,
-        views: (listing.views || 0) + 1,
+        views: listing.views || 0,
         minOrder,
         maxOrder,
         seller: {
@@ -199,10 +304,8 @@ export async function getListings(
   } = filters
 
   try {
-    // Build where clause - filter to ITEM listings only
-    const where: any = {
-      type: "ITEM",
-    }
+    // Build where clause for ItemListing
+    const where: any = {}
 
     // Status filter: if sellerId is provided (profile view), allow sold listings by default
     // Otherwise, default to "available" only
@@ -246,19 +349,28 @@ export async function getListings(
     if (mainCategory === "Featured") {
       where.featured = true
     } else if (mainCategory !== "All" && mainCategory !== "Accessories") {
-      where.category = mainCategory
+      where.gameItem = {
+        category: mainCategory,
+      }
     } else if (mainCategory === "Accessories") {
-      where.category = "Accessories"
+      where.gameItem = {
+        category: "Accessories",
+      }
     }
 
     // Game filter
     if (selectedGame !== "All Games") {
-      where.game = selectedGame
+      where.game = {
+        displayName: selectedGame,
+      }
     }
 
     // Item type filter (only for Games category)
     if (mainCategory === "Games" && selectedItemType !== "All") {
-      where.itemType = selectedItemType
+      where.gameItem = {
+        ...where.gameItem,
+        itemType: selectedItemType,
+      }
     }
 
     // Price range filter
@@ -292,16 +404,27 @@ export async function getListings(
     }
 
     // Get total count
-    const total = await prisma.listing.count({ where })
+    const total = await prisma.itemListing.count({ where })
 
     // Get paginated listings
-    const listings = await prisma.listing.findMany({
+    const listings = await prisma.itemListing.findMany({
       where,
       include: {
         seller: {
           select: {
             id: true,
             username: true,
+          },
+        },
+        game: {
+          select: {
+            displayName: true,
+          },
+        },
+        gameItem: {
+          select: {
+            category: true,
+            itemType: true,
           },
         },
       },
@@ -314,17 +437,17 @@ export async function getListings(
     const transformedListings: ListingResponse[] = listings.map((listing: any) => ({
       id: listing.id,
       title: listing.title,
-      game: listing.game,
+      game: listing.game.displayName,
       price: listing.price,
       image: listing.image,
       seller: {
         id: listing.seller.id,
         username: listing.seller.username,
       },
-      vouch: listing.vouchCount,
+      vouch: 0, // TODO: Add vouch count from seller
       status: listing.status,
-      category: listing.category,
-      itemType: listing.itemType,
+      category: listing.gameItem.category,
+      itemType: listing.gameItem.itemType,
       condition: listing.condition,
       upvotes: listing.upvotes,
       downvotes: listing.downvotes,
@@ -345,27 +468,163 @@ export async function getListings(
   }
 }
 
+/**
+ * Get user's listings (both item and currency listings)
+ */
+export async function getUserListings(
+  sellerId: string,
+  page: number = 1,
+  itemsPerPage: number = 10
+): Promise<GetListingsResult> {
+  try {
+    // Fetch item listings
+    const itemListings = await prisma.itemListing.findMany({
+      where: { sellerId },
+      include: {
+        seller: {
+          select: {
+            id: true,
+            username: true,
+          },
+        },
+        game: {
+          select: {
+            displayName: true,
+          },
+        },
+        gameItem: {
+          select: {
+            category: true,
+            itemType: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    })
+
+    // Fetch currency listings
+    const currencyListings = await prisma.currencyListing.findMany({
+      where: { sellerId },
+      include: {
+        seller: {
+          select: {
+            id: true,
+            username: true,
+          },
+        },
+        game: {
+          select: {
+            displayName: true,
+          },
+        },
+        gameCurrency: {
+          select: {
+            displayName: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    })
+
+    // Combine and transform
+    const allListings: ListingResponse[] = await Promise.all([
+      ...itemListings.map(async (listing: any) => {
+        const inquiriesCount = await prisma.conversation.count({
+          where: {
+            listingId: listing.id,
+            listingType: "ITEM",
+          },
+        })
+        return {
+          id: listing.id,
+          title: listing.title,
+          game: listing.game.displayName,
+          price: listing.price,
+          image: listing.image,
+          seller: {
+            id: listing.seller.id,
+            username: listing.seller.username,
+          },
+          vouch: 0,
+          status: listing.status,
+          category: listing.gameItem.category,
+          itemType: listing.gameItem.itemType,
+          condition: listing.condition,
+          upvotes: listing.upvotes,
+          downvotes: listing.downvotes,
+          featured: listing.featured,
+          views: listing.views,
+          inquiries: inquiriesCount,
+        }
+      }),
+      ...currencyListings.map(async (listing: any) => {
+        const inquiriesCount = await prisma.conversation.count({
+          where: {
+            listingId: listing.id,
+            listingType: "CURRENCY",
+          },
+        })
+        return {
+          id: listing.id,
+          title: listing.title,
+          game: listing.game.displayName,
+          price: listing.ratePerPeso,
+          image: listing.image,
+          seller: {
+            id: listing.seller.id,
+            username: listing.seller.username,
+          },
+          vouch: 0,
+          status: listing.status,
+          category: "Currency",
+          itemType: listing.gameCurrency.displayName,
+          condition: "New",
+          upvotes: listing.upvotes,
+          downvotes: listing.downvotes,
+          featured: listing.featured,
+          views: listing.views,
+          inquiries: inquiriesCount,
+        }
+      }),
+    ])
+
+    // Apply pagination
+    const total = allListings.length
+    const totalPages = Math.ceil(total / itemsPerPage)
+    const startIndex = (page - 1) * itemsPerPage
+    const paginatedListings = allListings.slice(startIndex, startIndex + itemsPerPage)
+
+    return {
+      listings: paginatedListings,
+      total,
+      totalPages,
+      currentPage: page,
+    }
+  } catch (error) {
+    console.error("Error fetching user listings:", error)
+    throw new Error("Failed to fetch user listings")
+  }
+}
+
 export async function getAvailableGames(mainCategory: string = "All"): Promise<string[]> {
   try {
     if (mainCategory === "Accessories" || mainCategory === "Featured") {
       return []
     }
 
-    const games = await prisma.listing.findMany({
+    const games = await prisma.game.findMany({
       where: {
-        status: "available",
-        ...(mainCategory !== "All" && { category: mainCategory }),
+        isActive: true,
       },
       select: {
-        game: true,
+        displayName: true,
       },
-      distinct: ["game"],
+      orderBy: {
+        order: "asc",
+      },
     })
 
-    const gameList = games
-      .map((g: any) => g.game)
-      .filter((game: string) => game !== "Roblox Catalog")
-      .sort()
+    const gameList = games.map((g: any) => g.displayName)
 
     return ["All Games", ...gameList]
   } catch (error) {
@@ -383,6 +642,7 @@ export interface CurrencyListing {
   stock: number
   sellerId: string
   sellerUsername: string
+  sellerVouches: number
   upvotes: number
   downvotes: number
   status: "Available" | "Sold" | "Pending"
@@ -422,16 +682,28 @@ function parseCurrencyDescription(description: string): {
 
 export async function getCurrencyListings(): Promise<CurrencyListing[]> {
   try {
-    const listings = await prisma.listing.findMany({
+    const listings = await prisma.currencyListing.findMany({
       where: {
         status: "available",
-        type: "CURRENCY", // Filter by type instead of game
       },
       include: {
         seller: {
           select: {
             id: true,
             username: true,
+            vouchesReceived: {
+              select: { id: true },
+            },
+          },
+        },
+        game: {
+          select: {
+            displayName: true,
+          },
+        },
+        gameCurrency: {
+          select: {
+            displayName: true,
           },
         },
       },
@@ -440,36 +712,23 @@ export async function getCurrencyListings(): Promise<CurrencyListing[]> {
       },
     })
 
-    return listings.map((listing: any) => {
-      const description = listing.description || ""
-      
-      // Parse currency details from description with safety checks
-      const currencyMatch = description.match(/Currency: (.+?)(?:\n|$)/)
-      const rateMatch = description.match(/Rate: ₱([\d.]+)/)
-      const stockMatch = description.match(/Stock: (\d+)/)
-
-      const currencyType = currencyMatch ? currencyMatch[1].trim() : "Unknown"
-      const ratePerPeso = rateMatch ? parseFloat(rateMatch[1]) : 0
-      // Use DB stock if available, otherwise fall back to parsed stock
-      const stock = listing.stock ?? (stockMatch ? parseInt(stockMatch[1], 10) : 0)
-
-      return {
-        id: listing.id,
-        game: listing.game,
-        description: listing.description,
-        currencyType,
-        ratePerPeso,
-        stock,
-        sellerId: listing.sellerId,
-        sellerUsername: listing.seller.username,
-        upvotes: listing.upvotes || 0,
-        downvotes: listing.downvotes || 0,
-        status: (listing.status === "available" ? "Available" : listing.status) as
-          | "Available"
-          | "Sold"
-          | "Pending",
-      }
-    })
+    return listings.map((listing: any) => ({
+      id: listing.id,
+      game: listing.game.displayName,
+      description: listing.description,
+      currencyType: listing.gameCurrency.displayName,
+      ratePerPeso: listing.ratePerPeso,
+      stock: listing.stock,
+      sellerId: listing.sellerId,
+      sellerUsername: listing.seller.username,
+      sellerVouches: listing.seller.vouchesReceived?.length || 0,
+      upvotes: listing.upvotes || 0,
+      downvotes: listing.downvotes || 0,
+      status: (listing.status === "available" ? "Available" : listing.status) as
+        | "Available"
+        | "Sold"
+        | "Pending",
+    }))
   } catch (error) {
     console.error("Error fetching currency listings:", error)
     return []
@@ -502,21 +761,54 @@ export async function createListing(input: CreateItemListingInput): Promise<Crea
     // Validate input
     const validatedData = createItemListingSchema.parse(input)
 
-    // Create the listing with type "ITEM"
-    const listing = await prisma.listing.create({
+    // Find game by name
+    const game = await prisma.game.findFirst({
+      where: {
+        OR: [
+          { name: validatedData.game },
+          { displayName: validatedData.game },
+        ],
+      },
+    })
+
+    if (!game) {
+      return {
+        success: false,
+        error: "Game not found",
+      }
+    }
+
+    // Find game item by category/itemType
+    const gameItem = await prisma.gameItem.findFirst({
+      where: {
+        gameId: game.id,
+        OR: [
+          { category: validatedData.category },
+          { itemType: validatedData.itemType },
+        ],
+      },
+    })
+
+    if (!gameItem) {
+      return {
+        success: false,
+        error: "Game item type not found",
+      }
+    }
+
+    // Create the item listing
+    const listing = await prisma.itemListing.create({
       data: {
         title: validatedData.title,
         description: validatedData.description,
-        game: validatedData.game,
+        gameId: game.id,
+        gameItemId: gameItem.id,
         price: validatedData.price,
         image: validatedData.image,
-        category: validatedData.category,
-        itemType: validatedData.itemType,
         condition: validatedData.condition,
         stock: validatedData.stock,
         sellerId: seller.id,
         status: "available",
-        type: "ITEM",
       },
     })
 
@@ -544,7 +836,8 @@ export async function createListing(input: CreateItemListingInput): Promise<Crea
  */
 export async function toggleListingVote(
   listingId: string,
-  type: "up" | "down"
+  type: "up" | "down",
+  listingType: "ITEM" | "CURRENCY" = "ITEM"
 ): Promise<{ success: boolean; upvotes?: number; downvotes?: number; error?: string }> {
   try {
     // Get current authenticated user
@@ -562,11 +855,19 @@ export async function toggleListingVote(
       return { success: false, error: "User not found" }
     }
 
-    // Verify listing exists
-    const listing = await prisma.listing.findUnique({
-      where: { id: listingId },
-      select: { id: true, upvotes: true, downvotes: true },
-    })
+    // Verify listing exists in the correct table
+    let listing: { id: string; upvotes: number | null; downvotes: number | null } | null = null
+    if (listingType === "ITEM") {
+      listing = await prisma.itemListing.findUnique({
+        where: { id: listingId },
+        select: { id: true, upvotes: true, downvotes: true },
+      })
+    } else {
+      listing = await prisma.currencyListing.findUnique({
+        where: { id: listingId },
+        select: { id: true, upvotes: true, downvotes: true },
+      })
+    }
 
     if (!listing) {
       return { success: false, error: "Listing not found" }
@@ -597,14 +898,26 @@ export async function toggleListingVote(
         })
 
         // Decrement the vote count
-        const updatedListing = await prisma.listing.update({
-          where: { id: listingId },
-          data: {
-            upvotes: type === "up" ? { decrement: 1 } : undefined,
-            downvotes: type === "down" ? { decrement: 1 } : undefined,
-          },
-          select: { upvotes: true, downvotes: true },
-        })
+        let updatedListing: { upvotes: number | null; downvotes: number | null }
+        if (listingType === "ITEM") {
+          updatedListing = await prisma.itemListing.update({
+            where: { id: listingId },
+            data: {
+              upvotes: type === "up" ? { decrement: 1 } : undefined,
+              downvotes: type === "down" ? { decrement: 1 } : undefined,
+            },
+            select: { upvotes: true, downvotes: true },
+          })
+        } else {
+          updatedListing = await prisma.currencyListing.update({
+            where: { id: listingId },
+            data: {
+              upvotes: type === "up" ? { decrement: 1 } : undefined,
+              downvotes: type === "down" ? { decrement: 1 } : undefined,
+            },
+            select: { upvotes: true, downvotes: true },
+          })
+        }
 
         return {
           success: true,
@@ -625,24 +938,46 @@ export async function toggleListingVote(
 
         // Update vote counts (decrement old, increment new)
         const oldType = existingVote.type
-        const updatedListing = await prisma.listing.update({
-          where: { id: listingId },
-          data: {
-            upvotes:
-              type === "up"
-                ? { increment: 1 }
-                : oldType === "UP"
-                  ? { decrement: 1 }
-                  : undefined,
-            downvotes:
-              type === "down"
-                ? { increment: 1 }
-                : oldType === "DOWN"
-                  ? { decrement: 1 }
-                  : undefined,
-          },
-          select: { upvotes: true, downvotes: true },
-        })
+        let updatedListing: { upvotes: number | null; downvotes: number | null }
+        if (listingType === "ITEM") {
+          updatedListing = await prisma.itemListing.update({
+            where: { id: listingId },
+            data: {
+              upvotes:
+                type === "up"
+                  ? { increment: 1 }
+                  : oldType === "UP"
+                    ? { decrement: 1 }
+                    : undefined,
+              downvotes:
+                type === "down"
+                  ? { increment: 1 }
+                  : oldType === "DOWN"
+                    ? { decrement: 1 }
+                    : undefined,
+            },
+            select: { upvotes: true, downvotes: true },
+          })
+        } else {
+          updatedListing = await prisma.currencyListing.update({
+            where: { id: listingId },
+            data: {
+              upvotes:
+                type === "up"
+                  ? { increment: 1 }
+                  : oldType === "UP"
+                    ? { decrement: 1 }
+                    : undefined,
+              downvotes:
+                type === "down"
+                  ? { increment: 1 }
+                  : oldType === "DOWN"
+                    ? { decrement: 1 }
+                    : undefined,
+            },
+            select: { upvotes: true, downvotes: true },
+          })
+        }
 
         return {
           success: true,
@@ -656,19 +991,32 @@ export async function toggleListingVote(
         data: {
           userId: currentUser.id,
           listingId,
+          listingType,
           type: voteType,
         },
       })
 
       // Increment the vote count
-      const updatedListing = await prisma.listing.update({
-        where: { id: listingId },
-        data: {
-          upvotes: type === "up" ? { increment: 1 } : undefined,
-          downvotes: type === "down" ? { increment: 1 } : undefined,
-        },
-        select: { upvotes: true, downvotes: true },
-      })
+      let updatedListing: { upvotes: number | null; downvotes: number | null }
+      if (listingType === "ITEM") {
+        updatedListing = await prisma.itemListing.update({
+          where: { id: listingId },
+          data: {
+            upvotes: type === "up" ? { increment: 1 } : undefined,
+            downvotes: type === "down" ? { increment: 1 } : undefined,
+          },
+          select: { upvotes: true, downvotes: true },
+        })
+      } else {
+        updatedListing = await prisma.currencyListing.update({
+          where: { id: listingId },
+          data: {
+            upvotes: type === "up" ? { increment: 1 } : undefined,
+            downvotes: type === "down" ? { increment: 1 } : undefined,
+          },
+          select: { upvotes: true, downvotes: true },
+        })
+      }
 
       return {
         success: true,
@@ -688,7 +1036,8 @@ export async function toggleListingVote(
 export async function reportListing(
   listingId: string,
   reason: string,
-  details?: string
+  details?: string,
+  listingType: "ITEM" | "CURRENCY" = "ITEM"
 ): Promise<{ success: boolean; reportId?: string; error?: string }> {
   try {
     // Get current authenticated user
@@ -706,11 +1055,19 @@ export async function reportListing(
       return { success: false, error: "User not found" }
     }
 
-    // Verify listing exists
-    const listing = await prisma.listing.findUnique({
-      where: { id: listingId },
-      select: { id: true },
-    })
+    // Verify listing exists in the correct table
+    let listing: { id: string; sellerId: string } | null = null
+    if (listingType === "ITEM") {
+      listing = await prisma.itemListing.findUnique({
+        where: { id: listingId },
+        select: { id: true, sellerId: true },
+      })
+    } else {
+      listing = await prisma.currencyListing.findUnique({
+        where: { id: listingId },
+        select: { id: true, sellerId: true },
+      })
+    }
 
     if (!listing) {
       return { success: false, error: "Listing not found" }
@@ -720,8 +1077,9 @@ export async function reportListing(
     const report = await prisma.report.create({
       data: {
         listingId,
+        listingType,
         reporterId: reporter.id,
-        reportedId: reporter.id,
+        reportedId: listing.sellerId,
         reason,
         details: details || null,
         status: "PENDING",
@@ -740,73 +1098,8 @@ export async function reportListing(
 }
 
 export async function createCurrencyListing(input: CreateCurrencyListingInput): Promise<CreateListingResult> {
-  try {
-    // Get current authenticated user
-    const session = await auth()
-    if (!session?.user?.email) {
-      return {
-        success: false,
-        error: "You must be logged in to create a listing",
-      }
-    }
-
-    // Find the seller by email from session
-    const seller = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
-
-    if (!seller) {
-      return {
-        success: false,
-        error: "User account not found",
-      }
-    }
-
-    // Validate input
-    const validatedData = createCurrencyListingSchema.parse(input)
-
-    // Create the listing with currency-specific fields in description
-    const currencyDescription = `Currency: ${validatedData.currencyType}
-Rate: ₱${validatedData.ratePerPeso} per unit
-Stock: ${validatedData.stock}
-Min Order: ${validatedData.minOrder}
-Max Order: ${validatedData.maxOrder}
-${validatedData.description ? `Notes: ${validatedData.description}` : ""}`
-
-    const listing = await prisma.listing.create({
-      data: {
-        title: `${validatedData.currencyType} - ₱${validatedData.ratePerPeso}/unit`,
-        description: currencyDescription,
-        game: "Currency Exchange",
-        price: Math.round(validatedData.ratePerPeso * 100),
-        stock: validatedData.stock,
-        image: validatedData.image,
-        category: "Games",
-        itemType: "Services",
-        condition: "New",
-        sellerId: seller.id,
-        status: "available",
-        type: "CURRENCY",
-      },
-    })
-
-    return {
-      success: true,
-      listingId: listing.id,
-    }
-  } catch (error) {
-    console.error("Error creating currency listing:", error)
-    if (error instanceof z.ZodError) {
-      return {
-        success: false,
-        error: error.errors[0]?.message || "Validation error",
-      }
-    }
-    return {
-      success: false,
-      error: "Failed to create currency listing. Please try again.",
-    }
-  }
+  // Redirect to new createNewCurrencyListing function
+  return createNewCurrencyListing(input)
 }
 
 /**
@@ -836,5 +1129,167 @@ export async function getFilterOptions(type?: string): Promise<{
   } catch (error) {
     console.error("Error fetching filter options:", error)
     return []
+  }
+}
+
+/**
+ * Get all currency listings from the new CurrencyListing model
+ */
+export async function getNewCurrencyListings(): Promise<{
+  id: string
+  gameName: string
+  currencyName: string
+  ratePerPeso: number
+  stock: number
+  sellerId: string
+  sellerUsername: string
+  sellerVouches: number
+  upvotes: number
+  downvotes: number
+  status: string
+}[]> {
+  try {
+    const listings = await prisma.currencyListing.findMany({
+      where: {
+        status: "available",
+      },
+      include: {
+        seller: {
+          select: {
+            id: true,
+            username: true,
+            vouchesReceived: {
+              select: { id: true },
+            },
+          },
+        },
+        game: {
+          select: {
+            displayName: true,
+          },
+        },
+        gameCurrency: {
+          select: {
+            displayName: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    })
+
+    return listings.map((listing) => ({
+      id: listing.id,
+      gameName: listing.game.displayName,
+      currencyName: listing.gameCurrency.displayName,
+      ratePerPeso: listing.ratePerPeso,
+      stock: listing.stock,
+      sellerId: listing.sellerId,
+      sellerUsername: listing.seller.username,
+      sellerVouches: listing.seller.vouchesReceived?.length || 0,
+      upvotes: listing.upvotes,
+      downvotes: listing.downvotes,
+      status: listing.status,
+    }))
+  } catch (error) {
+    console.error("Error fetching new currency listings:", error)
+    return []
+  }
+}
+
+/**
+ * Create a new currency listing using the new CurrencyListing model
+ */
+export async function createNewCurrencyListing(input: CreateCurrencyListingInput): Promise<CreateListingResult> {
+  try {
+    const session = await auth()
+    if (!session?.user?.email) {
+      return {
+        success: false,
+        error: "You must be logged in to create a listing",
+      }
+    }
+
+    const seller = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    })
+
+    if (!seller) {
+      return {
+        success: false,
+        error: "User account not found",
+      }
+    }
+
+    const validatedData = createCurrencyListingSchema.parse(input)
+
+    // Find game by name
+    const game = await prisma.game.findFirst({
+      where: {
+        OR: [
+          { name: validatedData.game },
+          { displayName: validatedData.game },
+        ],
+      },
+    })
+
+    if (!game) {
+      return {
+        success: false,
+        error: "Game not found",
+      }
+    }
+
+    // Find game currency by name
+    const gameCurrency = await prisma.gameCurrency.findFirst({
+      where: {
+        gameId: game.id,
+        OR: [
+          { name: validatedData.currencyType },
+          { displayName: validatedData.currencyType },
+        ],
+      },
+    })
+
+    if (!gameCurrency) {
+      return {
+        success: false,
+        error: "Currency type not found for this game",
+      }
+    }
+
+    const listing = await prisma.currencyListing.create({
+      data: {
+        title: `${game.displayName} - ${gameCurrency.displayName}`,
+        description: validatedData.description || null,
+        gameId: game.id,
+        gameCurrencyId: gameCurrency.id,
+        ratePerPeso: validatedData.ratePerPeso,
+        stock: validatedData.stock,
+        minOrder: validatedData.minOrder,
+        maxOrder: validatedData.maxOrder,
+        image: validatedData.image,
+        sellerId: seller.id,
+        status: "available",
+      },
+    })
+
+    return {
+      success: true,
+      listingId: listing.id,
+    }
+  } catch (error) {
+    console.error("Error creating new currency listing:", error)
+    if (error instanceof z.ZodError) {
+      return {
+        success: false,
+        error: error.errors[0]?.message || "Validation error",
+      }
+    }
+    return {
+      success: false,
+      error: "Failed to create currency listing. Please try again.",
+    }
   }
 }

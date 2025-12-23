@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Star, Filter, ThumbsUp, ThumbsDown, MessageCircle } from "lucide-react"
-import { getCurrencyListings, type CurrencyListing as DBCurrencyListing } from "@/app/actions/listings"
+import { getCurrencyListings, getNewCurrencyListings, type CurrencyListing as DBCurrencyListing } from "@/app/actions/listings"
+import { getGames, type GameOption } from "@/app/actions/games"
 
 interface CurrencyListing {
   id: string
@@ -24,23 +25,30 @@ interface CurrencyListing {
   downvotes: number
 }
 
-const GAME_CATEGORIES = [
-  { name: "Roblox", currency: "Robux" },
-  { name: "Adopt Me", currency: "Coins" },
-  { name: "Blox Fruits", currency: "Gems" },
-  { name: "Pet Simulator", currency: "Tokens" },
-]
-
 // No mock data - use real database only
 
 export default function CurrencyMarketplace() {
   const router = useRouter()
   const [selectedGame, setSelectedGame] = useState<string | null>(null)
   const [listings, setListings] = useState<CurrencyListing[]>([])
+  const [games, setGames] = useState<GameOption[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [sortBy, setSortBy] = useState("rate-high")
   const [rateRange, setRateRange] = useState({ min: 0, max: 1000 })
+
+  // Fetch games for filtering
+  useEffect(() => {
+    const fetchGames = async () => {
+      try {
+        const dbGames = await getGames()
+        setGames(dbGames)
+      } catch (error) {
+        console.error("[Currency Page] Error fetching games:", error)
+      }
+    }
+    fetchGames()
+  }, [])
 
   // Fetch currency listings from database
   useEffect(() => {
@@ -48,41 +56,65 @@ export default function CurrencyMarketplace() {
       try {
         console.log("[Currency Page] Fetching listings from database...")
         setIsLoading(true)
-        const dbListings = await getCurrencyListings()
-        console.log("[Currency Page] Fetched listings:", dbListings)
-
-        // Transform DB listings to UI format
-        const mapped: CurrencyListing[] = (dbListings || []).map((listing: DBCurrencyListing) => {
-          // Safety check: default to empty string if description is null/undefined
-          const description = listing.description || ""
+        
+        // Try to use new CurrencyListing model, fallback to old if not available
+        let dbListings
+        try {
+          dbListings = await getNewCurrencyListings()
+          console.log("[Currency Page] Fetched from new model:", dbListings)
           
-          // Parse currency details from description with safety checks
-          const currencyMatch = description.match(/Currency: (.+?)(?:\n|$)/)
-          const rateMatch = description.match(/Rate: ₱([\d.]+)/)
-
-          const currencyType = currencyMatch ? currencyMatch[1].trim() : "Unknown"
-          const ratePerPeso = rateMatch ? parseFloat(rateMatch[1]) : 0
-          const stock = listing.stock || 0
-
-          return {
+          // Transform new model listings to UI format
+          const mapped: CurrencyListing[] = dbListings.map((listing) => ({
             id: listing.id,
-            game: listing.game,
-            currencyType,
-            ratePerPeso,
-            stock,
-            sellerVouches: 0,
-            status: listing.status as "Available" | "Sold" | "Pending",
+            game: listing.gameName,
+            currencyType: listing.currencyName,
+            ratePerPeso: listing.ratePerPeso,
+            stock: listing.stock,
+            sellerVouches: listing.sellerVouches,
+            status: listing.status === "available" ? "Available" : listing.status as "Available" | "Sold" | "Pending",
             deliveryMethods: ["Instant", "Manual"],
             sellerId: listing.sellerId,
-            sellerName: listing.sellerUsername || "Unknown Seller",
+            sellerName: listing.sellerUsername,
             sellerAvatar: "/placeholder-user.jpg",
-            upvotes: listing.upvotes || 0,
-            downvotes: listing.downvotes || 0,
-          }
-        })
+            upvotes: listing.upvotes,
+            downvotes: listing.downvotes,
+          }))
+          
+          setListings(mapped)
+        } catch (newModelError) {
+          console.log("[Currency Page] New model not ready, using old model...")
+          // Fallback to old model
+          dbListings = await getCurrencyListings()
+          console.log("[Currency Page] Fetched from old model:", dbListings)
 
-        console.log("[Currency Page] Transformed listings:", mapped)
-        setListings(mapped)
+          // Transform old model listings to UI format
+          const mapped: CurrencyListing[] = (dbListings || []).map((listing: DBCurrencyListing) => {
+            const description = listing.description || ""
+            const currencyMatch = description.match(/Currency: (.+?)(?:\n|$)/)
+            const rateMatch = description.match(/Rate: ₱([\d.]+)/)
+            const currencyType = currencyMatch ? currencyMatch[1].trim() : "Unknown"
+            const ratePerPeso = rateMatch ? parseFloat(rateMatch[1]) : 0
+            const stock = listing.stock || 0
+
+            return {
+              id: listing.id,
+              game: listing.game,
+              currencyType,
+              ratePerPeso,
+              stock,
+              sellerVouches: listing.sellerVouches || 0,
+              status: listing.status as "Available" | "Sold" | "Pending",
+              deliveryMethods: ["Instant", "Manual"],
+              sellerId: listing.sellerId,
+              sellerName: listing.sellerUsername || "Unknown Seller",
+              sellerAvatar: "/placeholder-user.jpg",
+              upvotes: listing.upvotes || 0,
+              downvotes: listing.downvotes || 0,
+            }
+          })
+          
+          setListings(mapped)
+        }
       } catch (error) {
         console.error("[Currency Page] Error fetching listings:", error)
         setListings([])
@@ -174,7 +206,7 @@ export default function CurrencyMarketplace() {
                     >
                       All Games
                     </button>
-                    {GAME_CATEGORIES.map((game) => (
+                    {games.map((game) => (
                       <button
                         key={game.name}
                         onClick={() => setSelectedGame(game.name)}
@@ -182,7 +214,7 @@ export default function CurrencyMarketplace() {
                           selectedGame === game.name ? "bg-primary text-primary-foreground" : "hover:bg-secondary"
                         }`}
                       >
-                        {game.name}
+                        {game.displayName}
                       </button>
                     ))}
                   </div>
@@ -253,7 +285,7 @@ export default function CurrencyMarketplace() {
                             <div className="font-semibold text-lg">{listing.game}</div>
                             <div className="text-sm text-muted-foreground">{listing.currencyType}</div>
                             <div className="text-sm font-medium mt-2 text-primary">
-                              {listing.ratePerPeso} {listing.currencyType} per ₱1
+                              {listing.ratePerPeso} per ₱1
                             </div>
                           </div>
 

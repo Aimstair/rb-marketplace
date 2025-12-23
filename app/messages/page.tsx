@@ -36,6 +36,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
 import { Textarea } from "@/components/ui/textarea"
 import {
   DropdownMenu,
@@ -64,6 +65,7 @@ type Contact = {
   role: "seller" | "buyer"
   status: "ongoing" | "completed" | "sold"
   blocked: boolean
+  unreadCount: number
   item: {
     id: string
     title: string
@@ -84,6 +86,7 @@ type Contact = {
     buyerConfirmed: boolean
     sellerConfirmed: boolean
   } | null
+  _sortDate?: Date | string
 }
 
 type Message = {
@@ -91,6 +94,7 @@ type Message = {
   sender: "buyer" | "seller"
   text: string
   timestamp: string
+  createdAt: Date
   type?: "text" | "counteroffer" | "image"
   offerAmount?: number
   offerStatus?: "pending" | "accepted" | "rejected" | "declined"
@@ -105,6 +109,34 @@ const getStatusBadge = (status: "ongoing" | "completed" | "sold") => {
       return { label: "Completed", className: "bg-green-500/20 text-green-600 border-green-500/30" }
     case "sold":
       return { label: "Sold", className: "bg-red-500/20 text-red-600 border-red-500/30" }
+  }
+}
+
+const formatContactTimestamp = (date: Date | string) => {
+  const messageDate = new Date(date)
+  const today = new Date()
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+  
+  // Check if message is from today
+  if (messageDate.toDateString() === today.toDateString()) {
+    return messageDate.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+  }
+  // Check if message is from yesterday
+  else if (messageDate.toDateString() === yesterday.toDateString()) {
+    return "Yesterday"
+  }
+  // Check if message is from this week
+  else {
+    const daysDiff = Math.floor((today.getTime() - messageDate.getTime()) / (1000 * 60 * 60 * 24))
+    if (daysDiff < 7) {
+      return messageDate.toLocaleDateString([], { weekday: 'short' })
+    }
+    // Older messages show date
+    return messageDate.toLocaleDateString([], { month: 'short', day: 'numeric' })
   }
 }
 
@@ -177,6 +209,7 @@ export default function MessagesPage() {
         // Auto-open conversation BEFORE loading list if sellerId is in searchParams
         const sellerId = searchParams.get("sellerId")
         const itemId = searchParams.get("itemId")
+        const listingType = searchParams.get("type") === "currency" ? "CURRENCY" : "ITEM"
 
         if (sellerId) {
           try {
@@ -193,7 +226,21 @@ export default function MessagesPage() {
               }
             }
 
-            await getOrCreateConversation(sellerId, itemId || undefined, txDetails)
+            const convResult = await getOrCreateConversation(sellerId, itemId || undefined, txDetails, listingType)
+            
+            // Send automatic interest message if conversation was created successfully
+            if (convResult.success && convResult.conversationId) {
+              // Check if this is a new conversation by checking if it has any messages
+              const messagesResult = await getMessages(convResult.conversationId)
+              
+              if (messagesResult.success && messagesResult.messages && messagesResult.messages.length === 0) {
+                // No messages yet, send the automatic interest message
+                const itemName = itemId ? "this item" : "your listing"
+                await sendMessage(`Hi! I'm interested in ${itemName}.`, {
+                  conversationId: convResult.conversationId,
+                })
+              }
+            }
           } catch (error) {
             console.error("Error auto-opening conversation:", error)
           }
@@ -230,25 +277,23 @@ export default function MessagesPage() {
                 } else {
                   contactStatus = "ongoing"
                 }
-              } else if (conv.listing?.status === "sold") {
-                contactStatus = "sold"
               }
               
               return {
                 id: conv.id,
                 otherUserId: conv.otherUser.id,
                 name: conv.otherUser.username,
-                lastMessage: conv.latestMessage?.content || "No messages yet",
+                lastMessage: conv.latestMessage?.attachmentUrl 
+                  ? "Sent a photo." 
+                  : (conv.latestMessage?.content || "No messages yet"),
                 timestamp: conv.latestMessage
-                  ? new Date(conv.latestMessage.createdAt).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })
-                  : "Just now",
+                  ? formatContactTimestamp(conv.latestMessage.createdAt)
+                  : "",
                 online: false,
                 role: conv.buyerId === user.id ? "seller" : "buyer",
                 status: contactStatus,
                 blocked: false,
+                unreadCount: (conv as any).unreadCount || 0,
                 item: conv.listing || {
                   id: "unknown",
                   title: "Unknown Item",
@@ -257,9 +302,16 @@ export default function MessagesPage() {
                 },
                 transactionStatus: transactionData,
                 transaction: (conv as any).transaction || null,
+                _sortDate: conv.latestMessage?.createdAt || conv.createdAt,
               }
             })
           )
+          // Sort contacts by most recent message first
+          convertedContacts.sort((a, b) => {
+            const dateA = new Date(a._sortDate).getTime()
+            const dateB = new Date(b._sortDate).getTime()
+            return dateB - dateA
+          })
           setContacts(convertedContacts)
 
           // Select the conversation that was just created
@@ -295,6 +347,20 @@ export default function MessagesPage() {
           // Mark messages as read
           await markMessagesAsRead(selectedConversationId)
 
+          // Update the contact's unreadCount to 0 in the local state
+          setContacts((prev) =>
+            prev.map((contact) =>
+              contact.id === selectedConversationId
+                ? { ...contact, unreadCount: 0 }
+                : contact
+            )
+          )
+
+          // Also update selectedContact to remove the highlight
+          setSelectedContact((prev) =>
+            prev ? { ...prev, unreadCount: 0 } : null
+          )
+
           const convertedMessages: Message[] = result.messages.map((msg) => {
             // Check if message is a counteroffer (has offerAmount)
             const isCounteroffer = (msg as any).offerAmount !== null && (msg as any).offerAmount !== undefined
@@ -307,6 +373,7 @@ export default function MessagesPage() {
                 hour: "2-digit",
                 minute: "2-digit",
               }),
+              createdAt: new Date(msg.createdAt),
               type: isCounteroffer ? "counteroffer" : msg.attachmentUrl ? "image" : ("text" as const),
               imageUrl: msg.attachmentUrl || undefined,
               offerAmount: isCounteroffer ? (msg as any).offerAmount : undefined,
@@ -380,6 +447,17 @@ export default function MessagesPage() {
           console.error("Error sending image:", result.error)
         } else {
           messageResult = result // Track the last result
+          // Add optimistic image message update
+          const newImageMessage: Message = {
+            id: result.messageId || `temp-img-${Date.now()}`,
+            sender: "buyer",
+            text: imgUrl,
+            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            createdAt: new Date(),
+            type: "image",
+            imageUrl: imgUrl,
+          }
+          setMessages((prev) => [...prev, newImageMessage])
         }
       }
 
@@ -402,6 +480,7 @@ export default function MessagesPage() {
           sender: "buyer",
           text: messageText,
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          createdAt: new Date(),
           type: "text",
         }
         setMessages((prev) => [...prev, newMessage])
@@ -413,36 +492,59 @@ export default function MessagesPage() {
       // If transaction was just created or transaction state is null, load it immediately
       if (messageResult?.transactionCreated || !transaction) {
         console.log("🔄 Loading transaction after message send...")
-        // Reload the full conversation to get updated transaction
-        const conversationsResult = await getConversations()
-        if (conversationsResult.success && conversationsResult.conversations && selectedConversationId) {
-          const updatedConv = conversationsResult.conversations.find(c => c.id === selectedConversationId)
-          if (updatedConv && (updatedConv as any).transaction) {
-            const tx = (updatedConv as any).transaction
-            const fullTransaction: TransactionData = {
-              id: tx.id,
-              buyerId: updatedConv.buyerId,
-              sellerId: updatedConv.sellerId,
-              buyer: {
-                id: updatedConv.buyerId,
-                username: updatedConv.buyerId === user.id ? user.username || "You" : selectedContact?.name || "Buyer",
-              },
-              seller: {
-                id: updatedConv.sellerId,
-                username: updatedConv.sellerId === user.id ? user.username || "You" : selectedContact?.name || "Seller",
-              },
-              listing: updatedConv.listing || selectedContact?.item || { id: "", title: "", price: 0, image: "" },
-              price: tx.price,
-              amount: tx.amount,
-              status: tx.status,
-              buyerConfirmed: tx.buyerConfirmed,
-              sellerConfirmed: tx.sellerConfirmed,
-              userVouched: false,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
+        
+        // Use getTransactionByPeers to get the transaction with proper userVouched flag
+        if (selectedContact?.item.id && selectedContact?.item.id !== "unknown" && selectedContact?.otherUserId) {
+          const transactionResult = await getTransactionByPeers(
+            selectedContact.item.id,
+            selectedContact.otherUserId
+          )
+          if (transactionResult.success && transactionResult.transaction) {
+            setTransaction(transactionResult.transaction)
+            console.log("✅ Transaction loaded after message:", transactionResult.transaction)
+          }
+        } else {
+          // Fallback: Try to get transaction with proper userVouched from conversation data
+          const conversationsResult = await getConversations()
+          if (conversationsResult.success && conversationsResult.conversations && selectedConversationId) {
+            const updatedConv = conversationsResult.conversations.find(c => c.id === selectedConversationId)
+            if (updatedConv && (updatedConv as any).transaction && updatedConv.listing?.id) {
+              // Try getTransactionByPeers with conversation listing ID
+              const otherUserId = updatedConv.buyerId === user.id ? updatedConv.sellerId : updatedConv.buyerId
+              const txResult = await getTransactionByPeers(updatedConv.listing.id, otherUserId)
+              
+              if (txResult.success && txResult.transaction) {
+                setTransaction(txResult.transaction)
+                console.log("✅ Transaction loaded after message (fallback with proper vouch):", txResult.transaction)
+              } else {
+                // Last resort: use conversation data without userVouched
+                const tx = (updatedConv as any).transaction
+                const fullTransaction: TransactionData = {
+                  id: tx.id,
+                  buyerId: updatedConv.buyerId,
+                  sellerId: updatedConv.sellerId,
+                  buyer: {
+                    id: updatedConv.buyerId,
+                    username: updatedConv.buyerId === user.id ? user.username || "You" : selectedContact?.name || "Buyer",
+                  },
+                  seller: {
+                    id: updatedConv.sellerId,
+                    username: updatedConv.sellerId === user.id ? user.username || "You" : selectedContact?.name || "Seller",
+                  },
+                  listing: updatedConv.listing || selectedContact?.item || { id: "", title: "", price: 0, image: "" },
+                  price: tx.price,
+                  amount: tx.amount,
+                  status: tx.status,
+                  buyerConfirmed: tx.buyerConfirmed,
+                  sellerConfirmed: tx.sellerConfirmed,
+                  userVouched: false, // Unable to determine - last resort fallback
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                }
+                setTransaction(fullTransaction)
+                console.log("✅ Transaction loaded after message (last resort fallback):", fullTransaction)
+              }
             }
-            setTransaction(fullTransaction)
-            console.log("✅ Transaction loaded after message:", fullTransaction)
           }
         }
       }
@@ -480,25 +582,23 @@ export default function MessagesPage() {
                 } else {
                   contactStatus = "ongoing"
                 }
-              } else if (conv.listing?.status === "sold") {
-                contactStatus = "sold"
               }
               
               return {
                 id: conv.id,
                 otherUserId: conv.otherUser.id,
                 name: conv.otherUser.username,
-                lastMessage: conv.latestMessage?.content || "No messages yet",
+                lastMessage: conv.latestMessage?.attachmentUrl 
+                  ? "Sent a photo." 
+                  : (conv.latestMessage?.content || "No messages yet"),
                 timestamp: conv.latestMessage
-                  ? new Date(conv.latestMessage.createdAt).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })
-                  : "Just now",
+                  ? formatContactTimestamp(conv.latestMessage.createdAt)
+                  : "",
                 online: false,
                 role: conv.buyerId === user?.id ? "seller" : "buyer",
                 status: contactStatus,
                 blocked: false,
+                unreadCount: (conv as any).unreadCount || 0,
                 item: conv.listing || {
                   id: "unknown",
                   title: "Unknown Item",
@@ -507,9 +607,16 @@ export default function MessagesPage() {
                 },
                 transactionStatus: transactionData,
                 transaction: (conv as any).transaction || null,
+                _sortDate: conv.latestMessage?.createdAt || conv.createdAt,
               }
             })
           )
+          // Sort contacts by most recent message first
+          convertedContacts.sort((a, b) => {
+            const dateA = new Date(a._sortDate).getTime()
+            const dateB = new Date(b._sortDate).getTime()
+            return dateB - dateA
+          })
           setContacts(convertedContacts)
         }
       }
@@ -546,6 +653,7 @@ export default function MessagesPage() {
         sender: "buyer",
         text: `I'd like to make a counteroffer`,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        createdAt: new Date(),
         type: "counteroffer",
         offerAmount: amount,
         offerStatus: "pending",
@@ -763,16 +871,58 @@ export default function MessagesPage() {
     }
   }
 
-  const handleSelectContact = (contact: Contact) => {
+  const handleSelectContact = async (contact: Contact) => {
     setSelectedContact(contact)
     setSelectedConversationId(contact.id)
     setShowCounterOfferInput(false)
     setConversationSearch("")
     setMessages([])
     
-    // Use conversation-specific transaction from contact data
-    if (contact.transaction) {
-      // Map the simplified transaction to full TransactionData format
+    // Load transaction with proper confirmation states and userVouched flag
+    if (contact.item.id && contact.item.id !== "unknown") {
+      const transactionResult = await getTransactionByPeers(
+        contact.item.id,
+        contact.otherUserId
+      )
+      if (transactionResult.success && transactionResult.transaction) {
+        setTransaction(transactionResult.transaction)
+      } else {
+        // Fallback to contact transaction data if getTransactionByPeers fails
+        if (contact.transaction) {
+          const fullTransaction: TransactionData = {
+            id: contact.transaction.id,
+            buyerId: contact.role === "buyer" ? user.id : contact.otherUserId,
+            sellerId: contact.role === "seller" ? user.id : contact.otherUserId,
+            buyer: {
+              id: contact.role === "buyer" ? user.id : contact.otherUserId,
+              username: contact.role === "buyer" ? user.username || "You" : contact.name,
+            },
+            seller: {
+              id: contact.role === "seller" ? user.id : contact.otherUserId,
+              username: contact.role === "seller" ? user.username || "You" : contact.name,
+            },
+            listing: {
+              id: contact.item.id,
+              title: contact.item.title,
+              price: contact.item.price,
+              image: contact.item.image,
+            },
+            price: contact.transaction.price,
+            amount: contact.transaction.amount ?? undefined,
+            status: contact.transaction.status as "PENDING" | "COMPLETED" | "CANCELLED",
+            buyerConfirmed: contact.transaction.buyerConfirmed,
+            sellerConfirmed: contact.transaction.sellerConfirmed,
+            userVouched: false,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }
+          setTransaction(fullTransaction)
+        } else {
+          setTransaction(null)
+        }
+      }
+    } else if (contact.transaction) {
+      // No listing ID, use contact transaction data
       const fullTransaction: TransactionData = {
         id: contact.transaction.id,
         buyerId: contact.role === "buyer" ? user.id : contact.otherUserId,
@@ -792,13 +942,13 @@ export default function MessagesPage() {
           image: contact.item.image,
         },
         price: contact.transaction.price,
-        amount: contact.transaction.amount,
-        status: contact.transaction.status,
+        amount: contact.transaction.amount ?? undefined,
+        status: contact.transaction.status as "PENDING" | "COMPLETED" | "CANCELLED",
         buyerConfirmed: contact.transaction.buyerConfirmed,
         sellerConfirmed: contact.transaction.sellerConfirmed,
         userVouched: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
       }
       setTransaction(fullTransaction)
     } else {
@@ -887,13 +1037,16 @@ export default function MessagesPage() {
               ) : (
                 filteredContacts.map((contact) => {
                   const statusBadge = getStatusBadge(contact.status)
+                  const hasUnread = contact.unreadCount > 0
                   return (
                     <button
                       key={contact.id}
                       onClick={() => handleSelectContact(contact)}
                       className={`w-full p-4 border-b text-left hover:bg-muted transition ${
                         selectedContact?.id === contact.id ? "bg-muted border-l-2 border-l-primary" : ""
-                      } ${contact.blocked ? "opacity-50" : ""}`}
+                      } ${contact.blocked ? "opacity-50" : ""} ${
+                        hasUnread ? "bg-primary/5 border-l-2 border-l-primary" : ""
+                      }`}
                     >
                       <div className="flex items-start gap-3">
                         <img
@@ -906,6 +1059,11 @@ export default function MessagesPage() {
                             <p className="font-medium truncate flex items-center gap-2">
                               {contact.name}
                               {contact.blocked && <Ban className="w-3 h-3 text-red-500" />}
+                              {contact.unreadCount > 0 && (
+                                <span className="ml-1 px-1.5 py-0.5 bg-primary text-primary-foreground text-xs rounded-full font-bold">
+                                  {contact.unreadCount}
+                                </span>
+                              )}
                             </p>
                             {contact.online && !contact.blocked && (
                               <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0"></div>
@@ -1186,11 +1344,44 @@ export default function MessagesPage() {
                     </div>
                   ) : (
                     <>
-                      {filteredMessages.map((msg) => (
-                        <div
-                          key={msg.id}
-                          className={`flex ${msg.sender === "buyer" ? "justify-end" : "justify-start"}`}
-                        >
+                      {filteredMessages.map((msg, index) => {
+                        // Check if we need to show a date separator
+                        const showDateSeparator = index === 0 || 
+                          new Date(filteredMessages[index - 1].createdAt).toDateString() !== new Date(msg.createdAt).toDateString()
+                        
+                        const formatDate = (date: Date) => {
+                          const today = new Date()
+                          const yesterday = new Date(today)
+                          yesterday.setDate(yesterday.getDate() - 1)
+                          
+                          if (date.toDateString() === today.toDateString()) {
+                            return "Today"
+                          } else if (date.toDateString() === yesterday.toDateString()) {
+                            return "Yesterday"
+                          } else {
+                            return date.toLocaleDateString([], { 
+                              weekday: 'long',
+                              year: 'numeric', 
+                              month: 'long', 
+                              day: 'numeric' 
+                            })
+                          }
+                        }
+                        
+                        return (
+                          <div key={msg.id}>
+                            {showDateSeparator && (
+                              <div className="flex items-center justify-center my-4">
+                                <div className="flex-1 border-t border-muted"></div>
+                                <span className="px-3 text-xs text-muted-foreground font-medium">
+                                  {formatDate(new Date(msg.createdAt))}
+                                </span>
+                                <div className="flex-1 border-t border-muted"></div>
+                              </div>
+                            )}
+                            <div
+                              className={`flex ${msg.sender === "buyer" ? "justify-end" : "justify-start"}`}
+                            >
                           {msg.type === "counteroffer" ? (
                             <div
                               className={`max-w-xs p-4 rounded-lg border-2 ${
@@ -1269,8 +1460,10 @@ export default function MessagesPage() {
                               <p className="text-xs mt-1 opacity-70">{msg.timestamp}</p>
                             </div>
                           )}
-                        </div>
-                      ))}
+                            </div>
+                          </div>
+                        )
+                      })}
                       <div ref={messagesEndRef} />
                     </>
                   )}
@@ -1523,12 +1716,15 @@ export default function MessagesPage() {
       </Dialog>
 
       <Dialog open={!!lightboxImage} onOpenChange={() => setLightboxImage(null)}>
-        <DialogContent className="max-w-3xl p-2">
-          <div className="relative">
+        <DialogContent className="!max-w-[90vw] !w-auto h-auto max-h-[90vh] p-1 sm:!max-w-[90vw]" showCloseButton={false}>
+          <VisuallyHidden.Root>
+            <DialogTitle>Image Preview</DialogTitle>
+          </VisuallyHidden.Root>
+          <div className="relative flex items-center justify-center">
             <Button
               variant="ghost"
               size="icon"
-              className="absolute top-2 right-2 z-10 bg-black/50 hover:bg-black/70 text-white"
+              className="absolute top-1 right-1 z-10 bg-black/50 hover:bg-black/70 text-white"
               onClick={() => setLightboxImage(null)}
             >
               <X className="w-4 h-4" />
@@ -1537,7 +1733,7 @@ export default function MessagesPage() {
               <img
                 src={lightboxImage || "/placeholder.svg"}
                 alt="Full size image"
-                className="w-full h-auto max-h-[80vh] object-contain rounded"
+                className="max-w-[88vw] max-h-[88vh] w-auto h-auto object-contain rounded"
               />
             )}
           </div>

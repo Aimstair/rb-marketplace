@@ -321,10 +321,19 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
             <Card className="p-4 min-w-[200px] hidden lg:block">
               <h3 className="text-sm font-semibold text-muted-foreground mb-3">TRADING SCORE</h3>
               <div className="flex items-center gap-2 mb-3">
-                <span className="text-3xl font-bold text-primary">4.8</span>
+                <span className="text-3xl font-bold text-primary">
+                  {profile.vouchCount > 0 ? profile.averageRating.toFixed(1) : "N/A"}
+                </span>
                 <div className="flex">
                   {[...Array(5)].map((_, i) => (
-                    <Star key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                    <Star 
+                      key={i} 
+                      className={`w-4 h-4 ${
+                        i < Math.round(profile.averageRating || 0)
+                          ? "fill-yellow-400 text-yellow-400"
+                          : "text-muted-foreground"
+                      }`}
+                    />
                   ))}
                 </div>
               </div>
@@ -408,7 +417,7 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
                           <span className="flex items-center gap-1">
                             <Eye className="w-3 h-3" />
-                            0
+                            {listing.views || 0}
                           </span>
                         </div>
                       </div>
@@ -432,31 +441,37 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
               <Card className="p-6 lg:col-span-1">
                 <h3 className="font-bold mb-4">Vouch Summary</h3>
                 <div className="text-center mb-4">
-                  <div className="text-5xl font-bold text-primary mb-2">{profile.vouchCount || 0}</div>
-                  <p className="text-muted-foreground">Total Vouches</p>
+                  <div className="text-5xl font-bold text-primary mb-2">
+                    {profile.vouchCount > 0 ? profile.averageRating.toFixed(1) : "N/A"}
+                  </div>
+                  <div className="flex items-center justify-center gap-1 mb-2">
+                    {[...Array(5)].map((_, i) => (
+                      <Star 
+                        key={i} 
+                        className={`w-4 h-4 ${
+                          i < Math.round(profile.averageRating || 0)
+                            ? "fill-yellow-400 text-yellow-400"
+                            : "text-muted-foreground"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-muted-foreground">{profile.vouchCount || 0} Total Vouches</p>
                 </div>
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span>5 Stars</span>
-                    <div className="flex items-center gap-2 flex-1 mx-4">
-                      <Progress value={85} className="h-2" />
-                    </div>
-                    <span>85%</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span>4 Stars</span>
-                    <div className="flex items-center gap-2 flex-1 mx-4">
-                      <Progress value={10} className="h-2" />
-                    </div>
-                    <span>10%</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span>3 Stars</span>
-                    <div className="flex items-center gap-2 flex-1 mx-4">
-                      <Progress value={3} className="h-2" />
-                    </div>
-                    <span>3%</span>
-                  </div>
+                  {[5, 4, 3, 2, 1].map((star) => {
+                    const count = profile.ratingBreakdown?.[star] || 0
+                    const percentage = profile.vouchCount > 0 ? Math.round((count / profile.vouchCount) * 100) : 0
+                    return (
+                      <div key={star} className="flex items-center justify-between text-sm">
+                        <span>{star} Star{star !== 1 ? 's' : ''}</span>
+                        <div className="flex items-center gap-2 flex-1 mx-4">
+                          <Progress value={percentage} className="h-2" />
+                        </div>
+                        <span className="w-10 text-right">{percentage}%</span>
+                      </div>
+                    )
+                  })}
                 </div>
               </Card>
 

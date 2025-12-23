@@ -110,13 +110,14 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
         const result = await getListing(id)
         if (result.success && result.listing) {
           setListing(result.listing)
-          // Use DB stock and parsed description data
-          const parsed = parseCurrencyDescription(result.listing.description)
+          // Use data from getListing response directly
           setCurrencyData({
-            ...parsed,
-            stock: result.listing.stock, // Use DB stock
+            currencyType: result.listing.itemType, // itemType contains gameCurrency.displayName
+            ratePerPeso: result.listing.price, // price contains ratePerPeso for currency listings
+            stock: result.listing.stock,
             minOrder: result.listing.minOrder,
             maxOrder: result.listing.maxOrder,
+            notes: result.listing.description || undefined,
           })
         } else {
           setError(result.error || "Listing not found")
@@ -181,7 +182,7 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
 
     setIsVoting(true)
     try {
-      const result = await toggleListingVote(id, type)
+      const result = await toggleListingVote(id, type, "CURRENCY")
       if (result.success) {
         setVotes({
           upvotes: result.upvotes || 0,
@@ -317,7 +318,7 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
 
     setIsReporting(true)
     try {
-      const result = await reportListing(id, reportReason, reportDetails)
+      const result = await reportListing(id, reportReason, reportDetails, "CURRENCY")
       if (result.success) {
         toast({
           title: "Report Submitted",
@@ -466,38 +467,13 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
             {/* Description */}
             <Card className="p-6 mb-6">
               <h2 className="text-xl font-bold mb-4">Description</h2>
-              <p className="text-foreground leading-relaxed whitespace-pre-wrap">{listing?.description || "No description available"}</p>
-              {currencyData.notes && (
-                <div className="mt-4 p-4 bg-muted/50 rounded-lg">
-                  <p className="text-sm font-semibold mb-1">Additional Notes:</p>
-                  <p className="text-sm text-muted-foreground">{currencyData.notes}</p>
-                </div>
-              )}
+              <p className="text-foreground leading-relaxed">{currencyData.notes || "No description provided"}</p>
             </Card>
 
-            {/* Delivery Methods */}
-            <Card className="p-6 mb-6">
-              <h2 className="text-xl font-bold mb-4">Listing Information</h2>
-              <div className="space-y-3 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Posted:</span>
-                  <span className="font-medium">
-                    {listing?.createdAt ? new Date(listing.createdAt).toLocaleDateString() : "Recently"}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Views:</span>
-                  <span className="font-medium">{listing?.views || 0}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Status:</span>
-                  <Badge variant={listing?.status === "available" ? "default" : "secondary"}>
-                    {listing?.status || "Available"}
-                  </Badge>
-                </div>
-              </div>
-            </Card>
+            
           </div>
+          
+          
 
           {/* Right Column - Seller & Action */}
           <div className="lg:col-span-1">
@@ -513,19 +489,19 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
             <div className="space-y-3 mb-6">
               <Button 
                 size="lg" 
-                className={user?.id === listing?.sellerId ? "w-full pointer-events-none opacity-50" : "w-full"}
+                className={user?.id === listing.seller.id ? "w-full pointer-events-none opacity-50" : "w-full"}
                 onClick={handleContactSeller} 
-                disabled={!user || user?.id === listing?.sellerId}
+                disabled={!user || listing.seller.id === listing?.sellerId}
               >
                 <MessageCircle className="w-5 h-5 mr-2" />
-                {user?.id === listing?.sellerId ? "Your Listing" : "Buy Now"}
+                {user?.id === listing.seller.id ? "Your Listing" : "Buy Now"}
               </Button>
               <div className="grid grid-cols-2 gap-2">
                 <Button
                   variant="outline"
                   onClick={handleShare}
-                  disabled={copied || user?.id === listing?.sellerId}
-                  className={copied || user?.id === listing?.sellerId ? "pointer-events-none opacity-50" : ""}
+                  disabled={copied || user?.id === listing.seller.id}
+                  className={copied || user?.id === listing.seller.id ? "pointer-events-none opacity-50" : ""}
                 >
                   {copied ? <Check className="w-4 h-4 mr-1" /> : <Share2 className="w-4 h-4 mr-1" />}
                   {copied ? "Copied" : "Share"}
@@ -533,8 +509,8 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
                 <Button
                   variant="outline"
                   onClick={() => setShowReportDialog(true)}
-                  className={user?.id === listing?.sellerId ? "text-red-600 hover:text-red-700 pointer-events-none opacity-50" : "text-red-600 hover:text-red-700"}
-                  disabled={user?.id === listing?.sellerId}
+                  className={user?.id === listing.seller.id ? "text-red-600 hover:text-red-700 pointer-events-none opacity-50" : "text-red-600 hover:text-red-700"}
+                  disabled={user?.id === listing.seller.id}
                 >
                   <Flag className="w-4 h-4 mr-1" />
                   Report
@@ -555,7 +531,9 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
                     <h3 className="font-bold text-lg">{listing?.seller?.username || "Unknown"}</h3>
                     {listing?.seller?.verified && <Shield className="w-4 h-4 text-primary" />}
                   </div>
-                  <p className="text-sm text-muted-foreground">Trusted Seller</p>
+                  <p className="text-sm text-muted-foreground">
+                    Joined {listing.seller?.joinDate ? new Date(listing.seller.joinDate).toLocaleDateString() : "Unknown"}
+                  </p>
                 </div>
               </div>
 
@@ -592,9 +570,53 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
                 </Button>
               </Link>
             </Card>
-
+            
+            {/* Listing Info */}
+            <Card className="p-6 mt-6">
+              <div className="space-y-3 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground flex items-center gap-2">
+                    <Calendar className="w-4 h-4" />
+                    Posted
+                  </span>
+                  <span>{new Date(listing.createdAt).toLocaleDateString()}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Views</span>
+                  <span>{listing.views || 0}</span>
+                </div>
+              </div>
+            </Card>
           </div>
         </div>
+
+        {/* Safety Tips Section */}
+        <Card className="mt-12 p-6 bg-secondary/5 border-secondary">
+          <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+            <Shield className="w-5 h-5" />
+            Safety Tips
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+            <div>
+              <p className="font-semibold mb-2">Ask for Proof</p>
+              <p className="text-muted-foreground">
+                Always ask the seller for item screenshots or video proof before making any payment.
+              </p>
+            </div>
+            <div>
+              <p className="font-semibold mb-2">Agree on Terms</p>
+              <p className="text-muted-foreground">
+                Discuss payment method, delivery method, and timeline before proceeding.
+              </p>
+            </div>
+            <div>
+              <p className="font-semibold mb-2">Vouch After Trade</p>
+              <p className="text-muted-foreground">
+                Once trade is complete, vouch for the seller to help build community trust.
+              </p>
+            </div>
+          </div>
+        </Card>
       </div>
 
       {/* Purchase Dialog */}
@@ -728,6 +750,8 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      
     </main>
   )
 }

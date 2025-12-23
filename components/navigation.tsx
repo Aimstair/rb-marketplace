@@ -16,10 +16,12 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { getUnreadCount, getNotifications, markAsRead, markAllAsRead } from "@/app/actions/notifications"
 import type { NotificationData } from "@/app/actions/notifications"
+import { getUnreadMessageCount } from "@/app/actions/messages"
 
 export default function Navigation() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0)
   const [notifications, setNotifications] = useState<NotificationData[]>([])
   const [loadingUnread, setLoadingUnread] = useState(false)
   const [loadingNotifications, setLoadingNotifications] = useState(false)
@@ -30,8 +32,12 @@ export default function Navigation() {
   useEffect(() => {
     if (status === "authenticated") {
       fetchUnreadCount()
+      fetchUnreadMessageCount()
       // Refresh unread count every 30 seconds
-      const interval = setInterval(fetchUnreadCount, 30000)
+      const interval = setInterval(() => {
+        fetchUnreadCount()
+        fetchUnreadMessageCount()
+      }, 30000)
       return () => clearInterval(interval)
     }
   }, [status])
@@ -68,6 +74,17 @@ export default function Navigation() {
     }
   }
 
+  const fetchUnreadMessageCount = async () => {
+    try {
+      const result = await getUnreadMessageCount()
+      if (result.success && result.count !== undefined) {
+        setUnreadMessageCount(result.count)
+      }
+    } catch (err) {
+      console.error("Failed to fetch unread message count:", err)
+    }
+  }
+
   const handleMarkAsRead = async (notificationId: string) => {
     try {
       const result = await markAsRead(notificationId)
@@ -77,6 +94,15 @@ export default function Navigation() {
       }
     } catch (err) {
       console.error("Failed to mark notification as read:", err)
+    }
+  }
+
+  const handleNotificationClick = async (notification: NotificationData) => {
+    // Mark as read
+    await handleMarkAsRead(notification.id)
+    // Navigate to link if available
+    if (notification.link) {
+      router.push(notification.link)
     }
   }
 
@@ -100,7 +126,7 @@ export default function Navigation() {
       <div className="container mx-auto px-4 py-4 flex items-center justify-between">
         {/* Logo */}
         <Link href="/" className="text-2xl font-bold text-primary">
-          RobloxTrade
+          RbMarket
         </Link>
 
         {/* Desktop Menu */}
@@ -156,7 +182,7 @@ export default function Navigation() {
                       notifications.slice(0, 5).map((notification) => (
                         <div
                           key={notification.id}
-                          onClick={() => handleMarkAsRead(notification.id)}
+                          onClick={() => handleNotificationClick(notification)}
                           className={`px-3 py-3 border-b last:border-b-0 hover:bg-muted cursor-pointer ${
                             !notification.isRead ? "bg-primary/5" : ""
                           }`}
@@ -190,8 +216,13 @@ export default function Navigation() {
 
               {/* Messages Icon - only visible when logged in */}
               <Link href="/messages">
-                <Button variant="ghost" size="icon">
+                <Button variant="ghost" size="icon" className="relative">
                   <MessageCircle className="w-5 h-5" />
+                  {unreadMessageCount > 0 && (
+                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">
+                      {unreadMessageCount > 99 ? "99+" : unreadMessageCount}
+                    </span>
+                  )}
                 </Button>
               </Link>
 
@@ -297,7 +328,7 @@ export default function Navigation() {
                   <Link href="/my-listings" className="py-2 text-muted-foreground hover:text-foreground block">
                     My Listings
                   </Link>
-                  <Link href="/notifications" className="py-2 text-muted-foreground hover:text-foreground block flex items-center justify-between">
+                  <Link href="/notifications" className="py-2 text-muted-foreground hover:text-foreground flex items-center justify-between">
                     Notifications
                     {unreadCount > 0 && (
                       <span className="ml-2 px-2 py-0.5 bg-red-500 text-white text-xs rounded-full font-bold">
@@ -305,8 +336,13 @@ export default function Navigation() {
                       </span>
                     )}
                   </Link>
-                  <Link href="/messages" className="py-2 text-muted-foreground hover:text-foreground block">
+                  <Link href="/messages" className="py-2 text-muted-foreground hover:text-foreground flex items-center justify-between">
                     Messages
+                    {unreadMessageCount > 0 && (
+                      <span className="ml-2 px-2 py-0.5 bg-red-500 text-white text-xs rounded-full font-bold">
+                        {unreadMessageCount > 99 ? "99+" : unreadMessageCount}
+                      </span>
+                    )}
                   </Link>
                   <Link href="/settings" className="py-2 text-muted-foreground hover:text-foreground block">
                     Settings

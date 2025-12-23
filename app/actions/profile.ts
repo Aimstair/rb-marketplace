@@ -13,6 +13,8 @@ export interface UserProfileData {
   isVerified: boolean
   joinDate: Date
   vouchCount: number
+  averageRating: number
+  ratingBreakdown: { [key: number]: number }
   responseRate: number
   followers: number
   following: number
@@ -53,9 +55,25 @@ export async function getProfile(usernameOrId: string): Promise<GetProfileResult
         OR: [{ id: usernameOrId }, { username: usernameOrId }],
       },
       include: {
-        listings: {
+        itemListings: {
           where: { status: "available" },
+          include: {
+            game: {
+              select: { displayName: true }
+            }
+          },
           take: 20,
+          orderBy: { createdAt: "desc" }
+        },
+        currencyListings: {
+          where: { status: "available" },
+          include: {
+            game: {
+              select: { displayName: true }
+            }
+          },
+          take: 20,
+          orderBy: { createdAt: "desc" }
         },
         vouchesReceived: {
           include: {
@@ -73,6 +91,38 @@ export async function getProfile(usernameOrId: string): Promise<GetProfileResult
       return { success: false, error: "User not found" }
     }
 
+    // Combine item and currency listings into a unified array
+    const itemListings = (user.itemListings || []).map((listing: any) => ({
+      id: listing.id,
+      title: listing.title,
+      description: listing.description,
+      price: listing.price,
+      image: listing.image,
+      status: listing.status,
+      game: listing.game?.displayName || "Unknown Game",
+      createdAt: listing.createdAt,
+      views: listing.views || 0,
+      listingType: "ITEM" as const
+    }))
+
+    const currencyListings = (user.currencyListings || []).map((listing: any) => ({
+      id: listing.id,
+      title: listing.title,
+      description: listing.description,
+      price: listing.ratePerPeso,
+      image: listing.image,
+      status: listing.status,
+      game: listing.game?.displayName || "Unknown Game",
+      createdAt: listing.createdAt,
+      views: listing.views || 0,
+      listingType: "CURRENCY" as const
+    }))
+
+    // Combine and sort by creation date
+    const allListings = [...itemListings, ...currencyListings].sort((a, b) => 
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )
+
     // Parse social links from JSON
     let socialLinks: Record<string, any> | undefined = undefined
     if (user.socialLinks) {
@@ -81,6 +131,24 @@ export async function getProfile(usernameOrId: string): Promise<GetProfileResult
       } catch {
         socialLinks = undefined
       }
+    }
+
+    // Calculate average rating and rating breakdown
+    const vouches = user.vouchesReceived || []
+    let averageRating = 0
+    const ratingBreakdown: { [key: number]: number } = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
+    
+    if (vouches.length > 0) {
+      const totalRating = vouches.reduce((sum: number, v: any) => sum + (v.rating || 5), 0)
+      averageRating = totalRating / vouches.length
+      
+      // Count ratings for breakdown
+      vouches.forEach((v: any) => {
+        const rating = v.rating || 5
+        if (rating >= 1 && rating <= 5) {
+          ratingBreakdown[rating]++
+        }
+      })
     }
 
     const profileData: UserProfileData = {
@@ -92,12 +160,14 @@ export async function getProfile(usernameOrId: string): Promise<GetProfileResult
       socialLinks,
       isVerified: user.isVerified || false,
       joinDate: user.joinDate,
-      vouchCount: user.vouchesReceived?.length || 0,
+      vouchCount: vouches.length,
+      averageRating,
+      ratingBreakdown,
       responseRate: 95, // TODO: Calculate from actual message response times
       followers: 0, // TODO: Query UserFollow model when available
       following: 0, // TODO: Query UserFollow model when available
-      listings: user.listings || [],
-      vouches: (user.vouchesReceived || []).map((v: any) => ({
+      listings: allListings,
+      vouches: vouches.map((v: any) => ({
         id: v.id,
         rating: v.rating,
         comment: v.message,

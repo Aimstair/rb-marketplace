@@ -5,6 +5,36 @@ import { auth } from "@/auth"
 import { createNotification } from "./notifications"
 import { z } from "zod"
 
+// Helper function to get listing details based on type
+async function getListingDetails(listingId: string, listingType: string) {
+  if (listingType === "ITEM") {
+    return await prisma.itemListing.findUnique({
+      where: { id: listingId },
+      select: {
+        id: true,
+        sellerId: true,
+        status: true,
+        price: true,
+        title: true,
+        stock: true,
+      },
+    })
+  } else if (listingType === "CURRENCY") {
+    return await prisma.currencyListing.findUnique({
+      where: { id: listingId },
+      select: {
+        id: true,
+        sellerId: true,
+        status: true,
+        ratePerPeso: true,
+        title: true,
+        stock: true,
+      },
+    })
+  }
+  return null
+}
+
 export interface TransactionData {
   id: string
   buyerId: string
@@ -54,7 +84,8 @@ export interface SubmitVouchResult {
 export async function createTransaction(
   listingId: string,
   price: number,
-  conversationId?: string
+  conversationId?: string,
+  listingType: string = "ITEM"
 ): Promise<CreateTransactionResult> {
   try {
     // Get the current user (placeholder - first user in DB)
@@ -70,10 +101,7 @@ export async function createTransaction(
     }
 
     // Find the listing and verify it exists
-    const listing = await prisma.listing.findUnique({
-      where: { id: listingId },
-      select: { id: true, sellerId: true, status: true },
-    })
+    const listing = await getListingDetails(listingId, listingType)
 
     if (!listing) {
       return {
@@ -202,28 +230,58 @@ export async function getTransactions(
         seller: {
           select: { id: true, username: true },
         },
-        listing: {
-          select: { id: true, title: true, price: true, image: true },
-        },
       },
       orderBy: { createdAt: "desc" },
     })
 
-    // Transform to response format
-    const transformedTransactions: TransactionData[] = transactions.map((tx: any) => ({
-      id: tx.id,
-      buyerId: tx.buyerId,
-      sellerId: tx.sellerId,
-      buyer: tx.buyer,
-      seller: tx.seller,
-      listing: tx.listing,
-      price: tx.price,
-      status: tx.status,
-      buyerConfirmed: tx.buyerConfirmed,
-      sellerConfirmed: tx.sellerConfirmed,
-      createdAt: tx.createdAt,
-      updatedAt: tx.updatedAt,
-    }))
+    // Manually fetch listings for each transaction
+    const transformedTransactions: TransactionData[] = await Promise.all(
+      transactions.map(async (tx: any) => {
+        let listing = { id: "", title: "Unknown Item", price: 0, image: "" }
+
+        if (tx.listingId && tx.listingType) {
+          if (tx.listingType === "ITEM") {
+            const itemListing = await prisma.itemListing.findUnique({
+              where: { id: tx.listingId },
+              select: { id: true, title: true, price: true, image: true },
+            })
+            if (itemListing) {
+              listing = itemListing
+            }
+          } else if (tx.listingType === "CURRENCY") {
+            const currencyListing = await prisma.currencyListing.findUnique({
+              where: { id: tx.listingId },
+              select: { id: true, title: true, ratePerPeso: true, image: true },
+            })
+            if (currencyListing) {
+              listing = {
+                id: currencyListing.id,
+                title: currencyListing.title,
+                price: currencyListing.ratePerPeso,
+                image: currencyListing.image,
+              }
+            }
+          }
+        }
+
+        return {
+          id: tx.id,
+          buyerId: tx.buyerId,
+          sellerId: tx.sellerId,
+          buyer: tx.buyer,
+          seller: tx.seller,
+          listing,
+          price: tx.price,
+          amount: tx.amount,
+          status: tx.status,
+          buyerConfirmed: tx.buyerConfirmed,
+          sellerConfirmed: tx.sellerConfirmed,
+          userVouched: false, // Would need to check Vouch table
+          createdAt: tx.createdAt,
+          updatedAt: tx.updatedAt,
+        }
+      })
+    )
 
     return {
       success: true,
@@ -276,9 +334,6 @@ export async function getTransactionById(transactionId: string): Promise<{
         seller: {
           select: { id: true, username: true },
         },
-        listing: {
-          select: { id: true, title: true, price: true, image: true },
-        },
       },
     })
 
@@ -286,6 +341,33 @@ export async function getTransactionById(transactionId: string): Promise<{
       return {
         success: false,
         error: "Transaction not found",
+      }
+    }
+
+    // Manually fetch listing based on listingType
+    let listing = { id: "", title: "Unknown Item", price: 0, image: "" }
+    if (transaction.listingId && transaction.listingType) {
+      if (transaction.listingType === "ITEM") {
+        const itemListing = await prisma.itemListing.findUnique({
+          where: { id: transaction.listingId },
+          select: { id: true, title: true, price: true, image: true },
+        })
+        if (itemListing) {
+          listing = itemListing
+        }
+      } else if (transaction.listingType === "CURRENCY") {
+        const currencyListing = await prisma.currencyListing.findUnique({
+          where: { id: transaction.listingId },
+          select: { id: true, title: true, ratePerPeso: true, image: true },
+        })
+        if (currencyListing) {
+          listing = {
+            id: currencyListing.id,
+            title: currencyListing.title,
+            price: currencyListing.ratePerPeso,
+            image: currencyListing.image,
+          }
+        }
       }
     }
 
@@ -308,7 +390,7 @@ export async function getTransactionById(transactionId: string): Promise<{
         sellerId: transaction.sellerId,
         buyer: transaction.buyer,
         seller: transaction.seller,
-        listing: transaction.listing,
+        listing,
         price: transaction.price,
         amount: transaction.amount,
         status: transaction.status,
@@ -400,9 +482,6 @@ export async function getTransactionByPeers(
         seller: {
           select: { id: true, username: true },
         },
-        listing: {
-          select: { id: true, title: true, price: true, image: true },
-        },
       },
     })
 
@@ -434,9 +513,6 @@ export async function getTransactionByPeers(
           seller: {
             select: { id: true, username: true },
           },
-          listing: {
-            select: { id: true, title: true, price: true, image: true },
-          },
         },
       })
     }
@@ -459,6 +535,35 @@ export async function getTransactionByPeers(
       },
     })
 
+    // Manually fetch listing data based on listingType
+    let listing = null
+    if (transaction.listingId && transaction.listingType) {
+      try {
+        if (transaction.listingType === "ITEM") {
+          const itemListing = await prisma.itemListing.findUnique({
+            where: { id: transaction.listingId },
+            select: { id: true, title: true, price: true, image: true },
+          })
+          listing = itemListing
+        } else if (transaction.listingType === "CURRENCY") {
+          const currencyListing = await prisma.currencyListing.findUnique({
+            where: { id: transaction.listingId },
+            select: { id: true, title: true, ratePerPeso: true, image: true },
+          })
+          if (currencyListing) {
+            listing = {
+              id: currencyListing.id,
+              title: currencyListing.title,
+              price: currencyListing.ratePerPeso,
+              image: currencyListing.image,
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`Failed to fetch listing ${transaction.listingId}:`, error)
+      }
+    }
+
     return {
       success: true,
       transaction: {
@@ -467,7 +572,7 @@ export async function getTransactionByPeers(
         sellerId: transaction.sellerId,
         buyer: transaction.buyer,
         seller: transaction.seller,
-        listing: transaction.listing,
+        listing: listing || { id: transaction.listingId || "", title: "Unknown Item", price: transaction.price, image: "" },
         price: transaction.price,
         amount: transaction.amount,
         status: transaction.status,
@@ -557,7 +662,6 @@ export async function toggleTransactionConfirmation(
       include: {
         buyer: { select: { id: true, username: true } },
         seller: { select: { id: true, username: true } },
-        listing: { select: { id: true, title: true, price: true, image: true } },
       },
     })
 
@@ -570,32 +674,38 @@ export async function toggleTransactionConfirmation(
         include: {
           buyer: { select: { id: true, username: true } },
           seller: { select: { id: true, username: true } },
-          listing: { select: { id: true, title: true, price: true, image: true } },
         },
       })
 
       // Update listing stock and status
-      const completedListing = await prisma.listing.findUnique({
-        where: { id: completedTransaction.listingId },
-        select: { stock: true, type: true },
-      })
+      const listingDetails = await getListingDetails(completedTransaction.listingId, completedTransaction.listingType)
 
-      if (completedListing) {
+      if (listingDetails) {
         // Deduct transaction amount (or 1 if amount not specified)
         const deductedAmount = transaction.amount || 1
-        const newStock = Math.max(0, completedListing.stock - deductedAmount)
+        const newStock = Math.max(0, listingDetails.stock - deductedAmount)
         
         // Only mark as sold if stock is <= 0, otherwise keep available
         const newListingStatus = newStock <= 0 ? "sold" : "available"
         
         // Update listing with new stock
-        await prisma.listing.update({
-          where: { id: completedTransaction.listingId },
-          data: { 
-            stock: newStock,
-            status: newListingStatus,
-          },
-        })
+        if (completedTransaction.listingType === "ITEM") {
+          await prisma.itemListing.update({
+            where: { id: completedTransaction.listingId },
+            data: { 
+              stock: newStock,
+              status: newListingStatus,
+            },
+          })
+        } else if (completedTransaction.listingType === "CURRENCY") {
+          await prisma.currencyListing.update({
+            where: { id: completedTransaction.listingId },
+            data: { 
+              stock: newStock,
+              status: newListingStatus,
+            },
+          })
+        }
       }
 
       // Auto-decline all pending counteroffers for other conversations on this listing
@@ -634,12 +744,16 @@ export async function toggleTransactionConfirmation(
         }
       }
 
+      // Manually fetch listing data for notifications and return
+      const completedListingDetails = await getListingDetails(completedTransaction.listingId, completedTransaction.listingType)
+      const completedListingTitle = completedListingDetails?.title || "this item"
+
       // Create notification to both parties about completion
       await createNotification(
         completedTransaction.buyerId,
         "ORDER_UPDATE",
         "Transaction completed!",
-        `Your transaction for ${completedTransaction.listing.title} has been completed by both parties.`,
+        `Your transaction for ${completedListingTitle} has been completed by both parties.`,
         `/my-transactions`
       ).catch((error) => {
         console.error("Failed to create completion notification for buyer:", error)
@@ -649,11 +763,40 @@ export async function toggleTransactionConfirmation(
         completedTransaction.sellerId,
         "ORDER_UPDATE",
         "Transaction completed!",
-        `Your transaction for ${completedTransaction.listing.title} has been completed by both parties.`,
+        `Your transaction for ${completedListingTitle} has been completed by both parties.`,
         `/my-transactions`
       ).catch((error) => {
         console.error("Failed to create completion notification for seller:", error)
       })
+
+      // Fetch full listing data for return
+      let completedListing = null
+      if (completedTransaction.listingId && completedTransaction.listingType) {
+        try {
+          if (completedTransaction.listingType === "ITEM") {
+            const itemListing = await prisma.itemListing.findUnique({
+              where: { id: completedTransaction.listingId },
+              select: { id: true, title: true, price: true, image: true },
+            })
+            completedListing = itemListing
+          } else if (completedTransaction.listingType === "CURRENCY") {
+            const currencyListing = await prisma.currencyListing.findUnique({
+              where: { id: completedTransaction.listingId },
+              select: { id: true, title: true, ratePerPeso: true, image: true },
+            })
+            if (currencyListing) {
+              completedListing = {
+                id: currencyListing.id,
+                title: currencyListing.title,
+                price: currencyListing.ratePerPeso,
+                image: currencyListing.image,
+              }
+            }
+          }
+        } catch (error) {
+          console.error(`Failed to fetch listing ${completedTransaction.listingId}:`, error)
+        }
+      }
 
       // Check if current user has vouched
       const userVouch = await prisma.vouch.findFirst({
@@ -671,8 +814,9 @@ export async function toggleTransactionConfirmation(
           sellerId: completedTransaction.sellerId,
           buyer: completedTransaction.buyer,
           seller: completedTransaction.seller,
-          listing: completedTransaction.listing,
+          listing: completedListing || { id: completedTransaction.listingId || "", title: completedListingTitle, price: completedTransaction.price, image: "" },
           price: completedTransaction.price,
+          amount: completedTransaction.amount,
           status: completedTransaction.status,
           buyerConfirmed: completedTransaction.buyerConfirmed,
           sellerConfirmed: completedTransaction.sellerConfirmed,
@@ -686,15 +830,48 @@ export async function toggleTransactionConfirmation(
       const counterpartyId = isBuyer ? updatedTransaction.sellerId : updatedTransaction.buyerId
       const confirmer = isBuyer ? "Buyer" : "Seller"
 
+      // Fetch listing for notification
+      const updatedListingDetails = await getListingDetails(updatedTransaction.listingId, updatedTransaction.listingType)
+      const updatedListingTitle = updatedListingDetails?.title || "this item"
+
       await createNotification(
         counterpartyId,
         "ORDER_UPDATE",
         `${confirmer} confirmed the transaction`,
-        `The ${confirmer.toLowerCase()} has confirmed the transaction for ${updatedTransaction.listing.title}.`,
+        `The ${confirmer.toLowerCase()} has confirmed the transaction for ${updatedListingTitle}.`,
         `/my-transactions`
       ).catch((error) => {
         console.error("Failed to create confirmation notification:", error)
       })
+
+      // Fetch full listing data for return
+      let updatedListing = null
+      if (updatedTransaction.listingId && updatedTransaction.listingType) {
+        try {
+          if (updatedTransaction.listingType === "ITEM") {
+            const itemListing = await prisma.itemListing.findUnique({
+              where: { id: updatedTransaction.listingId },
+              select: { id: true, title: true, price: true, image: true },
+            })
+            updatedListing = itemListing
+          } else if (updatedTransaction.listingType === "CURRENCY") {
+            const currencyListing = await prisma.currencyListing.findUnique({
+              where: { id: updatedTransaction.listingId },
+              select: { id: true, title: true, ratePerPeso: true, image: true },
+            })
+            if (currencyListing) {
+              updatedListing = {
+                id: currencyListing.id,
+                title: currencyListing.title,
+                price: currencyListing.ratePerPeso,
+                image: currencyListing.image,
+              }
+            }
+          }
+        } catch (error) {
+          console.error(`Failed to fetch listing ${updatedTransaction.listingId}:`, error)
+        }
+      }
 
       // Check if current user has vouched
       const userVouch = await prisma.vouch.findFirst({
@@ -712,8 +889,9 @@ export async function toggleTransactionConfirmation(
           sellerId: updatedTransaction.sellerId,
           buyer: updatedTransaction.buyer,
           seller: updatedTransaction.seller,
-          listing: updatedTransaction.listing,
+          listing: updatedListing || { id: updatedTransaction.listingId || "", title: updatedListingTitle, price: updatedTransaction.price, image: "" },
           price: updatedTransaction.price,
+          amount: updatedTransaction.amount,
           status: updatedTransaction.status,
           buyerConfirmed: updatedTransaction.buyerConfirmed,
           sellerConfirmed: updatedTransaction.sellerConfirmed,

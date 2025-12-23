@@ -13,7 +13,8 @@ import { Badge } from "@/components/ui/badge"
 import { FileUpload } from "@/components/file-upload"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
-import { createListing, createCurrencyListing, getFilterOptions } from "@/app/actions/listings"
+import { createListing, createCurrencyListing, createNewCurrencyListing, getFilterOptions } from "@/app/actions/listings"
+import { getGames, getCurrenciesForGame, type GameOption, type CurrencyOption } from "@/app/actions/games"
 
 const paymentMethods = ["GCash", "PayPal", "Robux Gift Cards", "Cross-Trade", "Venmo"]
 
@@ -26,6 +27,10 @@ export default function SellPage() {
   const [games, setGames] = useState<{ label: string; value: string }[]>([])
   const [itemTypes, setItemTypes] = useState<{ label: string; value: string }[]>([])
   const [conditions, setConditions] = useState<{ label: string; value: string }[]>([])
+  
+  // New states for games and currencies from database
+  const [availableGames, setAvailableGames] = useState<GameOption[]>([])
+  const [availableCurrencies, setAvailableCurrencies] = useState<CurrencyOption[]>([])
 
   useEffect(() => {
     if (!user) {
@@ -37,16 +42,18 @@ export default function SellPage() {
   useEffect(() => {
     const fetchFilters = async () => {
       try {
-        const [categoriesData, gamesData, itemTypesData, conditionsData] = await Promise.all([
+        const [categoriesData, gamesData, itemTypesData, conditionsData, dbGames] = await Promise.all([
           getFilterOptions("CATEGORY"),
           getFilterOptions("GAME"),
           getFilterOptions("ITEM_TYPE"),
           getFilterOptions("CONDITION"),
+          getGames(),
         ])
         setCategories(categoriesData)
         setGames(gamesData)
         setItemTypes(itemTypesData)
         setConditions(conditionsData)
+        setAvailableGames(dbGames)
       } catch (error) {
         console.error("Error fetching filter options:", error)
       }
@@ -72,6 +79,7 @@ export default function SellPage() {
   })
 
   const [currencyFormData, setCurrencyFormData] = useState({
+    game: "",
     currencyType: "",
     ratePerPeso: "",
     stock: "",
@@ -86,6 +94,24 @@ export default function SellPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+
+  // Fetch currencies when game is selected
+  useEffect(() => {
+    const fetchCurrencies = async () => {
+      if (currencyFormData.game) {
+        try {
+          const currencies = await getCurrenciesForGame(currencyFormData.game)
+          setAvailableCurrencies(currencies)
+        } catch (error) {
+          console.error("Error fetching currencies:", error)
+          setAvailableCurrencies([])
+        }
+      } else {
+        setAvailableCurrencies([])
+      }
+    }
+    fetchCurrencies()
+  }, [currencyFormData.game])
 
   if (!user) {
     return null
@@ -115,9 +141,16 @@ export default function SellPage() {
 
   const handleCurrencyChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
+    let updates: any = { [name]: value }
+    
+    // Reset currency type when game changes
+    if (name === "game") {
+      updates.currencyType = ""
+    }
+    
     setCurrencyFormData({
       ...currencyFormData,
-      [name]: value,
+      ...updates,
     })
   }
 
@@ -194,7 +227,7 @@ export default function SellPage() {
         }
       } else {
         // Currency listing
-        if (!currencyFormData.currencyType || !currencyFormData.ratePerPeso || !currencyFormData.stock || !currencyFormData.minOrder || !currencyFormData.maxOrder || !currencyFormData.image) {
+        if (!currencyFormData.game || !currencyFormData.currencyType || !currencyFormData.ratePerPeso || !currencyFormData.stock || !currencyFormData.minOrder || !currencyFormData.maxOrder || !currencyFormData.image) {
           setError("Please fill in all required fields")
           setIsLoading(false)
           return
@@ -206,7 +239,9 @@ export default function SellPage() {
           return
         }
 
-        const result = await createCurrencyListing({
+        // Currency listing - Use new CurrencyListing model
+        const result = await createNewCurrencyListing({
+          game: currencyFormData.game,
           currencyType: currencyFormData.currencyType,
           ratePerPeso: Number(currencyFormData.ratePerPeso),
           stock: Number(currencyFormData.stock),
@@ -403,7 +438,7 @@ export default function SellPage() {
                       </div>
 
                       <div>
-                        <label className="text-sm font-semibold mb-2 block">Stock/Quantity *</label>
+                        <label className="text-sm font-semibold mb-2 block">Quantity *</label>
                         <Input
                           type="number"
                           name="stock"
@@ -413,7 +448,7 @@ export default function SellPage() {
                           min="1"
                         />
                         <p className="text-xs text-muted-foreground mt-1">
-                          How many of this item do you have available?
+                          How many units are you selling? (e.g., 5 items at ₱{itemFormData.price || "X"} each, or 1 bundle of 5 items for ₱{itemFormData.price || "X"})
                         </p>
                       </div>
                     </div>
@@ -481,21 +516,40 @@ export default function SellPage() {
                     <h2 className="text-xl font-bold mb-4">Currency Details</h2>
                     <div className="space-y-4">
                       <div>
-                        <label className="text-sm font-semibold mb-2 block">Currency Type *</label>
+                        <label className="text-sm font-semibold mb-2 block">Game *</label>
                         <select
-                          name="currencyType"
-                          value={currencyFormData.currencyType}
+                          name="game"
+                          value={currencyFormData.game}
                           onChange={handleCurrencyChange}
                           className="w-full px-3 py-2 border border-border rounded-lg bg-background"
                         >
-                          <option value="">Select currency type</option>
-                          {games.map((game) => (
-                            <option key={game.value} value={game.label}>
-                              {game.label}
+                          <option value="">Select a game</option>
+                          {availableGames.map((game) => (
+                            <option key={game.id} value={game.name}>
+                              {game.displayName}
                             </option>
                           ))}
                         </select>
                       </div>
+
+                      {currencyFormData.game && availableCurrencies.length > 0 && (
+                        <div>
+                          <label className="text-sm font-semibold mb-2 block">Currency Type *</label>
+                          <select
+                            name="currencyType"
+                            value={currencyFormData.currencyType}
+                            onChange={handleCurrencyChange}
+                            className="w-full px-3 py-2 border border-border rounded-lg bg-background"
+                          >
+                            <option value="">Select currency type</option>
+                            {availableCurrencies.map((currency) => (
+                              <option key={currency.id} value={currency.name}>
+                                {currency.displayName}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
 
                       <div className="grid grid-cols-2 gap-4">
                         <div>
@@ -704,8 +758,11 @@ export default function SellPage() {
                       </div>
                     )}
                     <div>
-                      <p className="font-semibold">{currencyFormData.currencyType || "Currency Type"}</p>
+                      <p className="font-semibold">{currencyFormData.game || "Game Name"}</p>
                       <p className="text-sm text-muted-foreground">
+                        {currencyFormData.currencyType || "Currency Type"}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
                         {currencyFormData.stock
                           ? `${Number(currencyFormData.stock).toLocaleString()} in stock`
                           : "No stock set"}

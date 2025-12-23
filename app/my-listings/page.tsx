@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
-import { getListings } from "@/app/actions/listings"
+import { getUserListings } from "@/app/actions/listings"
 import type { ListingResponse } from "@/lib/schemas"
 
 const SUBSCRIPTION_LIMITS = {
@@ -62,11 +62,11 @@ export default function MyListingsPage() {
       const fetchListings = async () => {
         try {
           setIsLoading(true)
-          const result = await getListings({
-            page: currentPage,
-            itemsPerPage: ITEMS_PER_PAGE,
-            sellerId: session.user.id,
-          })
+          const result = await getUserListings(
+            session.user.id,
+            currentPage,
+            ITEMS_PER_PAGE
+          )
           setListings(result.listings)
           setTotalListings(result.total)
         } catch (error) {
@@ -198,11 +198,11 @@ export default function MyListingsPage() {
           </Card>
           <Card className="p-4">
             <p className="text-sm text-muted-foreground mb-1">Total Views</p>
-            <p className="text-2xl font-bold">{listings.reduce((sum, l) => sum + 0, 0).toLocaleString()}</p>
+            <p className="text-2xl font-bold">{listings.reduce((sum, l) => sum + (l.views || 0), 0).toLocaleString()}</p>
           </Card>
           <Card className="p-4">
             <p className="text-sm text-muted-foreground mb-1">Total Inquiries</p>
-            <p className="text-2xl font-bold">{0}</p>
+            <p className="text-2xl font-bold">{listings.reduce((sum, l) => sum + (l.inquiries || 0), 0).toLocaleString()}</p>
           </Card>
           <Card className="p-4">
             <p className="text-sm text-muted-foreground mb-1">Items Sold</p>

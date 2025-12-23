@@ -4,6 +4,40 @@ import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import { createNotification } from "./notifications"
 
+// Helper function to get listing details based on type
+async function getListingDetails(listingId: string, listingType: string) {
+  if (listingType === "ITEM") {
+    return await prisma.itemListing.findUnique({
+      where: { id: listingId },
+      select: {
+        id: true,
+        title: true,
+        price: true,
+        image: true,
+        stock: true,
+        sellerId: true,
+        game: { select: { displayName: true } },
+      },
+    })
+  } else if (listingType === "CURRENCY") {
+    return await prisma.currencyListing.findUnique({
+      where: { id: listingId },
+      select: {
+        id: true,
+        title: true,
+        ratePerPeso: true,
+        image: true,
+        stock: true,
+        minOrder: true,
+        maxOrder: true,
+        sellerId: true,
+        game: { select: { displayName: true } },
+      },
+    })
+  }
+  return null
+}
+
 export interface ConversationWithLatestMessage {
   id: string
   buyerId: string
@@ -106,9 +140,6 @@ export async function getConversations(): Promise<GetConversationsResult> {
         seller: {
           select: { id: true, username: true, profilePicture: true },
         },
-        listing: {
-          select: { id: true, title: true, price: true, image: true, status: true },
-        },
         messages: {
           orderBy: { createdAt: "desc" },
           take: 1,
@@ -144,6 +175,48 @@ export async function getConversations(): Promise<GetConversationsResult> {
           (msg: any) => !msg.isRead && msg.senderId !== currentUser.id
         )
 
+        // Manually fetch listing data based on listingType
+        let listing = null
+        if (conv.listingId && conv.listingType) {
+          try {
+            if (conv.listingType === "ITEM") {
+              const itemListing = await prisma.itemListing.findUnique({
+                where: { id: conv.listingId },
+                select: {
+                  id: true,
+                  title: true,
+                  price: true,
+                  image: true,
+                  status: true,
+                },
+              })
+              listing = itemListing
+            } else if (conv.listingType === "CURRENCY") {
+              const currencyListing = await prisma.currencyListing.findUnique({
+                where: { id: conv.listingId },
+                select: {
+                  id: true,
+                  title: true,
+                  ratePerPeso: true,
+                  image: true,
+                  status: true,
+                },
+              })
+              if (currencyListing) {
+                listing = {
+                  id: currencyListing.id,
+                  title: currencyListing.title,
+                  price: currencyListing.ratePerPeso, // Use ratePerPeso as price
+                  image: currencyListing.image,
+                  status: currencyListing.status,
+                }
+              }
+            }
+          } catch (error) {
+            console.error(`Failed to fetch listing ${conv.listingId}:`, error)
+          }
+        }
+
         // Calculate transaction status
         let status: "ongoing" | "completed" | "sold" = "ongoing"
 
@@ -168,7 +241,7 @@ export async function getConversations(): Promise<GetConversationsResult> {
 
           if (completedTransaction) {
             status = "completed"
-          } else if (conv.listing?.status === "sold") {
+          } else if (listing?.status === "sold") {
             // If listing is sold (but not to these parties), mark as sold
             status = "sold"
           }
@@ -186,7 +259,7 @@ export async function getConversations(): Promise<GetConversationsResult> {
             username: otherUser.username,
             profilePicture: otherUser.profilePicture,
           },
-          listing: conv.listing,
+          listing: listing,
           latestMessage: conv.messages[0] || null,
           unreadCount: unreadMessages.length,
           status,
@@ -376,41 +449,32 @@ export async function sendMessage(
     // Validate amount for currency listings
     let amount = options.amount
     if (amount !== undefined) {
-      if (conversation.listingId) {
-        const listing = await prisma.listing.findUnique({
+      if (conversation.listingId && conversation.listingType === "CURRENCY") {
+        const listing = await prisma.currencyListing.findUnique({
           where: { id: conversation.listingId },
-          select: { description: true, game: true },
+          select: { stock: true, minOrder: true, maxOrder: true },
         })
 
-        if (listing && listing.game === "Currency Exchange" && listing.description) {
-          // Parse Stock, Min Order, and Max Order from description
-          const stockMatch = listing.description.match(/Stock:\s*(\d+)/i)
-          const minOrderMatch = listing.description.match(/Min Order:\s*(\d+)/i)
-          const maxOrderMatch = listing.description.match(/Max Order:\s*(\d+)/i)
-
-          const stock = stockMatch ? parseInt(stockMatch[1], 10) : 0
-          const minOrder = minOrderMatch ? parseInt(minOrderMatch[1], 10) : 1
-          const maxOrder = maxOrderMatch ? parseInt(maxOrderMatch[1], 10) : stock
-
+        if (listing) {
           // Validate amount
-          if (amount > stock) {
+          if (amount > listing.stock) {
             return {
               success: false,
-              error: `Amount exceeds available stock (${stock} available)`,
+              error: `Amount exceeds available stock (${listing.stock} available)`,
             }
           }
 
-          if (amount < minOrder) {
+          if (amount < listing.minOrder) {
             return {
               success: false,
-              error: `Amount is below minimum order (${minOrder} required)`,
+              error: `Amount is below minimum order (${listing.minOrder} required)`,
             }
           }
 
-          if (amount > maxOrder) {
+          if (amount > listing.maxOrder) {
             return {
               success: false,
-              error: `Amount exceeds maximum order (${maxOrder} maximum)`,
+              error: `Amount exceeds maximum order (${listing.maxOrder} allowed)`,
             }
           }
         }
@@ -446,24 +510,26 @@ export async function sendMessage(
       if (!existingTransaction) {
         try {
           // Fetch the listing to identify the TRUE seller
-          const listing = await prisma.listing.findUnique({
-            where: { id: conversation.listingId },
-            select: { sellerId: true, price: true },
-          })
+          const listing = conversation.listingId && conversation.listingType 
+            ? await getListingDetails(conversation.listingId, conversation.listingType)
+            : null
 
-          if (listing) {
+          if (listing && conversation.listingId && conversation.listingType) {
             // TRUE buyer = participant who is NOT the seller
             // TRUE seller = listing.sellerId
             const trueSellerId = listing.sellerId
             const trueBuyerId = conversation.buyerId === trueSellerId ? conversation.sellerId : conversation.buyerId
 
+            const price = 'price' in listing ? listing.price : listing.ratePerPeso * (amount || 1)
+
             // Create transaction with correct roles and amount
-            await (prisma.transaction as any).create({
+            await prisma.transaction.create({
               data: {
                 buyerId: trueBuyerId,
                 sellerId: trueSellerId,
                 listingId: conversation.listingId,
-                price: listing.price || 0,
+                listingType: conversation.listingType,
+                price,
                 status: "PENDING",
                 amount: options.amount,
               },
@@ -570,7 +636,8 @@ export async function markMessagesAsRead(conversationId: string): Promise<{ succ
 export async function getOrCreateConversation(
   sellerId: string,
   listingId?: string,
-  transactionDetails?: { price: number; amount: number }
+  transactionDetails?: { price: number; amount: number },
+  listingType: string = "ITEM"
 ): Promise<{ success: boolean; conversationId?: string; error?: string }> {
   try {
     // Get the current authenticated user
@@ -667,20 +734,19 @@ export async function getOrCreateConversation(
           buyerId: currentUser.id,
           sellerId: sellerId,
           listingId: listingId || undefined,
+          listingType: listingId ? listingType : undefined,
         },
       })
 
       // If a listingId is provided, create or update a transaction
       if (listingId) {
         // Check if listing exists
-        const listing = await prisma.listing.findUnique({
-          where: { id: listingId },
-          select: { id: true, price: true },
-        })
+        const listingDetails = await getListingDetails(listingId, listingType)
 
-        if (listing) {
+        if (listingDetails) {
           // Use transactionDetails if provided; otherwise fall back to listing price
-          const txPrice = transactionDetails?.price ?? listing.price
+          const listingPrice = 'price' in listingDetails ? listingDetails.price : listingDetails.ratePerPeso
+          const txPrice = transactionDetails?.price ?? listingPrice
           const txAmount = transactionDetails?.amount
 
           // Create new transaction for this new conversation
@@ -690,6 +756,7 @@ export async function getOrCreateConversation(
               buyerId: currentUser.id,
               sellerId: sellerId,
               listingId: listingId,
+              listingType: listingType,
               conversationId: conversation.id,
               price: txPrice,
               amount: txAmount,
@@ -721,7 +788,8 @@ export async function getOrCreateConversation(
  * Useful for the "Message Seller" button on listing pages
  */
 export async function getOrCreateListingConversation(
-  listingId: string
+  listingId: string,
+  listingType: string = "ITEM"
 ): Promise<{ success: boolean; conversationId?: string; error?: string }> {
   try {
     // Get the current authenticated user
@@ -746,19 +814,16 @@ export async function getOrCreateListingConversation(
     }
 
     // Find the listing and its seller
-    const listing = await prisma.listing.findUnique({
-      where: { id: listingId },
-      select: { sellerId: true },
-    })
+    const listingDetails = await getListingDetails(listingId, listingType)
 
-    if (!listing) {
+    if (!listingDetails) {
       return {
         success: false,
         error: "Listing not found",
       }
     }
 
-    if (listing.sellerId === currentUser.id) {
+    if (listingDetails.sellerId === currentUser.id) {
       return {
         success: false,
         error: "Cannot message yourself",
@@ -769,7 +834,7 @@ export async function getOrCreateListingConversation(
     let conversation = await prisma.conversation.findFirst({
       where: {
         buyerId: currentUser.id,
-        sellerId: listing.sellerId,
+        sellerId: listingDetails.sellerId,
         listingId,
       },
     })
@@ -778,8 +843,9 @@ export async function getOrCreateListingConversation(
       conversation = await prisma.conversation.create({
         data: {
           buyerId: currentUser.id,
-          sellerId: listing.sellerId,
+          sellerId: listingDetails.sellerId,
           listingId,
+          listingType,
         },
       })
     }
@@ -921,24 +987,24 @@ export async function acceptCounterOffer(messageId: string): Promise<AcceptCount
       })
       console.log("[acceptCounterOffer] New transaction created:", transaction.id)
     } else {
-      // Update existing transaction price and amount
+      // Update existing transaction price, keep amount if not specified in counteroffer
       console.log("[acceptCounterOffer] Updating existing transaction price:", transaction.id, "new price:", message.offerAmount)
+      const updateData: any = { 
+        price: message.offerAmount,
+      }
+      // Only update amount if it's specified in the message (not null/undefined)
+      if (message.amount !== null && message.amount !== undefined) {
+        updateData.amount = message.amount
+      }
       transaction = await (prisma.transaction as any).update({
         where: { id: transaction.id },
-        data: { 
-          price: message.offerAmount,
-          amount: message.amount,
-        },
+        data: updateData,
       })
       console.log("[acceptCounterOffer] Transaction updated successfully")
     }
 
-    // Update the listing price to the new offer amount
-    console.log("[acceptCounterOffer] Updating listing price to:", message.offerAmount)
-    await prisma.listing.update({
-      where: { id: conversation.listingId },
-      data: { price: message.offerAmount },
-    })
+    // Note: We don't update the listing price - only the transaction price is changed
+    // This allows sellers to negotiate different prices with different buyers
 
     // Create system message
     await prisma.message.create({
@@ -1047,6 +1113,65 @@ export async function declineCounterOffer(messageId: string): Promise<AcceptCoun
     return {
       success: false,
       error: "Failed to decline counteroffer",
+    }
+  }
+}
+
+export interface GetUnreadMessageCountResult {
+  success: boolean
+  count?: number
+  error?: string
+}
+
+/**
+ * Get the count of conversations with unread messages for the current user
+ */
+export async function getUnreadMessageCount(): Promise<GetUnreadMessageCountResult> {
+  try {
+    const session = await auth()
+    if (!session?.user?.email) {
+      return {
+        success: false,
+        error: "You must be logged in",
+      }
+    }
+
+    const currentUser = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    })
+
+    if (!currentUser) {
+      return {
+        success: false,
+        error: "User not found",
+      }
+    }
+
+    // Count conversations that have unread messages sent by other users
+    const conversationsWithUnread = await prisma.conversation.findMany({
+      where: {
+        OR: [{ buyerId: currentUser.id }, { sellerId: currentUser.id }],
+        messages: {
+          some: {
+            isRead: false,
+            senderId: { not: currentUser.id }, // Only count messages from other users
+          },
+        },
+      },
+      select: {
+        id: true,
+      },
+    })
+
+    return {
+      success: true,
+      count: conversationsWithUnread.length,
+    }
+  } catch (error) {
+    console.error("[getUnreadMessageCount] Error:", error)
+    return {
+      success: false,
+      error: "Failed to get unread message count",
     }
   }
 }

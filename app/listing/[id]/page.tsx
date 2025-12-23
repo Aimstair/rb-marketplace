@@ -44,6 +44,8 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
   const [reportReason, setReportReason] = useState("")
   const [reportDetails, setReportDetails] = useState("")
   const [reportLoading, setReportLoading] = useState(false)
+  const [showQuantityModal, setShowQuantityModal] = useState(false)
+  const [buyQuantity, setBuyQuantity] = useState("1")
 
   // Fetch listing data
   useEffect(() => {
@@ -118,7 +120,7 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
         }
 
         // Call server action
-        const result = await toggleListingVote(id, type)
+        const result = await toggleListingVote(id, type, "ITEM")
         if (!result.success) {
           console.error("Failed to record vote:", result.error)
         }
@@ -130,20 +132,48 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
     })
   }
 
-  const handleMessageSeller = () => {
+  const handleBuyNow = () => {
     requireAuth(() => {
       if (!listing) return
-      console.log("Attempting to message seller:", { 
-        seller: listing.seller, 
-        sellerId: listing.seller?.id || listing.sellerId 
-      })
-      const params = new URLSearchParams({
-        sellerId: listing.seller?.id || listing.sellerId,
-        itemId: listing.id,
-        itemTitle: listing.title,
-      })
-      router.push(`/messages?${params.toString()}`)
+      
+      // If stock is 1, redirect directly to chat
+      if (listing.stock === 1) {
+        const params = new URLSearchParams({
+          sellerId: listing.seller?.id || listing.sellerId,
+          itemId: listing.id,
+          itemTitle: listing.title,
+          type: "item",
+          amount: "1",
+          cost: listing.price.toString(),
+        })
+        router.push(`/messages?${params.toString()}`)
+      } else {
+        // Show quantity modal if stock > 1
+        setShowQuantityModal(true)
+        setBuyQuantity("1")
+      }
     })
+  }
+
+  const handleConfirmQuantity = () => {
+    if (!listing) return
+    
+    const quantity = parseInt(buyQuantity)
+    if (isNaN(quantity) || quantity < 1 || quantity > listing.stock) {
+      alert(`Please enter a valid quantity between 1 and ${listing.stock}`)
+      return
+    }
+
+    const totalCost = listing.price * quantity
+    const params = new URLSearchParams({
+      sellerId: listing.seller?.id || listing.sellerId,
+      itemId: listing.id,
+      itemTitle: listing.title,
+      type: "item",
+      amount: quantity.toString(),
+      cost: totalCost.toString(),
+    })
+    router.push(`/messages?${params.toString()}`)
   }
 
   const handleSaveItem = () => {
@@ -161,7 +191,7 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
 
     setReportLoading(true)
     try {
-      const result = await reportListing(id, reportReason, reportDetails)
+      const result = await reportListing(id, reportReason, reportDetails, "ITEM")
       if (result.success) {
         alert("Report submitted successfully. Thank you for helping keep our community safe!")
         setShowReportModal(false)
@@ -303,45 +333,38 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
             <div className="space-y-3 mb-6">
               <Button 
                 size="lg" 
-                className={user?.id === listing.sellerId ? "w-full pointer-events-none opacity-50" : "w-full"}
-                onClick={handleMessageSeller}
-                disabled={user?.id === listing.sellerId}
+                className={user?.id === listing.seller.id ? "w-full pointer-events-none opacity-50" : "w-full"}
+                disabled={user?.id === listing.seller.id}
+                onClick={handleBuyNow}
               >
                 <MessageCircle className="w-5 h-5 mr-2" />
-                {user?.id === listing.sellerId ? "Your Listing" : "Message Seller"}
+                {user?.id === listing.seller.id ? "Your Listing" : "Buy Now"}
               </Button>
-              <Button 
-                size="lg" 
-                variant="outline" 
-                className={user?.id === listing.sellerId ? "w-full bg-transparent pointer-events-none opacity-50" : "w-full bg-transparent"}
-                disabled={user?.id === listing.sellerId}
-                onClick={handleSaveItem}
-              >
-                {isSaved ? "★ Saved" : "☆ Save Item"}
-              </Button>
-              <Button 
-                disabled={user?.id === listing.sellerId}
-                size="lg" 
-                variant="outline" 
-                className={user?.id === listing.sellerId ? "w-full bg-transparent pointer-events-none opacity-50" : "w-full bg-transparent"}
-                onClick={() => {
-                  const url = typeof window !== "undefined" ? window.location.href : ""
-                  navigator.clipboard.writeText(url)
-                }}
-              >
-                <Share2 className="w-5 h-5 mr-2" />
-                Share
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className={user?.id === listing.sellerId ? "w-full text-destructive bg-transparent pointer-events-none opacity-50" : "w-full text-destructive bg-transparent"}
-                disabled={user?.id === listing.sellerId}
-                onClick={handleReport}
-              >
-                <Flag className="w-5 h-5 mr-2" />
-                Report
-              </Button>
+              <div className="grid grid-cols-2 gap-2">
+                <Button 
+                  disabled={user?.id === listing.seller.id}
+                  size="lg" 
+                  variant="outline" 
+                  className={user?.id === listing.seller.id ? "w-full bg-transparent pointer-events-none opacity-50" : "w-full bg-transparent"}
+                  onClick={() => {
+                    const url = typeof window !== "undefined" ? window.location.href : ""
+                    navigator.clipboard.writeText(url)
+                  }}
+                >
+                  <Share2 className="w-5 h-5 mr-2" />
+                  Share
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className={user?.id === listing.seller.id ? "w-full text-destructive bg-transparent pointer-events-none opacity-50" : "w-full text-destructive bg-transparent"}
+                  disabled={user?.id === listing.seller.id}
+                  onClick={handleReport}
+                >
+                  <Flag className="w-5 h-5 mr-2" />
+                  Report
+                </Button>
+              </div>
             </div>
 
             {/* Seller Card */}
@@ -443,6 +466,60 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
         </Card>
         </>
         )}
+
+        {/* Quantity Selection Modal */}
+        <Dialog open={showQuantityModal} onOpenChange={setShowQuantityModal}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Select Quantity</DialogTitle>
+              <DialogDescription>
+                How many units would you like to purchase?
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <label htmlFor="quantity" className="text-sm font-medium">
+                  Quantity
+                </label>
+                <Input
+                  id="quantity"
+                  type="number"
+                  min="1"
+                  max={listing?.stock}
+                  value={buyQuantity}
+                  onChange={(e) => setBuyQuantity(e.target.value)}
+                  className="w-full"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Available stock: {listing?.stock}
+                </p>
+              </div>
+              
+              <div className="p-4 bg-muted rounded-lg space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Price per unit:</span>
+                  <span className="font-medium">₱{listing?.price.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Quantity:</span>
+                  <span className="font-medium">{buyQuantity}</span>
+                </div>
+                <div className="flex justify-between text-base font-bold pt-2 border-t">
+                  <span>Total Cost:</span>
+                  <span>₱{(listing?.price * parseInt(buyQuantity || "1")).toLocaleString()}</span>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowQuantityModal(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleConfirmQuantity}>
+                Continue to Chat
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </main>
   )

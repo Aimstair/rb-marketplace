@@ -36,6 +36,7 @@ export const createItemListingSchema = z.object({
 })
 
 export const createCurrencyListingSchema = z.object({
+  game: z.string().min(1, "Please select a game"),
   currencyType: z.string().min(1, "Please select a currency type"),
   ratePerPeso: z.number().min(0.01, "Rate must be at least 0.01"),
   stock: z.number().min(1, "Stock must be at least 1"),
@@ -86,6 +87,8 @@ export interface ListingResponse {
   upvotes: number
   downvotes: number
   featured: boolean
+  views?: number
+  inquiries?: number
 }
 
 export interface GetListingsResult {
