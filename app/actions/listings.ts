@@ -778,21 +778,26 @@ export async function createListing(input: CreateItemListingInput): Promise<Crea
       }
     }
 
-    // Find game item by category/itemType
+    // Find game item by category AND itemType
     const gameItem = await prisma.gameItem.findFirst({
       where: {
         gameId: game.id,
-        OR: [
-          { category: validatedData.category },
-          { itemType: validatedData.itemType },
-        ],
+        category: validatedData.category,
+        itemType: validatedData.itemType,
       },
     })
 
     if (!gameItem) {
+      // Log for debugging
+      console.log("GameItem lookup failed:", {
+        gameId: game.id,
+        gameName: game.name,
+        category: validatedData.category,
+        itemType: validatedData.itemType,
+      })
       return {
         success: false,
-        error: "Game item type not found",
+        error: `Game item type not found for ${validatedData.category}/${validatedData.itemType} in ${game.displayName}`,
       }
     }
 
@@ -807,6 +812,7 @@ export async function createListing(input: CreateItemListingInput): Promise<Crea
         image: validatedData.image,
         condition: validatedData.condition,
         stock: validatedData.stock,
+        pricingMode: validatedData.pricingMode || "per-item",
         sellerId: seller.id,
         status: "available",
       },
@@ -1266,6 +1272,7 @@ export async function createNewCurrencyListing(input: CreateCurrencyListingInput
         gameId: game.id,
         gameCurrencyId: gameCurrency.id,
         ratePerPeso: validatedData.ratePerPeso,
+        pricingMode: validatedData.pricingMode || "per-peso",
         stock: validatedData.stock,
         minOrder: validatedData.minOrder,
         maxOrder: validatedData.maxOrder,

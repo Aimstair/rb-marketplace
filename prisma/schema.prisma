@@ -119,6 +119,7 @@ model ItemListing {
   // Item Details
   listingType String @default("Item") // Always "Item"
   condition   String // "Mint" | "New" | "Used"
+  pricingMode String @default("per-item") // "per-peso" | "per-item"
 
   // Status
   status   String  @default("available") // "available" | "sold"
@@ -165,6 +166,7 @@ model CurrencyListing {
   // Currency Details
   listingType String @default("Currency") // Always "Currency"
   ratePerPeso Float // How much currency per PHP 1
+  pricingMode String @default("per-peso") // "per-peso" | "per-item"
   stock       Int // Available amount
   minOrder    Int // Minimum order quantity
   maxOrder    Int // Maximum order quantity

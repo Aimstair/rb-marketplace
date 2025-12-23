@@ -17,7 +17,9 @@ async function main() {
   await prisma.conversation.deleteMany({})
   await prisma.listingVote.deleteMany({})
   await prisma.notification.deleteMany({})
-  await prisma.listing.deleteMany({})
+  // Delete from new listing tables instead of old Listing table
+  await prisma.itemListing.deleteMany({})
+  await prisma.currencyListing.deleteMany({})
   await prisma.userFollow.deleteMany({})
   await prisma.user.deleteMany({})
 

@@ -18,7 +18,8 @@ export function FileUpload({ endpoint, value, onChange, onRemove }: FileUploadPr
   const { toast } = useToast()
   const [isUploading, setIsUploading] = useState(false)
 
-  if (value) {
+  // Show preview if value exists and is not empty
+  if (value && value.trim() !== "") {
     return (
       <div className="relative inline-block w-full">
         <div className="aspect-video w-full rounded-lg overflow-hidden border-2 border-border bg-muted flex items-center justify-center">

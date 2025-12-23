@@ -229,14 +229,31 @@ export default function Navigation() {
               {/* Profile Dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon">
-                    <User className="w-5 h-5" />
+                  <Button variant="ghost" size="icon" className="relative rounded-full">
+                    {session.user.image ? (
+                      <img
+                        src={session.user.image}
+                        alt={session.user.name || "User"}
+                        className="w-8 h-8 rounded-full object-cover"
+                      />
+                    ) : (
+                      <User className="w-5 h-5" />
+                    )}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56 bg-popover border shadow-lg">
-                  <div className="px-2 py-1.5">
-                    <p className="font-semibold text-sm">{session.user.name || session.user.email}</p>
-                    <p className="text-xs text-muted-foreground">{session.user.email}</p>
+                  <div className="px-2 py-1.5 flex items-center gap-2">
+                    {session.user.image && (
+                      <img
+                        src={session.user.image}
+                        alt={session.user.name || "User"}
+                        className="w-10 h-10 rounded-full object-cover"
+                      />
+                    )}
+                    <div>
+                      <p className="font-semibold text-sm">{session.user.name || session.user.email}</p>
+                      <p className="text-xs text-muted-foreground">{session.user.email}</p>
+                    </div>
                   </div>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>

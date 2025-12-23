@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
+import bcrypt from "bcrypt"
 
 export interface UserProfileData {
   id: string
@@ -25,6 +26,8 @@ export interface UserProfileData {
   robloxProfile?: string
   discordTag?: string
   lastActive: Date
+  subscriptionTier: string
+  subscriptionStatus: string
 }
 
 export interface GetProfileResult {
@@ -179,6 +182,8 @@ export async function getProfile(usernameOrId: string): Promise<GetProfileResult
       robloxProfile: user.robloxProfile || undefined,
       discordTag: user.discordTag || undefined,
       lastActive: user.lastActive || new Date(),
+      subscriptionTier: user.subscriptionTier,
+      subscriptionStatus: user.subscriptionStatus,
     }
 
     return { success: true, data: profileData }
@@ -217,8 +222,10 @@ export async function updateProfile(data: Partial<UserProfileData>): Promise<Upd
     const updateData: any = {}
 
     if (data.bio !== undefined) updateData.bio = data.bio
-    if (data.banner !== undefined) updateData.banner = data.banner
-    if (data.avatar !== undefined) updateData.profilePicture = data.avatar
+    // Only update banner if it has a value (not empty string)
+    if (data.banner !== undefined && data.banner !== "") updateData.banner = data.banner
+    // Only update profilePicture if it has a value (not empty string)
+    if (data.avatar !== undefined && data.avatar !== "") updateData.profilePicture = data.avatar
     if (data.robloxProfile !== undefined) updateData.robloxProfile = data.robloxProfile
     if (data.discordTag !== undefined) updateData.discordTag = data.discordTag
 
@@ -226,37 +233,24 @@ export async function updateProfile(data: Partial<UserProfileData>): Promise<Upd
       updateData.socialLinks = data.socialLinks
     }
 
+    console.log("Updating profile with data:", updateData)
+
     const updatedUser = await prisma.user.update({
       where: { id: currentUser.id },
       data: updateData,
-      include: {
-        listings: { where: { status: "available" } },
-        vouchesReceived: {
-          include: { fromUser: { select: { id: true, username: true, image: true } } },
-        },
-      } as any,
-    }) as any
-
-    let socialLinks: Record<string, any> | undefined = undefined
-    if (updatedUser.socialLinks) {
-      try {
-        socialLinks = typeof updatedUser.socialLinks === "string" ? JSON.parse(updatedUser.socialLinks) : updatedUser.socialLinks as Record<string, any>
-      } catch {
-        socialLinks = undefined
-      }
-    }
+    })
 
     const result: Partial<UserProfileData> = {
       bio: updatedUser.bio || undefined,
       banner: updatedUser.banner || undefined,
       avatar: updatedUser.profilePicture || undefined,
-      socialLinks,
+      socialLinks: updatedUser.socialLinks as Record<string, any> || undefined,
     }
 
     return { success: true, data: result }
   } catch (err) {
     console.error("Failed to update profile:", err)
-    return { success: false, error: "Failed to update profile" }
+    return { success: false, error: err instanceof Error ? err.message : "Failed to update profile" }
   }
 }
 
@@ -367,5 +361,81 @@ export async function getProfileStats(userId: string) {
   } catch (err) {
     console.error("Failed to get profile stats:", err)
     return { success: false, error: "Failed to load statistics" }
+  }
+}
+
+/**
+ * Change user password
+ */
+export async function changePassword(data: {
+  currentPassword: string
+  newPassword: string
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Get current authenticated user
+    const session = await auth()
+    if (!session?.user?.email) {
+      return {
+        success: false,
+        error: "You must be logged in to change your password",
+      }
+    }
+
+    // Validate passwords
+    if (!data.currentPassword || !data.newPassword) {
+      return {
+        success: false,
+        error: "Current password and new password are required",
+      }
+    }
+
+    if (data.newPassword.length < 8) {
+      return {
+        success: false,
+        error: "New password must be at least 8 characters long",
+      }
+    }
+
+    // Find the current user by email from session
+    const currentUser = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    })
+
+    if (!currentUser || !currentUser.password) {
+      return {
+        success: false,
+        error: "User account not found",
+      }
+    }
+
+    // Verify current password
+    const passwordMatch = await bcrypt.compare(
+      data.currentPassword,
+      currentUser.password
+    )
+
+    if (!passwordMatch) {
+      return {
+        success: false,
+        error: "Current password is incorrect",
+      }
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(data.newPassword, 10)
+
+    // Update password
+    await prisma.user.update({
+      where: { id: currentUser.id },
+      data: { password: hashedPassword },
+    })
+
+    return { success: true }
+  } catch (err) {
+    console.error("Failed to change password:", err)
+    return {
+      success: false,
+      error: "Failed to change password. Please try again.",
+    }
   }
 }

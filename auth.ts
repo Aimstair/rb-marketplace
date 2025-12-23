@@ -59,12 +59,31 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     error: "/auth/login",
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
         token.id = user.id
         token.username = user.name
         token.role = user.role
+        token.picture = user.image
       }
+      
+      // Update token when session is updated (e.g., profile picture change)
+      if (trigger === "update" && session) {
+        // Fetch fresh user data from database
+        const updatedUser = await prisma.user.findUnique({
+          where: { id: token.id as string },
+          select: {
+            profilePicture: true,
+            username: true,
+          },
+        })
+        
+        if (updatedUser) {
+          token.picture = updatedUser.profilePicture
+          token.username = updatedUser.username
+        }
+      }
+      
       return token
     },
     async session({ session, token }) {
@@ -72,6 +91,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.id = token.id as string
         session.user.username = token.username as string
         session.user.role = token.role as string
+        session.user.image = token.picture as string
       }
       return session
     },

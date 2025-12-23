@@ -22,13 +22,9 @@ import {
 import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { getUserListings } from "@/app/actions/listings"
+import { getMySubscription } from "@/app/actions/subscriptions"
+import { getSubscriptionLimits } from "@/lib/subscription-utils"
 import type { ListingResponse } from "@/lib/schemas"
-
-const SUBSCRIPTION_LIMITS = {
-  free: { maxListings: 3, featuredListings: 0 },
-  pro: { maxListings: 10, featuredListings: 1 },
-  elite: { maxListings: 30, featuredListings: 3 },
-}
 
 const ITEMS_PER_PAGE = 5
 
@@ -41,10 +37,9 @@ export default function MyListingsPage() {
   const [listingToDelete, setListingToDelete] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [totalListings, setTotalListings] = useState(0)
-
-  // Mock user subscription - in real app, this would come from user context
-  const userSubscription = "free" as keyof typeof SUBSCRIPTION_LIMITS
-  const subscriptionLimit = SUBSCRIPTION_LIMITS[userSubscription]
+  const [subscriptionTier, setSubscriptionTier] = useState("FREE")
+  
+  const subscriptionLimit = getSubscriptionLimits(subscriptionTier)
   const activeListingsCount = listings.filter((l) => l.status === "available").length
   const canCreateMore = activeListingsCount < subscriptionLimit.maxListings
   const listingsRemaining = subscriptionLimit.maxListings - activeListingsCount
@@ -56,28 +51,33 @@ export default function MyListingsPage() {
     }
   }, [status, router])
 
-  // Fetch user's listings
+  // Fetch user's listings and subscription
   useEffect(() => {
     if (status === "authenticated" && session?.user?.id) {
-      const fetchListings = async () => {
+      const fetchData = async () => {
         try {
           setIsLoading(true)
-          const result = await getUserListings(
-            session.user.id,
-            currentPage,
-            ITEMS_PER_PAGE
-          )
-          setListings(result.listings)
-          setTotalListings(result.total)
+          // Fetch listings and subscription in parallel
+          const [listingsResult, subscriptionResult] = await Promise.all([
+            getUserListings(session.user.id, currentPage, ITEMS_PER_PAGE),
+            getMySubscription(session.user.id)
+          ])
+          
+          setListings(listingsResult.listings)
+          setTotalListings(listingsResult.total)
+          
+          if (subscriptionResult.success && subscriptionResult.data) {
+            setSubscriptionTier(subscriptionResult.data.tier)
+          }
         } catch (error) {
-          console.error("Error fetching listings:", error)
+          console.error("Error fetching data:", error)
           setListings([])
         } finally {
           setIsLoading(false)
         }
       }
 
-      fetchListings()
+      fetchData()
     }
   }, [status, session?.user?.id, currentPage])
 
@@ -161,7 +161,7 @@ export default function MyListingsPage() {
             <div className="flex items-center gap-2">
               <span className="font-medium">Listing Limit</span>
               <Badge variant="outline" className="capitalize">
-                {userSubscription} Plan
+                {subscriptionTier.toLowerCase()} Plan
               </Badge>
             </div>
             <span className="text-sm text-muted-foreground">

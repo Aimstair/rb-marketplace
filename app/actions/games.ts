@@ -16,6 +16,14 @@ export interface CurrencyOption {
   description?: string
 }
 
+export interface GameItemOption {
+  id: string
+  name: string
+  displayName: string
+  category: string
+  itemType: string
+}
+
 /**
  * Get all active games
  */
@@ -103,6 +111,62 @@ export async function getAllCurrencies(): Promise<(CurrencyOption & { gameName: 
     }))
   } catch (error) {
     console.error("Error fetching all currencies:", error)
+    return []
+  }
+}
+
+/**
+ * Get unique categories from game items
+ */
+export async function getCategories(): Promise<string[]> {
+  try {
+    const gameItems = await prisma.gameItem.findMany({
+      where: { isActive: true },
+      select: { category: true },
+      distinct: ['category'],
+      orderBy: { category: 'asc' },
+    })
+
+    return gameItems.map(item => item.category)
+  } catch (error) {
+    console.error("Error fetching categories:", error)
+    return []
+  }
+}
+
+/**
+ * Get item types for a specific game and category
+ */
+export async function getItemTypesForGameAndCategory(
+  gameName: string,
+  category: string
+): Promise<GameItemOption[]> {
+  try {
+    const game = await prisma.game.findUnique({
+      where: { name: gameName },
+    })
+
+    if (!game) return []
+
+    const gameItems = await prisma.gameItem.findMany({
+      where: {
+        gameId: game.id,
+        category: category,
+        isActive: true,
+      },
+      orderBy: { order: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        displayName: true,
+        category: true,
+        itemType: true,
+      },
+    })
+
+    return gameItems
+  } catch (error) {
+    console.error("Error fetching item types:", error)
     return []
   }
 }

@@ -46,14 +46,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { getConversations, getMessages, sendMessage, markMessagesAsRead, getOrCreateConversation, acceptCounterOffer, declineCounterOffer } from "@/app/actions/messages"
+import { getSubscriptionBadge as getSubBadge } from "@/lib/subscription-utils"
 import type { ConversationWithLatestMessage, MessageData } from "@/app/actions/messages"
 import {
   getTransactionById,
   getTransactionByPeers,
   toggleTransactionConfirmation,
   submitVouch,
+  cancelTransaction,
 } from "@/app/actions/transactions"
 import type { TransactionData } from "@/app/actions/transactions"
+import { useToast } from "@/hooks/use-toast"
 
 type Contact = {
   id: string
@@ -63,9 +66,10 @@ type Contact = {
   timestamp: string
   online: boolean
   role: "seller" | "buyer"
-  status: "ongoing" | "completed" | "sold"
+  status: "ongoing" | "completed" | "sold" | "cancelled"
   blocked: boolean
   unreadCount: number
+  subscriptionTier?: string
   item: {
     id: string
     title: string
@@ -101,7 +105,7 @@ type Message = {
   imageUrl?: string
 }
 
-const getStatusBadge = (status: "ongoing" | "completed" | "sold") => {
+const getStatusBadge = (status: "ongoing" | "completed" | "sold" | "cancelled") => {
   switch (status) {
     case "ongoing":
       return { label: "Ongoing", className: "bg-yellow-500/20 text-yellow-600 border-yellow-500/30" }
@@ -109,6 +113,8 @@ const getStatusBadge = (status: "ongoing" | "completed" | "sold") => {
       return { label: "Completed", className: "bg-green-500/20 text-green-600 border-green-500/30" }
     case "sold":
       return { label: "Sold", className: "bg-red-500/20 text-red-600 border-red-500/30" }
+    case "cancelled":
+      return { label: "Cancelled", className: "bg-red-500/20 text-red-600 border-red-500/30" }
   }
 }
 
@@ -153,6 +159,7 @@ export default function MessagesPage() {
   const { user, isLoading: isAuthLoading } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { toast } = useToast()
   const [contacts, setContacts] = useState<Contact[]>([])
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
@@ -260,7 +267,7 @@ export default function MessagesPage() {
               }
               
               // Use conversation-specific transaction data if available
-              let contactStatus: "ongoing" | "completed" | "sold" = "ongoing"
+              let contactStatus: "ongoing" | "completed" | "sold" | "cancelled" = "ongoing"
               if ((conv as any).transaction) {
                 const tx = (conv as any).transaction
                 transactionData = {
@@ -273,7 +280,7 @@ export default function MessagesPage() {
                 if (tx.status === "COMPLETED") {
                   contactStatus = "completed"
                 } else if (tx.status === "CANCELLED") {
-                  contactStatus = "sold"
+                  contactStatus = "cancelled"
                 } else {
                   contactStatus = "ongoing"
                 }
@@ -283,6 +290,7 @@ export default function MessagesPage() {
                 id: conv.id,
                 otherUserId: conv.otherUser.id,
                 name: conv.otherUser.username,
+                subscriptionTier: (conv.otherUser as any).subscriptionTier,
                 lastMessage: conv.latestMessage?.attachmentUrl 
                   ? "Sent a photo." 
                   : (conv.latestMessage?.content || "No messages yet"),
@@ -327,6 +335,11 @@ export default function MessagesPage() {
         }
       } catch (error) {
         console.error("Error loading conversations:", error)
+        toast({
+          title: "Error",
+          description: "Failed to load conversations. Please refresh the page.",
+          variant: "destructive",
+        })
       } finally {
         setLoadingConversations(false)
       }
@@ -384,6 +397,11 @@ export default function MessagesPage() {
         }
       } catch (error) {
         console.error("Error loading messages:", error)
+        toast({
+          title: "Error",
+          description: "Failed to load messages. Please try again.",
+          variant: "destructive",
+        })
       } finally {
         setLoadingMessages(false)
       }
@@ -445,6 +463,11 @@ export default function MessagesPage() {
         })
         if (!result.success) {
           console.error("Error sending image:", result.error)
+          toast({
+            title: "Error",
+            description: result.error || "Failed to send image.",
+            variant: "destructive",
+          })
         } else {
           messageResult = result // Track the last result
           // Add optimistic image message update
@@ -469,6 +492,11 @@ export default function MessagesPage() {
         })
         if (!result.success) {
           console.error("Error sending message:", result.error)
+          toast({
+            title: "Error",
+            description: result.error || "Failed to send message.",
+            variant: "destructive",
+          })
           return
         }
 
@@ -565,7 +593,7 @@ export default function MessagesPage() {
               }
               
               // Use conversation-specific transaction data if available
-              let contactStatus: "ongoing" | "completed" | "sold" = "ongoing"
+              let contactStatus: "ongoing" | "completed" | "sold" | "cancelled" = "ongoing"
               if ((conv as any).transaction) {
                 const tx = (conv as any).transaction
                 transactionData = {
@@ -578,7 +606,7 @@ export default function MessagesPage() {
                 if (tx.status === "COMPLETED") {
                   contactStatus = "completed"
                 } else if (tx.status === "CANCELLED") {
-                  contactStatus = "sold"
+                  contactStatus = "cancelled"
                 } else {
                   contactStatus = "ongoing"
                 }
@@ -588,6 +616,7 @@ export default function MessagesPage() {
                 id: conv.id,
                 otherUserId: conv.otherUser.id,
                 name: conv.otherUser.username,
+                subscriptionTier: (conv.otherUser as any).subscriptionTier,
                 lastMessage: conv.latestMessage?.attachmentUrl 
                   ? "Sent a photo." 
                   : (conv.latestMessage?.content || "No messages yet"),
@@ -625,6 +654,11 @@ export default function MessagesPage() {
       setAttachedImages([])
     } catch (error) {
       console.error("Error sending message:", error)
+      toast({
+        title: "Error",
+        description: "Failed to send message. Please try again.",
+        variant: "destructive",
+      })
     } finally {
       setSendingMessage(false)
     }
@@ -644,6 +678,11 @@ export default function MessagesPage() {
 
       if (!result.success) {
         console.error("Error sending counteroffer:", result.error)
+        toast({
+          title: "Error",
+          description: result.error || "Failed to send counteroffer.",
+          variant: "destructive",
+        })
         return
       }
 
@@ -663,6 +702,11 @@ export default function MessagesPage() {
       setShowCounterOfferInput(false)
     } catch (error) {
       console.error("Error sending counteroffer:", error)
+      toast({
+        title: "Error",
+        description: "Failed to send counteroffer. Please try again.",
+        variant: "destructive",
+      })
     } finally {
       setSendingMessage(false)
     }
@@ -735,11 +779,78 @@ export default function MessagesPage() {
         }
       } else {
         console.error("Error marking complete:", result.error)
-        alert(result.error || "Failed to mark transaction as complete")
+        toast({
+          title: "Error",
+          description: result.error || "Failed to confirm transaction.",
+          variant: "destructive",
+        })
       }
     } catch (error) {
       console.error("Error marking complete:", error)
-      alert("Failed to mark transaction as complete")
+      toast({
+        title: "Error",
+        description: "Failed to confirm transaction. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleCancelTransaction = async () => {
+    if (!transaction) return
+
+    try {
+      const result = await cancelTransaction(transaction.id)
+
+      if (result.success) {
+        // Update transaction state
+        setTransaction((prev) => prev ? { ...prev, status: "CANCELLED" } : null)
+
+        // Update contact's transaction status and contact status
+        setContacts((prev) =>
+          prev.map((contact) => {
+            if (contact.id === selectedContact?.id) {
+              return { 
+                ...contact,
+                status: "cancelled" as const,
+                transaction: contact.transaction ? { 
+                  ...contact.transaction, 
+                  status: "CANCELLED" 
+                } : contact.transaction
+              }
+            }
+            return contact
+          })
+        )
+        setSelectedContact((prev) => {
+          if (!prev) return null
+          return { 
+            ...prev,
+            status: "cancelled" as const,
+            transaction: prev.transaction ? { 
+              ...prev.transaction, 
+              status: "CANCELLED" 
+            } : prev.transaction
+          }
+        })
+
+        toast({
+          title: "Transaction Cancelled",
+          description: "The transaction has been cancelled.",
+        })
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to cancel transaction.",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Error cancelling transaction:", error)
+      toast({
+        title: "Error",
+        description: "Failed to cancel transaction. Please try again.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -762,11 +873,19 @@ export default function MessagesPage() {
         setVouchRating(5)
       } else {
         console.error("Error submitting vouch:", result.error)
-        alert(result.error || "Failed to submit vouch")
+        toast({
+          title: "Error",
+          description: result.error || "Failed to submit vouch.",
+          variant: "destructive",
+        })
       }
     } catch (error) {
       console.error("Error submitting vouch:", error)
-      alert("Failed to submit vouch")
+      toast({
+        title: "Error",
+        description: "Failed to submit vouch. Please try again.",
+        variant: "destructive",
+      })
     } finally {
       setVouchSubmitting(false)
     }
@@ -826,11 +945,19 @@ export default function MessagesPage() {
         }
         alert("Counteroffer accepted successfully!")
       } else {
-        alert(result.error || "Failed to accept counteroffer")
+        toast({
+          title: "Error",
+          description: result.error || "Failed to accept counteroffer.",
+          variant: "destructive",
+        })
       }
     } catch (error) {
       console.error("Error accepting counteroffer:", error)
-      alert("Failed to accept counteroffer")
+      toast({
+        title: "Error",
+        description: "Failed to accept counteroffer. Please try again.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -863,11 +990,19 @@ export default function MessagesPage() {
         }
         alert("Counteroffer declined")
       } else {
-        alert(result.error || "Failed to decline counteroffer")
+        toast({
+          title: "Error",
+          description: result.error || "Failed to decline counteroffer.",
+          variant: "destructive",
+        })
       }
     } catch (error) {
       console.error("Error declining counteroffer:", error)
-      alert("Failed to decline counteroffer")
+      toast({
+        title: "Error",
+        description: "Failed to decline counteroffer. Please try again.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -1014,11 +1149,12 @@ export default function MessagesPage() {
                     </span>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-48">
+                <DropdownMenuContent align="start" className="w-48 bg-background/95 backdrop-blur-sm">
                   <DropdownMenuItem onClick={() => setStatusFilter("all")}>All Status</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setStatusFilter("ongoing")}>Ongoing</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setStatusFilter("completed")}>Completed</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setStatusFilter("sold")}>Sold</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setStatusFilter("cancelled")}>Cancelled</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
@@ -1103,6 +1239,14 @@ export default function MessagesPage() {
                         {selectedContact.blocked && (
                           <Badge variant="destructive" className="text-xs">
                             Blocked
+                          </Badge>
+                        )}
+                        {selectedContact.subscriptionTier && getSubBadge(selectedContact.subscriptionTier) && (
+                          <Badge 
+                            variant={getSubBadge(selectedContact.subscriptionTier)!.variant} 
+                            className={`text-xs ${getSubBadge(selectedContact.subscriptionTier)!.className}`}
+                          >
+                            {getSubBadge(selectedContact.subscriptionTier)!.label}
                           </Badge>
                         )}
                       </p>
@@ -1206,7 +1350,7 @@ export default function MessagesPage() {
                       size="icon"
                       onClick={() => setShowCounterOfferInput(!showCounterOfferInput)}
                       title="Make a counteroffer"
-                      disabled={selectedContact.blocked || selectedContact.status === "completed" || selectedContact.status === "sold"}
+                      disabled={selectedContact.blocked || selectedContact.status === "completed" || selectedContact.status === "sold" || selectedContact.status === "cancelled"}
                       className="h-10 w-10"
                     >
                       <DollarSign className="w-5 h-5" />
@@ -1277,32 +1421,42 @@ export default function MessagesPage() {
                               )}
                             </>
                           ) : transaction.status === "PENDING" ? (
-                            (() => {
-                              const isBuyer = user?.id === transaction.buyerId
-                              const isConfirmed = isBuyer
-                                ? transaction.buyerConfirmed
-                                : transaction.sellerConfirmed
+                            <>
+                              {(() => {
+                                const isBuyer = user?.id === transaction.buyerId
+                                const isConfirmed = isBuyer
+                                  ? transaction.buyerConfirmed
+                                  : transaction.sellerConfirmed
 
-                              if (!isConfirmed) {
-                                return (
-                                  <Button size="sm" onClick={handleMarkComplete}>
-                                    <CheckCircle className="w-4 h-4 mr-2" />
-                                    Mark as Complete
-                                  </Button>
-                                )
-                              } else {
-                                return (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={handleMarkComplete}
-                                  >
-                                    <X className="w-4 h-4 mr-2" />
-                                    Cancel Confirmation
-                                  </Button>
-                                )
-                              }
-                            })()
+                                if (!isConfirmed) {
+                                  return (
+                                    <Button size="sm" onClick={handleMarkComplete}>
+                                      <CheckCircle className="w-4 h-4 mr-2" />
+                                      Mark as Complete
+                                    </Button>
+                                  )
+                                } else {
+                                  return (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={handleMarkComplete}
+                                    >
+                                      <X className="w-4 h-4 mr-2" />
+                                      Cancel Confirmation
+                                    </Button>
+                                  )
+                                }
+                              })()}
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={handleCancelTransaction}
+                              >
+                                <Ban className="w-4 h-4 mr-2" />
+                                Cancel Transaction
+                              </Button>
+                            </>
                           ) : transaction.status === "CANCELLED" ? (
                             <span className="text-sm text-red-500 flex items-center gap-1">
                               <AlertTriangle className="w-4 h-4" />
@@ -1315,6 +1469,11 @@ export default function MessagesPage() {
                       <div className="flex items-center gap-2 text-sm text-orange-600 bg-orange-500/10 px-3 py-2 rounded-lg">
                         <AlertTriangle className="w-4 h-4" />
                         Item sold to another user
+                      </div>
+                    ) : selectedContact.status === "cancelled" ? (
+                      <div className="flex items-center gap-2 text-sm text-red-600 bg-red-500/10 px-3 py-2 rounded-lg">
+                        <Ban className="w-4 h-4" />
+                        Transaction cancelled
                       </div>
                     ) : (
                       <span className="text-sm text-muted-foreground">No active transaction</span>
@@ -1532,7 +1691,7 @@ export default function MessagesPage() {
                     size="icon"
                     onClick={() => fileInputRef.current?.click()}
                     title="Attach image"
-                    disabled={selectedContact.blocked || selectedContact.status === "completed" || selectedContact.status === "sold"}
+                    disabled={selectedContact.blocked || selectedContact.status === "completed" || selectedContact.status === "sold" || selectedContact.status === "cancelled"}
                   >
                     <Paperclip className="w-4 h-4" />
                   </Button>
@@ -1542,15 +1701,16 @@ export default function MessagesPage() {
                       selectedContact.blocked ? "You have blocked this user" : 
                       selectedContact.status === "completed" ? "Transaction completed" :
                       selectedContact.status === "sold" ? "Item sold" :
+                      selectedContact.status === "cancelled" ? "Transaction cancelled" :
                       "Type a message..."
                     }
                     value={messageText}
                     onChange={(e) => setMessageText(e.target.value)}
                     onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
                     className="flex-1"
-                    disabled={selectedContact.blocked || selectedContact.status === "completed" || selectedContact.status === "sold"}
+                    disabled={selectedContact.blocked || selectedContact.status === "completed" || selectedContact.status === "sold" || selectedContact.status === "cancelled"}
                   />
-                  <Button onClick={handleSendMessage} size="icon" disabled={selectedContact.blocked || sendingMessage || selectedContact.status === "completed" || selectedContact.status === "sold"}>
+                  <Button onClick={handleSendMessage} size="icon" disabled={selectedContact.blocked || sendingMessage || selectedContact.status === "completed" || selectedContact.status === "sold" || selectedContact.status === "cancelled"}>
                     {sendingMessage ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (

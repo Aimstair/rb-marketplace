@@ -4,6 +4,7 @@ import Navigation from "@/components/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
+import { useSession } from "next-auth/react"
 import { Bell, Lock, User, Moon, Sun, Monitor, Shield, Trash2, Ban, Camera, LinkIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -31,13 +32,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { getProfile, updateProfile, type UserProfileData } from "@/app/actions/profile"
+import { getProfile, updateProfile, changePassword, type UserProfileData } from "@/app/actions/profile"
 import { useToast } from "@/components/ui/use-toast"
 
 export default function SettingsPage() {
   const { user } = useAuth()
   const router = useRouter()
   const { toast } = useToast()
+  const { update } = useSession()
   const [activeTab, setActiveTab] = useState("account")
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
@@ -48,6 +50,19 @@ export default function SettingsPage() {
   // Profile data
   const [profileData, setProfileData] = useState<UserProfileData | null>(null)
   const [profileLoading, setProfileLoading] = useState(false)
+
+  // Password change state
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  })
+  const [passwordLoading, setPasswordLoading] = useState(false)
+  const [passwordErrors, setPasswordErrors] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  })
 
   // Account form state
   const [formData, setFormData] = useState({
@@ -163,6 +178,9 @@ export default function SettingsPage() {
   const handleSaveProfile = async () => {
     try {
       setSaveLoading(true)
+      
+      console.log("Saving profile with formData:", formData)
+      
       const result = await updateProfile({
         bio: formData.bio,
         avatar: formData.avatar,
@@ -172,6 +190,8 @@ export default function SettingsPage() {
         socialLinks: formData.socialLinks,
       } as Partial<UserProfileData>)
 
+      console.log("Update profile result:", result)
+
       if (result.success) {
         toast({
           title: "Success",
@@ -179,6 +199,8 @@ export default function SettingsPage() {
         })
         // Reload profile data to reflect changes
         await loadProfileData()
+        // Update NextAuth session to refresh profile picture in navigation
+        await update()
       } else {
         toast({
           title: "Error",
@@ -195,6 +217,92 @@ export default function SettingsPage() {
       })
     } finally {
       setSaveLoading(false)
+    }
+  }
+
+  const handleChangePassword = async () => {
+    // Reset errors
+    setPasswordErrors({
+      currentPassword: "",
+      newPassword: "",
+      confirmPassword: "",
+    })
+
+    let hasError = false
+    const newErrors = {
+      currentPassword: "",
+      newPassword: "",
+      confirmPassword: "",
+    }
+
+    // Validate all fields are filled
+    if (!passwordData.currentPassword) {
+      newErrors.currentPassword = "Current password is required"
+      hasError = true
+    }
+
+    if (!passwordData.newPassword) {
+      newErrors.newPassword = "New password is required"
+      hasError = true
+    } else if (passwordData.newPassword.length < 8) {
+      newErrors.newPassword = "Password must be at least 8 characters long"
+      hasError = true
+    }
+
+    if (!passwordData.confirmPassword) {
+      newErrors.confirmPassword = "Please confirm your new password"
+      hasError = true
+    } else if (passwordData.newPassword !== passwordData.confirmPassword) {
+      newErrors.confirmPassword = "Passwords do not match"
+      hasError = true
+    }
+
+    if (hasError) {
+      setPasswordErrors(newErrors)
+      return
+    }
+
+    try {
+      setPasswordLoading(true)
+      const result = await changePassword({
+        currentPassword: passwordData.currentPassword,
+        newPassword: passwordData.newPassword,
+      })
+
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: "Password changed successfully!",
+        })
+        // Reset form and close dialog
+        setPasswordData({
+          currentPassword: "",
+          newPassword: "",
+          confirmPassword: "",
+        })
+        setPasswordErrors({
+          currentPassword: "",
+          newPassword: "",
+          confirmPassword: "",
+        })
+        setShowPasswordDialog(false)
+      } else {
+        // Show error on current password field
+        setPasswordErrors({
+          currentPassword: result.error || "Failed to change password",
+          newPassword: "",
+          confirmPassword: "",
+        })
+      }
+    } catch (err) {
+      console.error("Failed to change password:", err)
+      setPasswordErrors({
+        currentPassword: "Failed to change password. Please try again.",
+        newPassword: "",
+        confirmPassword: "",
+      })
+    } finally {
+      setPasswordLoading(false)
     }
   }
 
@@ -250,8 +358,9 @@ export default function SettingsPage() {
                     <div>
                       <Label className="mb-2 block">Profile Picture</Label>
                       <FileUpload
+                        key={`avatar-${formData.avatar}`}
                         endpoint="userAvatar"
-                        value={formData.avatar}
+                        value={formData.avatar || null}
                         onChange={(url) => handleFormChange("avatar", url || "")}
                       />
                       <p className="text-xs text-muted-foreground mt-1">Upload a profile picture (JPG, PNG, up to 2MB)</p>
@@ -261,8 +370,9 @@ export default function SettingsPage() {
                     <div>
                       <Label className="mb-2 block">Profile Banner</Label>
                       <FileUpload
+                        key={`banner-${formData.banner}`}
                         endpoint="listingImage"
-                        value={formData.banner}
+                        value={formData.banner || null}
                         onChange={(url) => handleFormChange("banner", url || "")}
                       />
                       <p className="text-xs text-muted-foreground mt-1">Upload a banner image (JPG, PNG, up to 4MB)</p>
@@ -662,22 +772,64 @@ export default function SettingsPage() {
           <div className="space-y-4 py-4">
             <div>
               <Label>Current Password</Label>
-              <Input type="password" className="mt-1" />
+              <Input
+                type="password"
+                className={`mt-1 ${passwordErrors.currentPassword ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                value={passwordData.currentPassword}
+                onChange={(e) => {
+                  setPasswordData({ ...passwordData, currentPassword: e.target.value })
+                  if (passwordErrors.currentPassword) {
+                    setPasswordErrors({ ...passwordErrors, currentPassword: "" })
+                  }
+                }}
+              />
+              {passwordErrors.currentPassword && (
+                <p className="text-sm text-red-500 mt-1">{passwordErrors.currentPassword}</p>
+              )}
             </div>
             <div>
               <Label>New Password</Label>
-              <Input type="password" className="mt-1" />
+              <Input
+                type="password"
+                className={`mt-1 ${passwordErrors.newPassword ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                placeholder="At least 8 characters"
+                value={passwordData.newPassword}
+                onChange={(e) => {
+                  setPasswordData({ ...passwordData, newPassword: e.target.value })
+                  if (passwordErrors.newPassword) {
+                    setPasswordErrors({ ...passwordErrors, newPassword: "" })
+                  }
+                }}
+              />
+              {passwordErrors.newPassword && (
+                <p className="text-sm text-red-500 mt-1">{passwordErrors.newPassword}</p>
+              )}
             </div>
             <div>
               <Label>Confirm New Password</Label>
-              <Input type="password" className="mt-1" />
+              <Input
+                type="password"
+                className={`mt-1 ${passwordErrors.confirmPassword ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                value={passwordData.confirmPassword}
+                onChange={(e) => {
+                  setPasswordData({ ...passwordData, confirmPassword: e.target.value })
+                  if (passwordErrors.confirmPassword) {
+                    setPasswordErrors({ ...passwordErrors, confirmPassword: "" })
+                  }
+                }}
+              />
+              {passwordErrors.confirmPassword && (
+                <p className="text-sm text-red-500 mt-1">{passwordErrors.confirmPassword}</p>
+              )}
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowPasswordDialog(false)}>
+            <Button variant="outline" onClick={() => setShowPasswordDialog(false)} disabled={passwordLoading}>
               Cancel
             </Button>
-            <Button onClick={() => setShowPasswordDialog(false)}>Update Password</Button>
+            <Button onClick={handleChangePassword} disabled={passwordLoading}>
+              {passwordLoading ? "Updating..." : "Update Password"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

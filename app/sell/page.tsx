@@ -14,7 +14,7 @@ import { FileUpload } from "@/components/file-upload"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
 import { createListing, createCurrencyListing, createNewCurrencyListing, getFilterOptions } from "@/app/actions/listings"
-import { getGames, getCurrenciesForGame, type GameOption, type CurrencyOption } from "@/app/actions/games"
+import { getGames, getCurrenciesForGame, getCategories, getItemTypesForGameAndCategory, type GameOption, type CurrencyOption, type GameItemOption } from "@/app/actions/games"
 
 const paymentMethods = ["GCash", "PayPal", "Robux Gift Cards", "Cross-Trade", "Venmo"]
 
@@ -31,6 +31,8 @@ export default function SellPage() {
   // New states for games and currencies from database
   const [availableGames, setAvailableGames] = useState<GameOption[]>([])
   const [availableCurrencies, setAvailableCurrencies] = useState<CurrencyOption[]>([])
+  const [availableCategories, setAvailableCategories] = useState<string[]>([])
+  const [availableItemTypes, setAvailableItemTypes] = useState<GameItemOption[]>([])
 
   useEffect(() => {
     if (!user) {
@@ -42,18 +44,20 @@ export default function SellPage() {
   useEffect(() => {
     const fetchFilters = async () => {
       try {
-        const [categoriesData, gamesData, itemTypesData, conditionsData, dbGames] = await Promise.all([
+        const [categoriesData, gamesData, itemTypesData, conditionsData, dbGames, dbCategories] = await Promise.all([
           getFilterOptions("CATEGORY"),
           getFilterOptions("GAME"),
           getFilterOptions("ITEM_TYPE"),
           getFilterOptions("CONDITION"),
           getGames(),
+          getCategories(),
         ])
         setCategories(categoriesData)
         setGames(gamesData)
         setItemTypes(itemTypesData)
         setConditions(conditionsData)
         setAvailableGames(dbGames)
+        setAvailableCategories(dbCategories)
       } catch (error) {
         console.error("Error fetching filter options:", error)
       }
@@ -71,9 +75,9 @@ export default function SellPage() {
     game: "",
     price: "",
     stock: "1",
+    pricingMode: "per-item" as "per-peso" | "per-item",
     image: "",
     images: [] as File[],
-    condition: "New",
     paymentMethods: [] as string[],
     hasProof: false,
   })
@@ -83,8 +87,7 @@ export default function SellPage() {
     currencyType: "",
     ratePerPeso: "",
     stock: "",
-    minOrder: "",
-    maxOrder: "",
+    pricingMode: "per-peso" as "per-peso" | "per-item",
     image: "",
     description: "",
     paymentMethods: [] as string[],
@@ -94,6 +97,10 @@ export default function SellPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  
+  // Field-specific errors
+  const [itemErrors, setItemErrors] = useState<Record<string, string>>({})
+  const [currencyErrors, setCurrencyErrors] = useState<Record<string, string>>({})
 
   // Fetch currencies when game is selected
   useEffect(() => {
@@ -113,6 +120,24 @@ export default function SellPage() {
     fetchCurrencies()
   }, [currencyFormData.game])
 
+  // Fetch item types when game and category are selected
+  useEffect(() => {
+    const fetchItemTypes = async () => {
+      if (itemFormData.game && itemFormData.category) {
+        try {
+          const itemTypes = await getItemTypesForGameAndCategory(itemFormData.game, itemFormData.category)
+          setAvailableItemTypes(itemTypes)
+        } catch (error) {
+          console.error("Error fetching item types:", error)
+          setAvailableItemTypes([])
+        }
+      } else {
+        setAvailableItemTypes([])
+      }
+    }
+    fetchItemTypes()
+  }, [itemFormData.game, itemFormData.category])
+
   if (!user) {
     return null
   }
@@ -122,21 +147,20 @@ export default function SellPage() {
     const checked = (e.target as HTMLInputElement).checked
     let updates: any = { [name]: type === "checkbox" ? checked : value }
     
-    // Auto-set itemType when category changes
-    if (name === "category") {
-      if (value === "Games") {
-        updates.itemType = ""
-      } else if (value === "Accounts") {
-        updates.itemType = "Account"
-      } else if (value === "Accessories") {
-        updates.itemType = "Limited"
-      }
+    // Clear itemType when category or game changes to trigger new fetch
+    if (name === "category" || name === "game") {
+      updates.itemType = ""
     }
     
     setItemFormData({
       ...itemFormData,
       ...updates,
     })
+    
+    // Clear error for this field
+    if (itemErrors[name]) {
+      setItemErrors({ ...itemErrors, [name]: "" })
+    }
   }
 
   const handleCurrencyChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -152,24 +176,29 @@ export default function SellPage() {
       ...currencyFormData,
       ...updates,
     })
+    
+    // Clear error for this field
+    if (currencyErrors[name]) {
+      setCurrencyErrors({ ...currencyErrors, [name]: "" })
+    }
   }
 
   const handleItemPaymentChange = (method: string) => {
-    setItemFormData({
-      ...itemFormData,
-      paymentMethods: itemFormData.paymentMethods.includes(method)
-        ? itemFormData.paymentMethods.filter((m) => m !== method)
-        : [...itemFormData.paymentMethods, method],
-    })
+    setItemFormData((prev) => ({
+      ...prev,
+      paymentMethods: prev.paymentMethods.includes(method)
+        ? prev.paymentMethods.filter((m) => m !== method)
+        : [...prev.paymentMethods, method],
+    }))
   }
 
   const handleCurrencyPaymentChange = (method: string) => {
-    setCurrencyFormData({
-      ...currencyFormData,
-      paymentMethods: currencyFormData.paymentMethods.includes(method)
-        ? currencyFormData.paymentMethods.filter((m) => m !== method)
-        : [...currencyFormData.paymentMethods, method],
-    })
+    setCurrencyFormData((prev) => ({
+      ...prev,
+      paymentMethods: prev.paymentMethods.includes(method)
+        ? prev.paymentMethods.filter((m) => m !== method)
+        : [...prev.paymentMethods, method],
+    }))
   }
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -190,18 +219,53 @@ export default function SellPage() {
 
     try {
       if (listingType === "item") {
-        // Validate that all required fields are filled
-        if (!itemFormData.title || !itemFormData.description || !itemFormData.category || !itemFormData.game || !itemFormData.price || !itemFormData.image) {
-          setError("Please fill in all required fields")
-          setIsLoading(false)
-          return
+        // Validate all fields
+        const errors: Record<string, string> = {}
+        
+        if (!itemFormData.title || itemFormData.title.trim().length < 5) {
+          errors.title = "Title must be at least 5 characters"
         }
-
+        if (!itemFormData.description || itemFormData.description.trim().length < 10) {
+          errors.description = "Description must be at least 10 characters"
+        }
+        if (!itemFormData.category) {
+          errors.category = "Please select a category"
+        }
+        if (!itemFormData.itemType) {
+          errors.itemType = "Please select an item type"
+        }
+        if (!itemFormData.game) {
+          errors.game = "Please select a game"
+        }
+        if (!itemFormData.price || Number(itemFormData.price) <= 0) {
+          errors.price = "Price must be greater than 0"
+        }
+        if (!itemFormData.stock || Number(itemFormData.stock) < 1) {
+          errors.stock = "Stock must be at least 1"
+        }
+        if (!itemFormData.image) {
+          errors.image = "Please upload an image"
+        }
         if (itemFormData.paymentMethods.length === 0) {
-          setError("Please select at least one payment method")
+          errors.paymentMethods = "Select at least one payment method"
+        }
+        
+        if (Object.keys(errors).length > 0) {
+          setItemErrors(errors)
+          setError("Please fix the errors below")
           setIsLoading(false)
+          
+          // Scroll to first error field
+          const firstErrorField = Object.keys(errors)[0]
+          const element = document.querySelector(`[name="${firstErrorField}"]`) as HTMLElement
+          if (element) {
+            element.scrollIntoView({ behavior: "smooth", block: "center" })
+            element.focus()
+          }
           return
         }
+        
+        setItemErrors({})
 
         const result = await createListing({
           title: itemFormData.title,
@@ -212,8 +276,9 @@ export default function SellPage() {
           price: Number(itemFormData.price),
           stock: Number(itemFormData.stock) || 1,
           image: itemFormData.image,
-          condition: itemFormData.condition as "Mint" | "New" | "Used",
+          condition: "New" as "Mint" | "New" | "Used",
           paymentMethods: itemFormData.paymentMethods,
+          pricingMode: itemFormData.pricingMode,
         })
 
         if (result.success) {
@@ -226,18 +291,44 @@ export default function SellPage() {
           setError(result.error || "Failed to create listing")
         }
       } else {
-        // Currency listing
-        if (!currencyFormData.game || !currencyFormData.currencyType || !currencyFormData.ratePerPeso || !currencyFormData.stock || !currencyFormData.minOrder || !currencyFormData.maxOrder || !currencyFormData.image) {
-          setError("Please fill in all required fields")
-          setIsLoading(false)
-          return
+        // Currency listing validation
+        const errors: Record<string, string> = {}
+        
+        if (!currencyFormData.game) {
+          errors.game = "Please select a game"
         }
-
+        if (!currencyFormData.currencyType) {
+          errors.currencyType = "Please select a currency type"
+        }
+        if (!currencyFormData.ratePerPeso || Number(currencyFormData.ratePerPeso) <= 0) {
+          errors.ratePerPeso = "Rate must be greater than 0"
+        }
+        if (!currencyFormData.stock || Number(currencyFormData.stock) < 1) {
+          errors.stock = "Stock must be at least 1"
+        }
+        if (!currencyFormData.image) {
+          errors.image = "Please upload an image"
+        }
         if (currencyFormData.paymentMethods.length === 0) {
-          setError("Please select at least one payment method")
+          errors.paymentMethods = "Select at least one payment method"
+        }
+        
+        if (Object.keys(errors).length > 0) {
+          setCurrencyErrors(errors)
+          setError("Please fix the errors below")
           setIsLoading(false)
+          
+          // Scroll to first error field
+          const firstErrorField = Object.keys(errors)[0]
+          const element = document.querySelector(`[name="${firstErrorField}"]`) as HTMLElement
+          if (element) {
+            element.scrollIntoView({ behavior: "smooth", block: "center" })
+            element.focus()
+          }
           return
         }
+        
+        setCurrencyErrors({})
 
         // Currency listing - Use new CurrencyListing model
         const result = await createNewCurrencyListing({
@@ -245,11 +336,12 @@ export default function SellPage() {
           currencyType: currencyFormData.currencyType,
           ratePerPeso: Number(currencyFormData.ratePerPeso),
           stock: Number(currencyFormData.stock),
-          minOrder: Number(currencyFormData.minOrder),
-          maxOrder: Number(currencyFormData.maxOrder),
+          minOrder: 1,
+          maxOrder: Number(currencyFormData.stock),
           image: currencyFormData.image,
           description: currencyFormData.description || undefined,
           paymentMethods: currencyFormData.paymentMethods,
+          pricingMode: currencyFormData.pricingMode,
         })
 
         if (result.success) {
@@ -333,7 +425,11 @@ export default function SellPage() {
                           value={itemFormData.title}
                           onChange={handleItemChange}
                           maxLength={100}
+                          className={itemErrors.title ? "border-red-500" : ""}
                         />
+                        {itemErrors.title && (
+                          <p className="text-xs text-red-500 mt-1">{itemErrors.title}</p>
+                        )}
                         <p className="text-xs text-muted-foreground mt-1">{itemFormData.title.length}/100</p>
                       </div>
 
@@ -345,9 +441,14 @@ export default function SellPage() {
                           value={itemFormData.description}
                           onChange={handleItemChange}
                           maxLength={2000}
-                          className="w-full px-3 py-2 border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                          className={`w-full px-3 py-2 border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary resize-none ${
+                            itemErrors.description ? "border-red-500" : "border-border"
+                          }`}
                           rows={6}
                         />
+                        {itemErrors.description && (
+                          <p className="text-xs text-red-500 mt-1">{itemErrors.description}</p>
+                        )}
                         <p className="text-xs text-muted-foreground mt-1">{itemFormData.description.length}/2000</p>
                       </div>
                     </div>
@@ -355,86 +456,133 @@ export default function SellPage() {
 
                   <Card className="p-6">
                     <h2 className="text-xl font-bold mb-4">Category</h2>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-sm font-semibold mb-2 block">Category *</label>
-                        <select
-                          name="category"
-                          value={itemFormData.category}
-                          onChange={handleItemChange}
-                          className="w-full px-3 py-2 border border-border rounded-lg bg-background"
-                        >
-                          <option value="">Select category</option>
-                          {categories.map((cat) => (
-                            <option key={cat.value} value={cat.value}>
-                              {cat.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {itemFormData.category === "Games" && (
-                        <div>
-                          <label className="text-sm font-semibold mb-2 block">Item Type *</label>
-                          <select
-                            name="itemType"
-                            value={itemFormData.itemType}
-                            onChange={handleItemChange}
-                            className="w-full px-3 py-2 border border-border rounded-lg bg-background"
-                          >
-                            <option value="">Select item type</option>
-                            {itemTypes.map((type) => (
-                              <option key={type.value} value={type.value}>
-                                {type.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
-
+                    <div className="space-y-4">
                       <div>
                         <label className="text-sm font-semibold mb-2 block">Game *</label>
                         <select
                           name="game"
                           value={itemFormData.game}
                           onChange={handleItemChange}
-                          className="w-full px-3 py-2 border border-border rounded-lg bg-background"
+                          className={`w-full px-3 py-2 border rounded-lg bg-background ${
+                            itemErrors.game ? "border-red-500" : "border-border"
+                          }`}
                         >
                           <option value="">Select game</option>
-                          {games.map((g) => (
-                            <option key={g.value} value={g.value}>
-                              {g.label}
+                          {availableGames.map((g) => (
+                            <option key={g.id} value={g.name}>
+                              {g.displayName}
                             </option>
                           ))}
                         </select>
+                        {itemErrors.game && (
+                          <p className="text-xs text-red-500 mt-1">{itemErrors.game}</p>
+                        )}
+                      </div>
+
+                      {itemFormData.game && (
+                        <div>
+                          <label className="text-sm font-semibold mb-2 block">Category *</label>
+                          <select
+                            name="category"
+                            value={itemFormData.category}
+                            onChange={handleItemChange}
+                            className={`w-full px-3 py-2 border rounded-lg bg-background ${
+                              itemErrors.category ? "border-red-500" : "border-border"
+                            }`}
+                          >
+                            <option value="">Select category</option>
+                            {availableCategories.map((cat) => (
+                              <option key={cat} value={cat}>
+                                {cat}
+                              </option>
+                            ))}
+                          </select>
+                          {itemErrors.category && (
+                            <p className="text-xs text-red-500 mt-1">{itemErrors.category}</p>
+                          )}
+                        </div>
+                      )}
+
+                      {itemFormData.game && itemFormData.category && availableItemTypes.length > 0 && (
+                        <div>
+                          <label className="text-sm font-semibold mb-2 block">Item Type *</label>
+                          <select
+                            name="itemType"
+                            value={itemFormData.itemType}
+                            onChange={handleItemChange}
+                            className={`w-full px-3 py-2 border rounded-lg bg-background ${
+                              itemErrors.itemType ? "border-red-500" : "border-border"
+                            }`}
+                          >
+                            <option value="">Select item type</option>
+                            {availableItemTypes.map((type) => (
+                              <option key={type.id} value={type.itemType}>
+                                {type.displayName}
+                              </option>
+                            ))}
+                          </select>
+                          {itemErrors.itemType && (
+                            <p className="text-xs text-red-500 mt-1">{itemErrors.itemType}</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+
+                  <Card className="p-6">
+                    <h2 className="text-xl font-bold mb-4">Pricing & Stock</h2>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-sm font-semibold mb-2 block">Pricing Mode *</label>
+                        <div className="flex gap-4 mb-4">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="itemPricingMode"
+                              value="per-item"
+                              checked={itemFormData.pricingMode === "per-item"}
+                              onChange={(e) => setItemFormData((prev) => ({ ...prev, pricingMode: e.target.value as "per-peso" | "per-item" }))}
+                              className="w-4 h-4"
+                            />
+                            <span>Price per Item</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="itemPricingMode"
+                              value="per-peso"
+                              checked={itemFormData.pricingMode === "per-peso"}
+                              onChange={(e) => setItemFormData((prev) => ({ ...prev, pricingMode: e.target.value as "per-peso" | "per-item" }))}
+                              className="w-4 h-4"
+                            />
+                            <span>Items per Price</span>
+                          </label>
+                        </div>
                       </div>
 
                       <div>
-                        <label className="text-sm font-semibold mb-2 block">Condition *</label>
-                        <select
-                          name="condition"
-                          value={itemFormData.condition}
-                          onChange={handleItemChange}
-                          className="w-full px-3 py-2 border border-border rounded-lg bg-background"
-                        >
-                          {conditions.map((cond) => (
-                            <option key={cond.value} value={cond.value}>
-                              {cond.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="text-sm font-semibold mb-2 block">Price (PHP) *</label>
+                        <label className="text-sm font-semibold mb-2 block">
+                          {itemFormData.pricingMode === "per-item" ? "Price per Item (PHP)" : "Items per PHP"} *
+                        </label>
                         <Input
                           type="number"
                           name="price"
-                          placeholder="2500"
+                          placeholder={itemFormData.pricingMode === "per-item" ? "2500" : "3"}
                           value={itemFormData.price}
                           onChange={handleItemChange}
                           min="0"
+                          step="0.1"
+                          className={itemErrors.price ? "border-red-500" : ""}
                         />
+                        {itemErrors.price && (
+                          <p className="text-xs text-red-500 mt-1">{itemErrors.price}</p>
+                        )}
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {itemFormData.pricingMode === "per-item" 
+                            ? "Example: 2500 means buyer pays ₱2500 for 1 item"
+                            : "Example: 3 means buyer gets 3 items for ₱1"
+                          }
+                        </p>
                       </div>
 
                       <div>
@@ -446,7 +594,11 @@ export default function SellPage() {
                           value={itemFormData.stock}
                           onChange={handleItemChange}
                           min="1"
+                          className={itemErrors.stock ? "border-red-500" : ""}
                         />
+                        {itemErrors.stock && (
+                          <p className="text-xs text-red-500 mt-1">{itemErrors.stock}</p>
+                        )}
                         <p className="text-xs text-muted-foreground mt-1">
                           How many units are you selling? (e.g., 5 items at ₱{itemFormData.price || "X"} each, or 1 bundle of 5 items for ₱{itemFormData.price || "X"})
                         </p>
@@ -462,13 +614,20 @@ export default function SellPage() {
                         <FileUpload
                           endpoint="listingImage"
                           value={itemFormData.image}
-                          onChange={(url) =>
-                            setItemFormData({
-                              ...itemFormData,
+                          onChange={(url) => {
+                            setItemFormData((prev) => ({
+                              ...prev,
                               image: url || "",
-                            })
-                          }
+                            }))
+                            // Clear error when image is uploaded
+                            if (itemErrors.image && url) {
+                              setItemErrors((prev) => ({ ...prev, image: "" }))
+                            }
+                          }}
                         />
+                        {itemErrors.image && (
+                          <p className="text-xs text-red-500 mt-1">{itemErrors.image}</p>
+                        )}
                         <p className="text-xs text-muted-foreground mt-1">Upload a clear image of your item</p>
                       </div>
                     </div>
@@ -484,7 +643,13 @@ export default function SellPage() {
                             <button
                               key={method}
                               type="button"
-                              onClick={() => handleItemPaymentChange(method)}
+                              onClick={() => {
+                                handleItemPaymentChange(method)
+                                // Clear error when payment method is selected
+                                if (itemErrors.paymentMethods) {
+                                  setItemErrors((prev) => ({ ...prev, paymentMethods: "" }))
+                                }
+                              }}
                               className={`px-4 py-2 rounded-lg border transition ${
                                 itemFormData.paymentMethods.includes(method)
                                   ? "bg-primary text-primary-foreground border-primary"
@@ -495,6 +660,9 @@ export default function SellPage() {
                             </button>
                           ))}
                         </div>
+                        {itemErrors.paymentMethods && (
+                          <p className="text-xs text-red-500 mt-2">{itemErrors.paymentMethods}</p>
+                        )}
                       </div>
 
                       <label className="flex items-start gap-3">
@@ -521,7 +689,9 @@ export default function SellPage() {
                           name="game"
                           value={currencyFormData.game}
                           onChange={handleCurrencyChange}
-                          className="w-full px-3 py-2 border border-border rounded-lg bg-background"
+                          className={`w-full px-3 py-2 border rounded-lg bg-background ${
+                            currencyErrors.game ? "border-red-500" : "border-border"
+                          }`}
                         >
                           <option value="">Select a game</option>
                           {availableGames.map((game) => (
@@ -530,6 +700,9 @@ export default function SellPage() {
                             </option>
                           ))}
                         </select>
+                        {currencyErrors.game && (
+                          <p className="text-xs text-red-500 mt-1">{currencyErrors.game}</p>
+                        )}
                       </div>
 
                       {currencyFormData.game && availableCurrencies.length > 0 && (
@@ -539,7 +712,9 @@ export default function SellPage() {
                             name="currencyType"
                             value={currencyFormData.currencyType}
                             onChange={handleCurrencyChange}
-                            className="w-full px-3 py-2 border border-border rounded-lg bg-background"
+                            className={`w-full px-3 py-2 border rounded-lg bg-background ${
+                              currencyErrors.currencyType ? "border-red-500" : "border-border"
+                            }`}
                           >
                             <option value="">Select currency type</option>
                             {availableCurrencies.map((currency) => (
@@ -548,12 +723,45 @@ export default function SellPage() {
                               </option>
                             ))}
                           </select>
+                          {currencyErrors.currencyType && (
+                            <p className="text-xs text-red-500 mt-1">{currencyErrors.currencyType}</p>
+                          )}
                         </div>
                       )}
 
+                      <div>
+                        <label className="text-sm font-semibold mb-2 block">Pricing Mode *</label>
+                        <div className="flex gap-4 mb-4">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="pricingMode"
+                              value="per-peso"
+                              checked={currencyFormData.pricingMode === "per-peso"}
+                              onChange={(e) => setCurrencyFormData((prev) => ({ ...prev, pricingMode: e.target.value as "per-peso" | "per-item" }))}
+                              className="w-4 h-4"
+                            />
+                            <span>Items per Price</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="pricingMode"
+                              value="per-item"
+                              checked={currencyFormData.pricingMode === "per-item"}
+                              onChange={(e) => setCurrencyFormData((prev) => ({ ...prev, pricingMode: e.target.value as "per-peso" | "per-item" }))}
+                              className="w-4 h-4"
+                            />
+                            <span>Price per Item</span>
+                          </label>
+                        </div>
+                      </div>
+
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="text-sm font-semibold mb-2 block">Rate per PHP *</label>
+                          <label className="text-sm font-semibold mb-2 block">
+                            {currencyFormData.pricingMode === "per-peso" ? "Currency per PHP" : "PHP per Currency"} *
+                          </label>
                           <div className="flex items-center gap-2">
                             <Input
                               type="number"
@@ -563,11 +771,22 @@ export default function SellPage() {
                               onChange={handleCurrencyChange}
                               min="0"
                               step="0.1"
+                              className={currencyErrors.ratePerPeso ? "border-red-500" : ""}
                             />
-                            <span className="text-sm text-muted-foreground whitespace-nowrap">per PHP 1</span>
+                            {currencyFormData.pricingMode === "per-peso" ? (
+                              <span className="text-sm text-muted-foreground whitespace-nowrap">{currencyFormData.currencyType || "currency"} per ₱1</span>
+                            ) : (
+                              <span className="text-sm text-muted-foreground whitespace-nowrap">₱1 per {currencyFormData.currencyType || "currency"}</span>
+                            )}
                           </div>
+                          {currencyErrors.ratePerPeso && (
+                            <p className="text-xs text-red-500 mt-1">{currencyErrors.ratePerPeso}</p>
+                          )}
                           <p className="text-xs text-muted-foreground mt-1">
-                            Example: 3 means 3 {currencyFormData.currencyType || "currency"} per PHP 1
+                            {currencyFormData.pricingMode === "per-peso" 
+                              ? `Example: 3 means buyer gets 3 ${currencyFormData.currencyType || "currency"} for ₱1`
+                              : `Example: 3 means buyer pays ₱3 for 1 ${currencyFormData.currencyType || "currency"}`
+                            }
                           </p>
                         </div>
 
@@ -580,36 +799,14 @@ export default function SellPage() {
                             value={currencyFormData.stock}
                             onChange={handleCurrencyChange}
                             min="0"
+                            className={currencyErrors.stock ? "border-red-500" : ""}
                           />
+                          {currencyErrors.stock && (
+                            <p className="text-xs text-red-500 mt-1">{currencyErrors.stock}</p>
+                          )}
                           <p className="text-xs text-muted-foreground mt-1">
                             Total {currencyFormData.currencyType || "currency"} you have for sale
                           </p>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="text-sm font-semibold mb-2 block">Minimum Order (PHP)</label>
-                          <Input
-                            type="number"
-                            name="minOrder"
-                            placeholder="100"
-                            value={currencyFormData.minOrder}
-                            onChange={handleCurrencyChange}
-                            min="0"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-sm font-semibold mb-2 block">Maximum Order (PHP)</label>
-                          <Input
-                            type="number"
-                            name="maxOrder"
-                            placeholder="5000"
-                            value={currencyFormData.maxOrder}
-                            onChange={handleCurrencyChange}
-                            min="0"
-                          />
                         </div>
                       </div>
 
@@ -621,9 +818,14 @@ export default function SellPage() {
                           value={currencyFormData.description}
                           onChange={handleCurrencyChange}
                           maxLength={500}
-                          className="w-full px-3 py-2 border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                          className={`w-full px-3 py-2 border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary resize-none ${
+                            currencyErrors.description ? "border-red-500" : "border-border"
+                          }`}
                           rows={4}
                         />
+                        {currencyErrors.description && (
+                          <p className="text-xs text-red-500 mt-1">{currencyErrors.description}</p>
+                        )}
                         <p className="text-xs text-muted-foreground mt-1">{currencyFormData.description.length}/500</p>
                       </div>
                     </div>
@@ -637,13 +839,20 @@ export default function SellPage() {
                         <FileUpload
                           endpoint="listingImage"
                           value={currencyFormData.image}
-                          onChange={(url) =>
-                            setCurrencyFormData({
-                              ...currencyFormData,
+                          onChange={(url) => {
+                            setCurrencyFormData((prev) => ({
+                              ...prev,
                               image: url || "",
-                            })
-                          }
+                            }))
+                            // Clear error when image is uploaded
+                            if (currencyErrors.image && url) {
+                              setCurrencyErrors((prev) => ({ ...prev, image: "" }))
+                            }
+                          }}
                         />
+                        {currencyErrors.image && (
+                          <p className="text-xs text-red-500 mt-1">{currencyErrors.image}</p>
+                        )}
                         <p className="text-xs text-muted-foreground mt-1">
                           Upload a clear image of your currency
                         </p>
@@ -660,7 +869,13 @@ export default function SellPage() {
                           <button
                             key={method}
                             type="button"
-                            onClick={() => handleCurrencyPaymentChange(method)}
+                            onClick={() => {
+                              handleCurrencyPaymentChange(method)
+                              // Clear error when payment method is selected
+                              if (currencyErrors.paymentMethods) {
+                                setCurrencyErrors((prev) => ({ ...prev, paymentMethods: "" }))
+                              }
+                            }}
                             className={`px-4 py-2 rounded-lg border transition ${
                               currencyFormData.paymentMethods.includes(method)
                                 ? "bg-primary text-primary-foreground border-primary"
@@ -671,6 +886,9 @@ export default function SellPage() {
                           </button>
                         ))}
                       </div>
+                      {currencyErrors.paymentMethods && (
+                        <p className="text-xs text-red-500 mt-2">{currencyErrors.paymentMethods}</p>
+                      )}
                     </div>
                   </Card>
                 </>

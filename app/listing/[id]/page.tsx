@@ -46,6 +46,7 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
   const [reportLoading, setReportLoading] = useState(false)
   const [showQuantityModal, setShowQuantityModal] = useState(false)
   const [buyQuantity, setBuyQuantity] = useState("1")
+  const [quantityError, setQuantityError] = useState("")
 
   // Fetch listing data
   useEffect(() => {
@@ -151,6 +152,7 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
         // Show quantity modal if stock > 1
         setShowQuantityModal(true)
         setBuyQuantity("1")
+        setQuantityError("")
       }
     })
   }
@@ -158,9 +160,26 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
   const handleConfirmQuantity = () => {
     if (!listing) return
     
+    setQuantityError("")
     const quantity = parseInt(buyQuantity)
-    if (isNaN(quantity) || quantity < 1 || quantity > listing.stock) {
-      alert(`Please enter a valid quantity between 1 and ${listing.stock}`)
+    
+    if (!buyQuantity || buyQuantity.trim() === "") {
+      setQuantityError("Quantity is required")
+      return
+    }
+    
+    if (isNaN(quantity)) {
+      setQuantityError("Please enter a valid number")
+      return
+    }
+    
+    if (quantity < 1) {
+      setQuantityError("Quantity must be at least 1")
+      return
+    }
+    
+    if (quantity > listing.stock) {
+      setQuantityError(`Maximum available quantity is ${listing.stock}`)
       return
     }
 
@@ -487,9 +506,15 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
                   min="1"
                   max={listing?.stock}
                   value={buyQuantity}
-                  onChange={(e) => setBuyQuantity(e.target.value)}
-                  className="w-full"
+                  onChange={(e) => {
+                    setBuyQuantity(e.target.value)
+                    if (quantityError) setQuantityError("")
+                  }}
+                  className={`w-full ${quantityError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                 />
+                {quantityError && (
+                  <p className="text-sm text-red-500">{quantityError}</p>
+                )}
                 <p className="text-xs text-muted-foreground">
                   Available stock: {listing?.stock}
                 </p>

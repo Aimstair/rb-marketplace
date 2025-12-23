@@ -33,6 +33,7 @@ export const createItemListingSchema = z.object({
   image: z.string().url("Please provide a valid image URL"),
   condition: z.enum(["Mint", "New", "Used"]),
   paymentMethods: z.array(z.string()).min(1, "Select at least one payment method"),
+  pricingMode: z.enum(["per-peso", "per-item"]).optional().default("per-item"),
 })
 
 export const createCurrencyListingSchema = z.object({
@@ -45,6 +46,7 @@ export const createCurrencyListingSchema = z.object({
   image: z.string().url("Please provide a valid image URL"),
   description: z.string().max(500, "Description must be at most 500 characters").optional(),
   paymentMethods: z.array(z.string()).min(1, "Select at least one payment method"),
+  pricingMode: z.enum(["per-peso", "per-item"]).optional().default("per-peso"),
 })
 
 export type CreateItemListingInput = z.infer<typeof createItemListingSchema>

@@ -64,7 +64,7 @@ export interface ConversationWithLatestMessage {
     isRead: boolean
   } | null
   unreadCount: number
-  status: "ongoing" | "completed" | "sold"
+  status: "ongoing" | "completed" | "sold" | "cancelled"
 }
 
 export interface MessageData {
@@ -135,10 +135,10 @@ export async function getConversations(): Promise<GetConversationsResult> {
       },
       include: {
         buyer: {
-          select: { id: true, username: true, profilePicture: true },
+          select: { id: true, username: true, profilePicture: true, subscriptionTier: true },
         },
         seller: {
-          select: { id: true, username: true, profilePicture: true },
+          select: { id: true, username: true, profilePicture: true, subscriptionTier: true },
         },
         messages: {
           orderBy: { createdAt: "desc" },
@@ -218,7 +218,7 @@ export async function getConversations(): Promise<GetConversationsResult> {
         }
 
         // Calculate transaction status
-        let status: "ongoing" | "completed" | "sold" = "ongoing"
+        let status: "ongoing" | "completed" | "sold" | "cancelled" = "ongoing"
 
         if (conv.listingId) {
           // Check if transaction is completed

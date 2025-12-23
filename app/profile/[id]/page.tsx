@@ -46,6 +46,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { getProfile, toggleFollow, type UserProfileData } from "@/app/actions/profile"
+import { getSubscriptionBadge as getSubBadge } from "@/lib/subscription-utils"
 
 export default function ProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
@@ -167,10 +168,7 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
       return 0
     })
 
-  const getSubscriptionBadge = () => {
-    // TODO: Add subscription tier from profile data
-    return <Badge variant="secondary">Free</Badge>
-  }
+  const subscriptionBadge = getSubBadge(profile?.subscriptionTier || "FREE")
 
   return (
     <main className="min-h-screen bg-background">
@@ -214,7 +212,11 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
                     Verified
                   </Badge>
                 )}
-                {getSubscriptionBadge()}
+                {subscriptionBadge && (
+                  <Badge variant={subscriptionBadge.variant} className={subscriptionBadge.className}>
+                    {subscriptionBadge.label}
+                  </Badge>
+                )}
               </div>
 
               <p className="text-muted-foreground mb-4 max-w-2xl">{profile.bio}</p>

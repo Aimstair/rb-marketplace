@@ -5,6 +5,7 @@ import { Analytics } from "@vercel/analytics/next"
 import { AuthProvider } from "@/lib/auth-context"
 import { NextAuthProvider } from "@/lib/next-auth-provider"
 import { ThemeProvider } from "@/components/theme-provider"
+import { Toaster } from "@/components/ui/toaster"
 import "./globals.css"
 
 const _geist = Geist({ subsets: ["latin"] })
@@ -45,6 +46,7 @@ export default function RootLayout({
         <NextAuthProvider>
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
             <AuthProvider>{children}</AuthProvider>
+            <Toaster />
           </ThemeProvider>
         </NextAuthProvider>
         <Analytics />
