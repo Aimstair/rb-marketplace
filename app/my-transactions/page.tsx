@@ -83,7 +83,7 @@ export default function MyTransactionsPage() {
     return (
       <>
         <Navigation />
-        <main className="container mx-auto px-4 py-8">
+        <main className="container max-w-[1920px] mx-auto px-6 py-8">
           <div className="flex items-center justify-center h-96">
             <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
           </div>
@@ -97,7 +97,7 @@ export default function MyTransactionsPage() {
   return (
     <>
       <Navigation />
-      <main className="container mx-auto px-4 py-8">
+      <main className="container max-w-[1920px] mx-auto px-6 py-8">
         <h1 className="text-3xl font-bold mb-8">My Transactions</h1>
 
         {/* Search Bar */}

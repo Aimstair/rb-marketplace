@@ -159,7 +159,7 @@ export default function MarketplacePage() {
       <Navigation />
       {/* Header */}
       <section className="bg-gradient-to-r from-primary/10 to-primary/5 py-12">
-          <div className="container mx-auto px-4">
+          <div className="container max-w-[1920px] mx-auto px-6">
             <h1 className="text-4xl font-bold mb-2">Item Marketplace</h1>
             <p className="text-muted-foreground">
               {isLoading ? "Loading..." : `Buy and sell in-game items safely and securely with our trusted community from over ${totalListings} available listing${totalListings !== 1 ? "s" : ""}`}
@@ -167,7 +167,7 @@ export default function MarketplacePage() {
           </div>
         </section>
         
-      <div className="container mx-auto px-4 py-8">
+      <div className="container max-w-[1920px] mx-auto px-6 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           {/* Filters Sidebar - Desktop */}
           <div className="hidden lg:block lg:col-span-1">
@@ -219,23 +219,21 @@ export default function MarketplacePage() {
               {(mainCategory === "Games" || mainCategory === "Accounts" || mainCategory === "All") && (
                 <div className="mb-6">
                   <label className="text-sm font-medium mb-3 block">Game</label>
-                  <div className="space-y-1">
-                    {areFiltersLoading ? (
-                       <div className="h-20 animate-pulse bg-muted rounded" />
-                    ) : (
-                      getDisplayGames().map((game) => (
-                        <button
-                          key={game.id}
-                          onClick={() => setSelectedGame(game.value)}
-                          className={`w-full text-left px-3 py-2 rounded transition text-sm ${
-                            selectedGame === game.value ? "bg-primary text-primary-foreground" : "hover:bg-secondary"
-                          }`}
-                        >
+                  {areFiltersLoading ? (
+                    <div className="h-10 animate-pulse bg-muted rounded" />
+                  ) : (
+                    <select
+                      value={selectedGame}
+                      onChange={(e) => setSelectedGame(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg bg-background text-sm"
+                    >
+                      {getDisplayGames().map((game) => (
+                        <option key={game.id} value={game.value}>
                           {game.label}
-                        </button>
-                      ))
-                    )}
-                  </div>
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
               )}
 
@@ -243,23 +241,21 @@ export default function MarketplacePage() {
               {mainCategory === "Games" && (
                 <div className="mb-6">
                   <label className="text-sm font-medium mb-3 block">Item Type</label>
-                  <div className="space-y-1">
-                    {areFiltersLoading ? (
-                       <div className="h-20 animate-pulse bg-muted rounded" />
-                    ) : (
-                      getDisplayItemTypes().map((type) => (
-                        <button
-                          key={type.id}
-                          onClick={() => setSelectedItemType(type.value)}
-                          className={`w-full text-left px-3 py-2 rounded transition text-sm ${
-                            selectedItemType === type.value ? "bg-primary text-primary-foreground" : "hover:bg-secondary"
-                          }`}
-                        >
+                  {areFiltersLoading ? (
+                    <div className="h-10 animate-pulse bg-muted rounded" />
+                  ) : (
+                    <select
+                      value={selectedItemType}
+                      onChange={(e) => setSelectedItemType(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg bg-background text-sm"
+                    >
+                      {getDisplayItemTypes().map((type) => (
+                        <option key={type.id} value={type.value}>
                           {type.label}
-                        </button>
-                      ))
-                    )}
-                  </div>
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
               )}
 

@@ -684,8 +684,19 @@ export async function toggleTransactionConfirmation(
         const deductedAmount = transaction.amount || 1
         const newStock = Math.max(0, listingDetails.stock - deductedAmount)
         
-        // Only mark as sold if stock is <= 0, otherwise keep available
-        const newListingStatus = newStock <= 0 ? "sold" : "available"
+        // For currency listings, check if stock is less than ratePerPeso (minimum sellable unit)
+        // For item listings, check if stock is 0 or less
+        let newListingStatus: string
+        if (completedTransaction.listingType === "CURRENCY") {
+          // Get listing to access ratePerPeso
+          const currencyListing = await prisma.currencyListing.findUnique({
+            where: { id: completedTransaction.listingId },
+            select: { ratePerPeso: true },
+          })
+          newListingStatus = newStock < (currencyListing?.ratePerPeso || 1) ? "sold" : "available"
+        } else {
+          newListingStatus = newStock < 1 ? "sold" : "available"
+        }
         
         // Update listing with new stock
         if (completedTransaction.listingType === "ITEM") {

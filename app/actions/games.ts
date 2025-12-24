@@ -148,11 +148,17 @@ export async function getItemTypesForGameAndCategory(
 
     if (!game) return []
 
+    // For Games category, only allow "In-game Item" and "Gamepass" item types
+    const itemTypeFilter = category === "Games" 
+      ? { in: ["In-game Item", "Gamepass"] }
+      : undefined
+
     const gameItems = await prisma.gameItem.findMany({
       where: {
         gameId: game.id,
         category: category,
         isActive: true,
+        ...(itemTypeFilter && { itemType: itemTypeFilter }),
       },
       orderBy: { order: 'asc' },
       select: {

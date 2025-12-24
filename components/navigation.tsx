@@ -123,7 +123,7 @@ export default function Navigation() {
 
   return (
     <nav className="sticky top-0 z-50 bg-background border-b">
-      <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+      <div className="container max-w-[1920px] mx-auto px-6 py-4 flex items-center justify-between">
         {/* Logo */}
         <Link href="/" className="text-2xl font-bold text-primary">
           RbMarket
@@ -317,7 +317,7 @@ export default function Navigation() {
       {/* Mobile Menu */}
       {mobileMenuOpen && (
         <div className="md:hidden border-t bg-background">
-          <div className="container mx-auto px-4 py-4 flex flex-col gap-4">
+          <div className="container max-w-[1920px] mx-auto px-6 py-4 flex flex-col gap-4">
             <Link href="/marketplace" className="py-2 text-muted-foreground hover:text-foreground">
               Marketplace
             </Link>

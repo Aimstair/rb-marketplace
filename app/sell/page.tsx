@@ -147,8 +147,11 @@ export default function SellPage() {
     const checked = (e.target as HTMLInputElement).checked
     let updates: any = { [name]: type === "checkbox" ? checked : value }
     
-    // Clear itemType when category or game changes to trigger new fetch
-    if (name === "category" || name === "game") {
+    // Clear dependent fields when parent field changes
+    if (name === "category") {
+      updates.game = ""
+      updates.itemType = ""
+    } else if (name === "game") {
       updates.itemType = ""
     }
     
@@ -231,11 +234,13 @@ export default function SellPage() {
         if (!itemFormData.category) {
           errors.category = "Please select a category"
         }
-        if (!itemFormData.itemType) {
-          errors.itemType = "Please select an item type"
-        }
-        if (!itemFormData.game) {
+        // Only require game for Games and Accounts categories
+        if ((itemFormData.category === "Games" || itemFormData.category === "Accounts") && !itemFormData.game) {
           errors.game = "Please select a game"
+        }
+        // Only require item type for Games category (not Accounts or Accessories)
+        if (itemFormData.category === "Games" && itemFormData.game && availableItemTypes.length > 0 && !itemFormData.itemType) {
+          errors.itemType = "Please select an item type"
         }
         if (!itemFormData.price || Number(itemFormData.price) <= 0) {
           errors.price = "Price must be greater than 0"
@@ -271,8 +276,8 @@ export default function SellPage() {
           title: itemFormData.title,
           description: itemFormData.description,
           category: itemFormData.category as "Accessories" | "Games" | "Accounts",
-          game: itemFormData.game,
-          itemType: itemFormData.itemType,
+          game: itemFormData.game || "General", // Default to "General" for Accessories
+          itemType: itemFormData.itemType || (itemFormData.category === "Accounts" ? "Account" : itemFormData.category === "Accessories" ? "Accessory" : "General"),
           price: Number(itemFormData.price),
           stock: Number(itemFormData.stock) || 1,
           image: itemFormData.image,
@@ -366,7 +371,7 @@ export default function SellPage() {
     <main className="min-h-screen bg-background">
       <Navigation />
 
-      <div className="container mx-auto px-4 py-8">
+      <div className="container max-w-[1920px] mx-auto px-6 py-8">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-4xl font-bold mb-2">Create a Listing</h1>
@@ -458,52 +463,52 @@ export default function SellPage() {
                     <h2 className="text-xl font-bold mb-4">Category</h2>
                     <div className="space-y-4">
                       <div>
-                        <label className="text-sm font-semibold mb-2 block">Game *</label>
+                        <label className="text-sm font-semibold mb-2 block">Category *</label>
                         <select
-                          name="game"
-                          value={itemFormData.game}
+                          name="category"
+                          value={itemFormData.category}
                           onChange={handleItemChange}
                           className={`w-full px-3 py-2 border rounded-lg bg-background ${
-                            itemErrors.game ? "border-red-500" : "border-border"
+                            itemErrors.category ? "border-red-500" : "border-border"
                           }`}
                         >
-                          <option value="">Select game</option>
-                          {availableGames.map((g) => (
-                            <option key={g.id} value={g.name}>
-                              {g.displayName}
+                          <option value="">Select category</option>
+                          {availableCategories.map((cat) => (
+                            <option key={cat} value={cat}>
+                              {cat}
                             </option>
                           ))}
                         </select>
-                        {itemErrors.game && (
-                          <p className="text-xs text-red-500 mt-1">{itemErrors.game}</p>
+                        {itemErrors.category && (
+                          <p className="text-xs text-red-500 mt-1">{itemErrors.category}</p>
                         )}
                       </div>
 
-                      {itemFormData.game && (
+                      {itemFormData.category && (itemFormData.category === "Games" || itemFormData.category === "Accounts") && (
                         <div>
-                          <label className="text-sm font-semibold mb-2 block">Category *</label>
+                          <label className="text-sm font-semibold mb-2 block">Game *</label>
                           <select
-                            name="category"
-                            value={itemFormData.category}
+                            name="game"
+                            value={itemFormData.game}
                             onChange={handleItemChange}
                             className={`w-full px-3 py-2 border rounded-lg bg-background ${
-                              itemErrors.category ? "border-red-500" : "border-border"
+                              itemErrors.game ? "border-red-500" : "border-border"
                             }`}
                           >
-                            <option value="">Select category</option>
-                            {availableCategories.map((cat) => (
-                              <option key={cat} value={cat}>
-                                {cat}
+                            <option value="">Select game</option>
+                            {availableGames.map((g) => (
+                              <option key={g.id} value={g.name}>
+                                {g.displayName}
                               </option>
                             ))}
                           </select>
-                          {itemErrors.category && (
-                            <p className="text-xs text-red-500 mt-1">{itemErrors.category}</p>
+                          {itemErrors.game && (
+                            <p className="text-xs text-red-500 mt-1">{itemErrors.game}</p>
                           )}
                         </div>
                       )}
 
-                      {itemFormData.game && itemFormData.category && availableItemTypes.length > 0 && (
+                      {itemFormData.category && itemFormData.game && itemFormData.category !== "Accounts" && availableItemTypes.length > 0 && (
                         <div>
                           <label className="text-sm font-semibold mb-2 block">Item Type *</label>
                           <select
@@ -539,23 +544,23 @@ export default function SellPage() {
                             <input
                               type="radio"
                               name="itemPricingMode"
-                              value="per-item"
-                              checked={itemFormData.pricingMode === "per-item"}
-                              onChange={(e) => setItemFormData((prev) => ({ ...prev, pricingMode: e.target.value as "per-peso" | "per-item" }))}
-                              className="w-4 h-4"
-                            />
-                            <span>Price per Item</span>
-                          </label>
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="itemPricingMode"
                               value="per-peso"
                               checked={itemFormData.pricingMode === "per-peso"}
                               onChange={(e) => setItemFormData((prev) => ({ ...prev, pricingMode: e.target.value as "per-peso" | "per-item" }))}
                               className="w-4 h-4"
                             />
                             <span>Items per Price</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="itemPricingMode"
+                              value="per-item"
+                              checked={itemFormData.pricingMode === "per-item"}
+                              onChange={(e) => setItemFormData((prev) => ({ ...prev, pricingMode: e.target.value as "per-peso" | "per-item" }))}
+                              className="w-4 h-4"
+                            />
+                            <span>Price per Item</span>
                           </label>
                         </div>
                       </div>

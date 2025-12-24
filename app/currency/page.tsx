@@ -168,7 +168,7 @@ export default function CurrencyMarketplace() {
       <main className="min-h-screen bg-background">
         {/* Hero Section */}
         <section className="bg-gradient-to-r from-primary/10 to-primary/5 py-12">
-          <div className="container mx-auto px-4">
+          <div className="container max-w-[1920px] mx-auto px-6">
             <h1 className="text-4xl font-bold mb-2">Currency Marketplace</h1>
             <p className="text-muted-foreground">
               {isLoading ? "Loading..." : `Buy and sell in-game currencies safely and securely with our trusted community from over ${totalListings} available listing${totalListings !== 1 ? "s" : ""}`}
@@ -177,7 +177,7 @@ export default function CurrencyMarketplace() {
         </section>
 
         {/* Main Content */}
-        <div className="container mx-auto px-4 py-8">
+        <div className="container max-w-[1920px] mx-auto px-6 py-8">
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
             {/* Sidebar Filters */}
             <div className="lg:col-span-1">
@@ -200,27 +200,18 @@ export default function CurrencyMarketplace() {
                 {/* Game Categories */}
                 <div className="mb-6">
                   <label className="text-sm font-medium mb-3 block">Games</label>
-                  <div className="space-y-2">
-                    <button
-                      onClick={() => setSelectedGame(null)}
-                      className={`w-full text-left px-3 py-2 rounded transition ${
-                        !selectedGame ? "bg-primary text-primary-foreground" : "hover:bg-secondary"
-                      }`}
-                    >
-                      All Games
-                    </button>
-                    {games.map((game) => (
-                      <button
-                        key={game.name}
-                        onClick={() => setSelectedGame(game.name)}
-                        className={`w-full text-left px-3 py-2 rounded transition ${
-                          selectedGame === game.name ? "bg-primary text-primary-foreground" : "hover:bg-secondary"
-                        }`}
-                      >
+                  <select
+                    value={selectedGame || ""}
+                    onChange={(e) => setSelectedGame(e.target.value || null)}
+                    className="w-full px-3 py-2 border rounded-lg bg-background text-sm"
+                  >
+                    <option value="">All Games</option>
+                    {[...games].sort((a, b) => a.displayName.localeCompare(b.displayName)).map((game) => (
+                      <option key={game.name} value={game.name}>
                         {game.displayName}
-                      </button>
+                      </option>
                     ))}
-                  </div>
+                  </select>
                 </div>
 
                 {/* Rate Range */}

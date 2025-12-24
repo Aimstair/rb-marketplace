@@ -109,7 +109,7 @@ export default function HomePage() {
 
       {/* Hero Section with Search */}
       <section className="bg-gradient-to-br from-primary/10 to-primary/5 py-12 md:py-20">
-        <div className="container mx-auto px-4">
+        <div className="container max-w-[1920px] mx-auto px-6">
           <div className="max-w-3xl mx-auto">
             <h1 className="text-4xl md:text-5xl font-bold text-center mb-4 text-balance">
               Trade In-Game Items Safely & Anonymously
@@ -149,7 +149,7 @@ export default function HomePage() {
 
       {/* Quick Stats */}
       <section className="py-8 border-b bg-card/50">
-        <div className="container mx-auto px-4">
+        <div className="container max-w-[1920px] mx-auto px-6">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div className="text-center">
               <div className="text-3xl font-bold text-primary mb-2">{stats.totalListings.toLocaleString()}</div>
@@ -173,7 +173,7 @@ export default function HomePage() {
 
       {/* Featured Listings Section */}
       <section className="py-16">
-        <div className="container mx-auto px-4">
+        <div className="container max-w-[1920px] mx-auto px-6">
           <div className="flex items-center justify-between mb-8">
             <div>
               <h2 className="text-3xl font-bold mb-2">Featured Listings</h2>
@@ -189,7 +189,7 @@ export default function HomePage() {
 
       {/* Trending Games Section */}
       <section className="py-16 bg-card/50">
-        <div className="container mx-auto px-4">
+        <div className="container max-w-[1920px] mx-auto px-6">
           <div className="mb-8">
             <h2 className="text-3xl font-bold mb-2 flex items-center gap-2">
               <TrendingUp className="w-8 h-8" />
@@ -203,7 +203,7 @@ export default function HomePage() {
 
       {/* Top Vouched Sellers Section */}
       <section className="py-16">
-        <div className="container mx-auto px-4">
+        <div className="container max-w-[1920px] mx-auto px-6">
           <div className="mb-8">
             <h2 className="text-3xl font-bold mb-2 flex items-center gap-2">
               <Shield className="w-8 h-8" />
@@ -217,7 +217,7 @@ export default function HomePage() {
 
       {/* Trust & Safety Features */}
       <section className="py-16 bg-gradient-to-br from-primary/5 to-primary/10">
-        <div className="container mx-auto px-4">
+        <div className="container max-w-[1920px] mx-auto px-6">
           <h2 className="text-3xl font-bold text-center mb-12">Why Trade Here?</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <Card className="p-6 text-center hover:shadow-lg transition-shadow">
@@ -243,7 +243,7 @@ export default function HomePage() {
 
       {/* Footer CTA */}
       <section className="py-16 bg-primary text-primary-foreground">
-        <div className="container mx-auto px-4 text-center">
+        <div className="container max-w-[1920px] mx-auto px-6 text-center">
           <h2 className="text-3xl font-bold mb-4">Ready to Start Trading?</h2>
           <p className="mb-8 text-lg opacity-90 max-w-2xl mx-auto">
             Join thousands of Roblox players buying and selling items securely every day.

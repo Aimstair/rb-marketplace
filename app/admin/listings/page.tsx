@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
@@ -306,7 +306,7 @@ export default function ListingsPage() {
 
                       {/* Price & Status */}
                       <div className="text-right flex-shrink-0">
-                        <p className="font-semibold">₱{listing.price}</p>
+                        <p className="font-semibold">?{listing.price}</p>
                         {getStatusBadge(listing.status)}
                       </div>
 
@@ -412,7 +412,7 @@ export default function ListingsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm font-semibold text-muted-foreground">Price</p>
-                  <p className="font-semibold">₱{selectedListing.price}</p>
+                  <p className="font-semibold">?{selectedListing.price}</p>
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-muted-foreground">Status</p>

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { Star, MessageCircle, Share2, Flag, Shield, Calendar, ThumbsUp, ThumbsDown, Loader2, Copy, Check } from "lucide-react"
+import { Star, MessageCircle, Share2, Flag, Shield, Calendar, ThumbsUp, ThumbsDown, Loader2, Copy, Check, Eye, Crown, X } from "lucide-react"
 import Navigation from "@/components/navigation"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -19,8 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useAuth } from "@/lib/auth-context"
-import { getListing } from "@/app/actions/listings"
-import { toggleListingVote, reportListing } from "@/app/actions/listings"
+import { getListing, toggleListingVote, reportListing, getListingViewers, nudgeViewer } from "@/app/actions/listings"
 import { useToast } from "@/hooks/use-toast"
 import { Textarea } from "@/components/ui/textarea"
 
@@ -119,6 +118,12 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
             maxOrder: result.listing.maxOrder,
             notes: result.listing.description || undefined,
           })
+
+          // Check if user is the owner and fetch viewers
+          if (user && result.listing.seller?.id === user.id) {
+            setShowViewers(true)
+            fetchViewers()
+          }
         } else {
           setError(result.error || "Listing not found")
         }
@@ -131,7 +136,7 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
     }
 
     fetchListing()
-  }, [id, isReady])
+  }, [id, isReady, user])
 
   const [selectedImage, setSelectedImage] = useState<string>("")
   const [isSaved, setIsSaved] = useState(false)
@@ -146,6 +151,14 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
   const [isVoting, setIsVoting] = useState(false)
   const [isReporting, setIsReporting] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [viewers, setViewers] = useState<any[]>([])
+  const [viewersLoading, setViewersLoading] = useState(false)
+  const [requiresUpgrade, setRequiresUpgrade] = useState(false)
+  const [showViewers, setShowViewers] = useState(false)
+  const [viewerSearch, setViewerSearch] = useState("")
+  const [viewerSort, setViewerSort] = useState("newest")
+  const [nudgeCooldowns, setNudgeCooldowns] = useState<Record<string, Date>>({})
+  const [nudgingViewerId, setNudgingViewerId] = useState<string | null>(null)
 
   // Initialize selectedImage, votes, and userVote when listing loads
   useEffect(() => {
@@ -169,6 +182,42 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
       setShowAmountDialog(true)
     }
   }, [searchParams])
+
+  const fetchViewers = async () => {
+    if (!id) return
+    
+    setViewersLoading(true)
+    try {
+      const result = await getListingViewers(id, "CURRENCY")
+      if (result.success) {
+        if (result.requiresUpgrade) {
+          setRequiresUpgrade(true)
+        } else {
+          setViewers(result.viewers || [])
+          setRequiresUpgrade(false)
+          
+          // Initialize cooldowns from server data
+          if (result.viewers) {
+            const cooldowns: Record<string, Date> = {}
+            for (const viewer of result.viewers) {
+              if (viewer.lastNudgedAt) {
+                const nudgeTime = new Date(viewer.lastNudgedAt)
+                const cooldownUntil = new Date(nudgeTime.getTime() + 60 * 60 * 1000)
+                if (cooldownUntil > new Date()) {
+                  cooldowns[viewer.id] = cooldownUntil
+                }
+              }
+            }
+            setNudgeCooldowns(cooldowns)
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch viewers:", err)
+    } finally {
+      setViewersLoading(false)
+    }
+  }
 
   const handleVote = async (type: "up" | "down") => {
     if (!user) {
@@ -346,11 +395,59 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
     }
   }
 
+  const handleNudgeViewer = async (viewerId: string, viewerUsername: string) => {
+    if (!listing) return
+
+    // Check cooldown
+    const cooldownTime = nudgeCooldowns[viewerId]
+    if (cooldownTime && new Date() < cooldownTime) {
+      const remainingMinutes = Math.ceil((cooldownTime.getTime() - Date.now()) / 60000)
+      toast({
+        title: "Cooldown Active",
+        description: `You can nudge ${viewerUsername} again in ${remainingMinutes} minute${remainingMinutes > 1 ? 's' : ''}`,
+        variant: "destructive",
+      })
+      return
+    }
+
+    setNudgingViewerId(viewerId)
+    try {
+      const result = await nudgeViewer(viewerId, listing.id, "CURRENCY", `${currencyData.ratePerPeso} ${currencyData.currencyType} per ₱1`)
+      if (result.success) {
+        toast({
+          title: "Nudge Sent! 👋",
+          description: `${viewerUsername} has been notified about your listing`,
+        })
+        // Set cooldown for 1 hour
+        const cooldownUntil = new Date(Date.now() + 60 * 60 * 1000)
+        setNudgeCooldowns(prev => ({ ...prev, [viewerId]: cooldownUntil }))
+      } else {
+        toast({
+          title: "Failed to Nudge",
+          description: result.error || "Could not send nudge",
+          variant: "destructive",
+        })
+        if (result.canNudgeAgainAt) {
+          setNudgeCooldowns(prev => ({ ...prev, [viewerId]: result.canNudgeAgainAt }))
+        }
+      }
+    } catch (error) {
+      console.error("Error nudging viewer:", error)
+      toast({
+        title: "Error",
+        description: "Failed to send nudge",
+        variant: "destructive",
+      })
+    } finally {
+      setNudgingViewerId(null)
+    }
+  }
+
   if (loading) {
     return (
       <main className="min-h-screen bg-background">
         <Navigation />
-        <div className="container mx-auto px-4 py-8 flex items-center justify-center h-[600px]">
+        <div className="container max-w-[1920px] mx-auto px-6 py-8 flex items-center justify-center h-[600px]">
           <div className="flex flex-col items-center gap-4">
             <Loader2 className="w-12 h-12 animate-spin text-primary" />
             <p className="text-muted-foreground">Loading listing...</p>
@@ -364,7 +461,7 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
     return (
       <main className="min-h-screen bg-background">
         <Navigation />
-        <div className="container mx-auto px-4 py-8 flex items-center justify-center h-[600px]">
+        <div className="container max-w-[1920px] mx-auto px-6 py-8 flex items-center justify-center h-[600px]">
           <div className="flex flex-col items-center gap-4">
             <p className="text-lg font-semibold text-destructive">{error || "Listing not found"}</p>
             <Button onClick={() => router.push("/currency")}>Back to Listings</Button>
@@ -378,7 +475,7 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
     <main className="min-h-screen bg-background">
       <Navigation />
 
-      <div className="container mx-auto px-4 py-8">
+      <div className="container max-w-[1920px] mx-auto px-6 py-8">
         {/* Banned Warning Banner */}
         {listing.status === "banned" && (
           <Card className="mb-6 border-red-500 bg-red-50 dark:bg-red-950/20">
@@ -393,6 +490,27 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
                   </h2>
                   <p className="text-red-600 dark:text-red-500 text-lg">
                     This listing has been removed from the marketplace due to violations of our policies and is no longer available for purchase.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </Card>
+        )}
+        
+        {/* Sold Notice Banner */}
+        {listing.status === "sold" && (
+          <Card className="mb-6 border-green-500 bg-green-50 dark:bg-green-950/20">
+            <div className="p-6">
+              <div className="flex items-start gap-4">
+                <div className="p-3 bg-green-500 rounded-full">
+                  <Check className="w-8 h-8 text-white" />
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-2xl font-bold text-green-700 dark:text-green-400 mb-2">
+                    This listing has been sold
+                  </h2>
+                  <p className="text-green-600 dark:text-green-500 text-lg">
+                    This currency is no longer available for purchase. Check out other listings from this seller or browse the marketplace for similar offers.
                   </p>
                 </div>
               </div>
@@ -460,7 +578,7 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
             </div>
 
             {/* Rate Listing */}
-            {listing.status !== "banned" && (
+            {listing.status !== "banned" && listing.status !== "sold" && (
               <Card className="p-6 mb-6">
                 <h2 className="text-xl font-bold mb-4">Rate this Listing</h2>
                 <div className="flex items-center gap-6">
@@ -509,7 +627,7 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
               <p className="text-sm mt-3 opacity-75">Stock: {currencyData.stock.toLocaleString()}</p>
             </div>
 
-            {listing.status !== "banned" && (
+            {listing.status !== "banned" && listing.status !== "sold" && (
               <div className="space-y-3 mb-6">
                 <Button 
                   size="lg" 
@@ -614,6 +732,114 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
             </Card>
           </div>
         </div>
+
+        {/* Listing Viewers Section (Owner Only - Elite Feature) */}
+        {showViewers && (
+          <Card className="mt-8 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <Eye className="w-5 h-5" />
+                Who Viewed This Listing
+              </h2>
+              <Badge variant="secondary" className="flex items-center gap-1">
+                <Crown className="w-3 h-3" />
+                Elite Feature
+              </Badge>
+            </div>
+
+            {viewersLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              </div>
+            ) : requiresUpgrade ? (
+              <div className="text-center py-12 px-4">
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-4">
+                  <Crown className="w-8 h-8 text-primary" />
+                </div>
+                <h3 className="text-lg font-bold mb-2">Upgrade to Elite to View Your Listing Viewers</h3>
+                <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+                  See who's interested in your listing and reach out to potential buyers proactively. This premium feature is available exclusively to Elite members.
+                </p>
+                <Link href="/subscriptions">
+                  <Button size="lg">
+                    <Crown className="w-4 h-4 mr-2" />
+                    Upgrade to Elite
+                  </Button>
+                </Link>
+              </div>
+            ) : viewers.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Eye className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p>No viewers yet</p>
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-col sm:flex-row gap-3 mb-4">
+                  <div className="flex-1">
+                    <Input
+                      placeholder="Search by username..."
+                      value={viewerSearch}
+                      onChange={(e) => setViewerSearch(e.target.value)}
+                      className="w-full"
+                    />
+                  </div>
+                  <select
+                    value={viewerSort}
+                    onChange={(e) => setViewerSort(e.target.value)}
+                    className="px-3 py-2 border rounded-md bg-background min-w-[150px]"
+                  >
+                    <option value="newest">Newest First</option>
+                    <option value="oldest">Oldest First</option>
+                  </select>
+                </div>
+                <div className="space-y-3">
+                  {viewers
+                    .filter((viewer) =>
+                      viewer.username.toLowerCase().includes(viewerSearch.toLowerCase())
+                    )
+                    .sort((a, b) => {
+                      if (viewerSort === "newest") {
+                        return new Date(b.viewedAt).getTime() - new Date(a.viewedAt).getTime()
+                      } else {
+                        return new Date(a.viewedAt).getTime() - new Date(b.viewedAt).getTime()
+                      }
+                    })
+                    .map((viewer) => (
+                  <div key={viewer.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition">
+                    <Link href={`/profile/${viewer.id}`} className="flex items-center gap-3 flex-1">
+                      <img
+                        src={viewer.profilePicture || "/placeholder.svg"}
+                        alt={viewer.username}
+                        className="w-12 h-12 rounded-full object-cover"
+                      />
+                      <div>
+                        <p className="font-semibold hover:text-primary transition">{viewer.username}</p>
+                        <p className="text-sm text-muted-foreground">
+                          Viewed {new Date(viewer.viewedAt).toLocaleString()}
+                        </p>
+                      </div>
+                    </Link>
+                    <Button
+                      size="sm"
+                      onClick={() => handleNudgeViewer(viewer.id, viewer.username)}
+                      disabled={nudgingViewerId === viewer.id || (nudgeCooldowns[viewer.id] && new Date() < nudgeCooldowns[viewer.id])}
+                    >
+                      {nudgingViewerId === viewer.id ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <span className="mr-2">👋</span>
+                      )}
+                      {nudgeCooldowns[viewer.id] && new Date() < nudgeCooldowns[viewer.id]
+                        ? `${Math.ceil((nudgeCooldowns[viewer.id].getTime() - Date.now()) / 60000)}m`
+                        : "Nudge"}
+                    </Button>
+                  </div>
+                ))}
+                </div>
+              </>
+            )}
+          </Card>
+        )}
 
         {/* Safety Tips Section */}
         <Card className="mt-12 p-6 bg-secondary/5 border-secondary">

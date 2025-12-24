@@ -23,6 +23,7 @@ export interface UserProfileData {
   listings: any[]
   vouches: any[]
   reports: any[]
+  transactions: any[]
   soldItems: number
   isFollowing: boolean
   isOwnProfile: boolean
@@ -179,6 +180,91 @@ export async function getProfile(usernameOrId: string): Promise<GetProfileResult
       },
     })
 
+    // Fetch completed transactions with details
+    let transactions: any[] = []
+    try {
+      const rawTransactions = await prisma.transaction.findMany({
+        where: {
+          OR: [
+            { buyerId: user.id },
+            { sellerId: user.id },
+          ],
+          status: "COMPLETED",
+        },
+        include: {
+          buyer: {
+            select: { id: true, username: true, profilePicture: true },
+          },
+          seller: {
+            select: { id: true, username: true, profilePicture: true },
+          },
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 50,
+      })
+
+      // Manually fetch listing details based on listingType
+      transactions = await Promise.all(
+        rawTransactions.map(async (t: any) => {
+          let listing = null
+          let game = null
+
+          try {
+            if (t.listingType === "ITEM") {
+              listing = await prisma.itemListing.findUnique({
+                where: { id: t.listingId },
+                select: {
+                  id: true,
+                  title: true,
+                  image: true,
+                  game: {
+                    select: { displayName: true }
+                  }
+                },
+              })
+              game = listing?.game?.displayName
+            } else if (t.listingType === "CURRENCY") {
+              listing = await prisma.currencyListing.findUnique({
+                where: { id: t.listingId },
+                select: {
+                  id: true,
+                  title: true,
+                  image: true,
+                  game: {
+                    select: { displayName: true }
+                  }
+                },
+              })
+              game = listing?.game?.displayName
+            } else if (t.listingType === "OLD") {
+              // Handle old listings table
+              listing = await prisma.listing.findUnique({
+                where: { id: t.listingId },
+                select: {
+                  id: true,
+                  title: true,
+                  image: true,
+                  game: true,
+                },
+              })
+              game = listing?.game
+            }
+          } catch (err) {
+            console.error("Error fetching listing for transaction:", t.id, err)
+          }
+
+          return {
+            ...t,
+            listing,
+            game,
+          }
+        })
+      )
+    } catch (err) {
+      console.error("Error fetching transactions:", err)
+      transactions = []
+    }
+
     // Calculate response rate from conversations
     const conversations = await prisma.conversation.findMany({
       where: {
@@ -249,6 +335,21 @@ export async function getProfile(usernameOrId: string): Promise<GetProfileResult
         status: report.status,
         createdAt: report.createdAt,
         reporter: report.reporter,
+      })),
+      transactions: transactions.map((t: any) => ({
+        id: t.id,
+        buyerId: t.buyerId,
+        sellerId: t.sellerId,
+        buyerUsername: t.buyer?.username || "Unknown",
+        sellerUsername: t.seller?.username || "Unknown",
+        listingId: t.listingId,
+        listingTitle: t.listing?.title || "Unknown Item",
+        listingImage: t.listing?.image || "/placeholder.svg",
+        game: t.game || "Roblox",
+        amount: t.totalPrice || t.price,
+        status: t.status,
+        createdAt: t.createdAt,
+        completedAt: t.updatedAt,
       })),
       soldItems: successfulTransactions,
       isFollowing: false, // TODO: Check current user follow status when auth is implemented

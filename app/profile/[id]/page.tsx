@@ -23,7 +23,6 @@ import {
   ArrowUpDown,
   Rocket,
   CheckCircle,
-  Percent,
   MessageSquare,
   Loader2,
 } from "lucide-react"
@@ -72,6 +71,8 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
   const [reportDetails, setReportDetails] = useState("")
   const [reportLoading, setReportLoading] = useState(false)
   const [reportStatusFilter, setReportStatusFilter] = useState("all")
+  const [transactionSort, setTransactionSort] = useState("newest")
+  const [transactionSearch, setTransactionSearch] = useState("")
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -194,7 +195,7 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
     return (
       <main className="min-h-screen bg-background">
         <Navigation />
-        <div className="container mx-auto px-4 py-12 flex flex-col items-center justify-center min-h-96">
+        <div className="container max-w-[1920px] mx-auto px-6 py-12 flex flex-col items-center justify-center min-h-96">
           <div className="text-center">
             <h1 className="text-4xl font-bold mb-2">404</h1>
             <p className="text-xl text-muted-foreground mb-6">{error || "Profile not found"}</p>
@@ -227,6 +228,27 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
     return report.status === reportStatusFilter
   })
 
+  const filteredTransactions = (profile?.transactions || [])
+    .filter((transaction: any) => {
+      if (!transactionSearch) return true
+      const searchLower = transactionSearch.toLowerCase()
+      return (
+        transaction.listingTitle?.toLowerCase().includes(searchLower) ||
+        transaction.buyerUsername?.toLowerCase().includes(searchLower) ||
+        transaction.sellerUsername?.toLowerCase().includes(searchLower) ||
+        transaction.game?.toLowerCase().includes(searchLower)
+      )
+    })
+    .sort((a: any, b: any) => {
+      if (transactionSort === "newest") {
+        return new Date(b.completedAt || b.createdAt).getTime() - new Date(a.completedAt || a.createdAt).getTime()
+      }
+      if (transactionSort === "oldest") {
+        return new Date(a.completedAt || a.createdAt).getTime() - new Date(b.completedAt || b.createdAt).getTime()
+      }
+      return 0
+    })
+
   const reportStats = {
     total: profile?.reports?.length || 0,
     pending: profile?.reports?.filter((r: any) => r.status === "PENDING").length || 0,
@@ -250,7 +272,7 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
         <div className="absolute inset-0 bg-gradient-to-t from-background to-transparent" />
       </div>
 
-      <div className="container mx-auto px-4 -mt-20 relative z-10">
+      <div className="container max-w-[1920px] mx-auto px-6 -mt-20 relative z-10">
         {/* Banned Warning Banner */}
         {profile.isBanned && (
           <Card className="mb-4 border-red-500 bg-red-50 dark:bg-red-950/20">
@@ -457,6 +479,7 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
           <TabsList className="mb-6">
             <TabsTrigger value="listings">Listings ({profile.listings?.length || 0})</TabsTrigger>
             <TabsTrigger value="vouches">Vouches ({profile.vouchCount || 0})</TabsTrigger>
+            <TabsTrigger value="transactions">Transactions ({profile.transactions?.length || 0})</TabsTrigger>
             <TabsTrigger value="reports">Reports ({profile.reports?.length || 0})</TabsTrigger>
           </TabsList>
 
@@ -617,6 +640,110 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
                 )}
               </div>
             </div>
+          </TabsContent>
+
+          {/* Transactions Tab */}
+          <TabsContent value="transactions">
+            {/* Filters */}
+            <div className="flex flex-wrap gap-4 mb-6">
+              <div className="flex-1 min-w-[200px]">
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Search transactions..."
+                    value={transactionSearch}
+                    onChange={(e) => setTransactionSearch(e.target.value)}
+                    className="w-full px-4 py-2 pr-10 border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                  <MessageSquare className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                </div>
+              </div>
+
+              <Select value={transactionSort} onValueChange={setTransactionSort}>
+                <SelectTrigger className="w-[150px]">
+                  <ArrowUpDown className="w-4 h-4 mr-2" />
+                  <SelectValue placeholder="Sort" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="newest">Newest First</SelectItem>
+                  <SelectItem value="oldest">Oldest First</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Transactions List */}
+            <div className="space-y-4">
+              {filteredTransactions.map((transaction: any) => (
+                <Card key={transaction.id} className="p-6">
+                  <div className="flex flex-col md:flex-row gap-6">
+                    {/* Transaction Image */}
+                    <div className="w-32 h-32 bg-muted rounded-lg overflow-hidden flex-shrink-0">
+                      <img
+                        src={transaction.listingImage || "/placeholder.svg"}
+                        alt={transaction.listingTitle}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+
+                    {/* Transaction Details */}
+                    <div className="flex-1">
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <h3 className="font-bold text-lg mb-1">{transaction.listingTitle}</h3>
+                          <p className="text-sm text-muted-foreground">{transaction.game || "Roblox"}</p>
+                        </div>
+                        <Badge className="bg-green-500 text-white">
+                          <CheckCircle className="w-3 h-3 mr-1" />
+                          Completed
+                        </Badge>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-1">Amount</p>
+                          <p className="font-bold text-primary text-lg">₱{transaction.amount?.toLocaleString() || "0"}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-1">
+                            {profile.id === transaction.sellerId ? "Buyer" : "Seller"}
+                          </p>
+                          <Link 
+                            href={`/profile/${profile.id === transaction.sellerId ? transaction.buyerId : transaction.sellerId}`}
+                            className="font-semibold hover:text-primary hover:underline flex items-center gap-1"
+                          >
+                            {profile.id === transaction.sellerId ? transaction.buyerUsername : transaction.sellerUsername}
+                          </Link>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-1">Date</p>
+                          <p className="font-semibold text-sm">
+                            {new Date(transaction.completedAt || transaction.createdAt).toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric"
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+
+            {filteredTransactions.length === 0 && (
+              <Card className="p-12 text-center">
+                <TrendingUp className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">
+                  {transactionSearch ? "No transactions found matching your search" : "No completed transactions yet"}
+                </p>
+                {!transactionSearch && (
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Completed transactions will appear here
+                  </p>
+                )}
+              </Card>
+            )}
           </TabsContent>
 
           {/* Reports Tab */}

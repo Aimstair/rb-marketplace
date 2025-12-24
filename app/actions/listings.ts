@@ -31,6 +31,7 @@ export async function getListing(id: string, currentUserId?: string): Promise<{
     condition: string
     status: string
     views: number
+    pricingMode?: string
     minOrder?: number
     maxOrder?: number
     seller: {
@@ -81,6 +82,7 @@ export async function getListing(id: string, currentUserId?: string): Promise<{
         condition: true,
         status: true,
         views: true,
+        pricingMode: true,
         upvotes: true,
         downvotes: true,
         createdAt: true,
@@ -134,6 +136,7 @@ export async function getListing(id: string, currentUserId?: string): Promise<{
           image: true,
           status: true,
           views: true,
+          pricingMode: true,
           upvotes: true,
           downvotes: true,
           minOrder: true,
@@ -246,6 +249,41 @@ export async function getListing(id: string, currentUserId?: string): Promise<{
       userVote = (vote?.type as "UP" | "DOWN") || null
     }
 
+    // Auto-update status to SOLD if insufficient stock
+    let finalStatus = listing.status
+    if (listing.status === "available") {
+      if (listingType === "ITEM") {
+        // For item listings, check based on pricing mode
+        let isInsufficient = false
+        if (listing.pricingMode === "per-peso") {
+          // For per-peso mode: stock must be >= price (items per peso)
+          // Example: 5 items per peso needs at least 5 items in stock
+          isInsufficient = listing.stock < listing.price
+        } else {
+          // For per-item mode: just check if stock is less than 1
+          isInsufficient = listing.stock < 1
+        }
+        
+        if (isInsufficient) {
+          finalStatus = "sold"
+          await prisma.itemListing.update({
+            where: { id: listing.id },
+            data: { status: "sold" },
+          })
+        }
+      } else if (listingType === "CURRENCY") {
+        // For currency listings, check if stock is less than the rate per peso
+        // (minimum purchase is 1 peso, which requires ratePerPeso amount of currency)
+        if (listing.stock < listing.ratePerPeso) {
+          finalStatus = "sold"
+          await prisma.currencyListing.update({
+            where: { id: listing.id },
+            data: { status: "sold" },
+          })
+        }
+      }
+    }
+
     return {
       success: true,
       listing: {
@@ -260,8 +298,9 @@ export async function getListing(id: string, currentUserId?: string): Promise<{
         category: listingType === "ITEM" ? listing.gameItem.category : "Currency",
         itemType: listingType === "ITEM" ? listing.gameItem.itemType : listing.gameCurrency.displayName,
         condition: listingType === "ITEM" ? listing.condition : "New",
-        status: listing.status,
+        status: finalStatus,
         views: listing.views || 0,
+        pricingMode: listing.pricingMode || "per-item",
         minOrder,
         maxOrder,
         seller: {
@@ -414,6 +453,14 @@ export async function getListings(
           select: {
             id: true,
             username: true,
+            vouchesReceived: {
+              where: {
+                status: "VALID",
+              },
+              select: {
+                id: true,
+              },
+            },
           },
         },
         game: {
@@ -433,26 +480,60 @@ export async function getListings(
       take: itemsPerPage,
     })
 
+    // Auto-update listings with insufficient stock to SOLD
+    const updatePromises = listings
+      .filter((listing: any) => {
+        if (listing.status !== "available") return false
+        // Check based on pricing mode
+        if (listing.pricingMode === "per-peso") {
+          return listing.stock < listing.price
+        } else {
+          return listing.stock < 1
+        }
+      })
+      .map((listing: any) =>
+        prisma.itemListing.update({
+          where: { id: listing.id },
+          data: { status: "sold" },
+        })
+      )
+
+    if (updatePromises.length > 0) {
+      await Promise.all(updatePromises)
+    }
+
     // Transform to response format
-    const transformedListings: ListingResponse[] = listings.map((listing: any) => ({
-      id: listing.id,
-      title: listing.title,
-      game: listing.game.displayName,
-      price: listing.price,
-      image: listing.image,
-      seller: {
-        id: listing.seller.id,
-        username: listing.seller.username,
-      },
-      vouch: 0, // TODO: Add vouch count from seller
-      status: listing.status,
-      category: listing.gameItem.category,
-      itemType: listing.gameItem.itemType,
-      condition: listing.condition,
-      upvotes: listing.upvotes,
-      downvotes: listing.downvotes,
-      featured: listing.featured,
-    }))
+    const transformedListings: ListingResponse[] = listings.map((listing: any) => {
+      // Determine if should be marked as sold
+      let displayStatus = listing.status
+      if (listing.status === "available") {
+        if (listing.pricingMode === "per-peso") {
+          displayStatus = listing.stock < listing.price ? "sold" : listing.status
+        } else {
+          displayStatus = listing.stock < 1 ? "sold" : listing.status
+        }
+      }
+      
+      return {
+        id: listing.id,
+        title: listing.title,
+        game: listing.game.displayName,
+        price: listing.price,
+        image: listing.image,
+        seller: {
+          id: listing.seller.id,
+          username: listing.seller.username,
+        },
+        vouch: listing.seller.vouchesReceived?.length || 0,
+        status: displayStatus,
+        category: listing.gameItem.category,
+        itemType: listing.gameItem.itemType,
+        condition: listing.condition,
+        upvotes: listing.upvotes,
+        downvotes: listing.downvotes,
+        featured: listing.featured,
+      }
+    })
 
     const totalPages = Math.ceil(total / itemsPerPage)
 
@@ -712,6 +793,20 @@ export async function getCurrencyListings(): Promise<CurrencyListing[]> {
       },
     })
 
+    // Auto-update currency listings with insufficient stock to SOLD
+    const updatePromises = listings
+      .filter((listing: any) => listing.status === "available" && listing.stock < listing.ratePerPeso)
+      .map((listing: any) =>
+        prisma.currencyListing.update({
+          where: { id: listing.id },
+          data: { status: "sold" },
+        })
+      )
+
+    if (updatePromises.length > 0) {
+      await Promise.all(updatePromises)
+    }
+
     return listings.map((listing: any) => ({
       id: listing.id,
       game: listing.game.displayName,
@@ -724,7 +819,7 @@ export async function getCurrencyListings(): Promise<CurrencyListing[]> {
       sellerVouches: listing.seller.vouchesReceived?.length || 0,
       upvotes: listing.upvotes || 0,
       downvotes: listing.downvotes || 0,
-      status: (listing.status === "available" ? "Available" : listing.status) as
+      status: (listing.stock < listing.ratePerPeso ? "Sold" : listing.status === "available" ? "Available" : listing.status) as
         | "Available"
         | "Sold"
         | "Pending",
@@ -801,6 +896,16 @@ export async function createListing(input: CreateItemListingInput): Promise<Crea
       }
     }
 
+    // Check if stock is sufficient based on pricing mode
+    let initialStatus: string
+    if (validatedData.pricingMode === "per-peso") {
+      // For per-peso: stock must be >= price (items per peso)
+      initialStatus = validatedData.stock < validatedData.price ? "sold" : "available"
+    } else {
+      // For per-item: stock must be >= 1
+      initialStatus = validatedData.stock < 1 ? "sold" : "available"
+    }
+
     // Create the item listing
     const listing = await prisma.itemListing.create({
       data: {
@@ -814,7 +919,7 @@ export async function createListing(input: CreateItemListingInput): Promise<Crea
         stock: validatedData.stock,
         pricingMode: validatedData.pricingMode || "per-item",
         sellerId: seller.id,
-        status: "available",
+        status: initialStatus,
       },
     })
 
@@ -1118,19 +1223,62 @@ export async function getFilterOptions(type?: string): Promise<{
   value: string
 }[]> {
   try {
-    const where = type ? { type, isActive: true } : { isActive: true }
+    if (type === "CATEGORY") {
+      // Get unique categories from GameItem table
+      const categories = await prisma.gameItem.findMany({
+        where: { isActive: true },
+        select: { category: true },
+        distinct: ['category'],
+      })
+      
+      return categories
+        .map((cat, index) => ({
+          id: `cat-${index}`,
+          label: cat.category,
+          value: cat.category,
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label))
+    } else if (type === "GAME") {
+      // Get games from Game table
+      const games = await prisma.game.findMany({
+        where: { isActive: true },
+        orderBy: { order: 'asc' },
+        select: {
+          id: true,
+          name: true,
+          displayName: true,
+        },
+      })
+      
+      return games
+        .filter(game => game.name !== "General") // Exclude General from filters
+        .map(game => ({
+          id: game.id,
+          label: game.displayName,
+          value: game.name,
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label))
+    } else if (type === "ITEM_TYPE") {
+      // Get unique item types from GameItem table
+      const itemTypes = await prisma.gameItem.findMany({
+        where: { 
+          isActive: true,
+          category: "Games", // Only get item types from Games category
+        },
+        select: { itemType: true },
+        distinct: ['itemType'],
+      })
+      
+      return itemTypes
+        .map((type, index) => ({
+          id: `type-${index}`,
+          label: type.itemType,
+          value: type.itemType,
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label))
+    }
     
-    const options = await prisma.filterOption.findMany({
-      where,
-      orderBy: { order: "asc" },
-      select: {
-        id: true,
-        label: true,
-        value: true,
-      },
-    })
-
-    return options
+    return []
   } catch (error) {
     console.error("Error fetching filter options:", error)
     return []
@@ -1184,6 +1332,20 @@ export async function getNewCurrencyListings(): Promise<{
       },
     })
 
+    // Auto-update currency listings with insufficient stock to SOLD
+    const updatePromises = listings
+      .filter((listing: any) => listing.status === "available" && listing.stock < listing.ratePerPeso)
+      .map((listing: any) =>
+        prisma.currencyListing.update({
+          where: { id: listing.id },
+          data: { status: "sold" },
+        })
+      )
+
+    if (updatePromises.length > 0) {
+      await Promise.all(updatePromises)
+    }
+
     return listings.map((listing) => ({
       id: listing.id,
       gameName: listing.game.displayName,
@@ -1195,7 +1357,7 @@ export async function getNewCurrencyListings(): Promise<{
       sellerVouches: listing.seller.vouchesReceived?.length || 0,
       upvotes: listing.upvotes,
       downvotes: listing.downvotes,
-      status: listing.status,
+      status: listing.stock < listing.ratePerPeso ? "sold" : listing.status,
     }))
   } catch (error) {
     console.error("Error fetching new currency listings:", error)
@@ -1264,6 +1426,9 @@ export async function createNewCurrencyListing(input: CreateCurrencyListingInput
       }
     }
 
+    // Check if stock is sufficient for the minimum sellable unit (ratePerPeso)
+    const initialStatus = validatedData.stock < validatedData.ratePerPeso ? "sold" : "available"
+
     const listing = await prisma.currencyListing.create({
       data: {
         title: `${game.displayName} - ${gameCurrency.displayName}`,
@@ -1277,7 +1442,7 @@ export async function createNewCurrencyListing(input: CreateCurrencyListingInput
         maxOrder: validatedData.maxOrder,
         image: validatedData.image,
         sellerId: seller.id,
-        status: "available",
+        status: initialStatus,
       },
     })
 
@@ -1296,6 +1461,286 @@ export async function createNewCurrencyListing(input: CreateCurrencyListingInput
     return {
       success: false,
       error: "Failed to create currency listing. Please try again.",
+    }
+  }
+}
+
+/**
+ * Get list of users who viewed a listing (for Elite subscription owners only)
+ */
+export async function getListingViewers(
+  listingId: string,
+  listingType: "ITEM" | "CURRENCY"
+): Promise<{
+  success: boolean
+  viewers?: Array<{
+    id: string
+    username: string
+    profilePicture: string | null
+    viewedAt: Date
+  }>
+  error?: string
+  requiresUpgrade?: boolean
+}> {
+  try {
+    const session = await auth()
+    if (!session?.user?.email) {
+      return {
+        success: false,
+        error: "You must be logged in to view this data",
+      }
+    }
+
+    const currentUser = await prisma.user.findUnique({
+      where: { email: session.user.email },
+      select: { 
+        id: true, 
+        subscriptionTier: true 
+      },
+    })
+
+    if (!currentUser) {
+      return {
+        success: false,
+        error: "User account not found",
+      }
+    }
+
+    // Check if user owns the listing
+    let isOwner = false
+    if (listingType === "ITEM") {
+      const listing = await prisma.itemListing.findUnique({
+        where: { id: listingId },
+        select: { sellerId: true },
+      })
+      isOwner = listing?.sellerId === currentUser.id
+    } else if (listingType === "CURRENCY") {
+      const listing = await prisma.currencyListing.findUnique({
+        where: { id: listingId },
+        select: { sellerId: true },
+      })
+      isOwner = listing?.sellerId === currentUser.id
+    }
+
+    if (!isOwner) {
+      return {
+        success: false,
+        error: "You can only view viewers for your own listings",
+      }
+    }
+
+    // Check if user has Elite subscription
+    if (currentUser.subscriptionTier !== "ELITE") {
+      return {
+        success: true,
+        requiresUpgrade: true,
+        viewers: [],
+      }
+    }
+
+    // Fetch viewers with user details (exclude owner)
+    const views = await prisma.listingView.findMany({
+      where: {
+        listingId,
+        listingType,
+        AND: [
+          { userId: { not: null } }, // Only logged-in users
+          { userId: { not: currentUser.id } }, // Exclude owner
+        ],
+      },
+      orderBy: {
+        viewedAt: "desc",
+      },
+      take: 50, // Limit to last 50 viewers
+    })
+
+    // Get unique user IDs
+    const userIds = [...new Set(views.map(v => v.userId).filter(Boolean))] as string[]
+
+    // Fetch user details
+    const users = await prisma.user.findMany({
+      where: {
+        id: { in: userIds },
+      },
+      select: {
+        id: true,
+        username: true,
+        profilePicture: true,
+      },
+    })
+
+    // Create a map for quick lookup
+    const userMap = new Map(users.map(u => [u.id, u]))
+
+    // Get the most recent view for each user
+    const uniqueViewers = new Map<string, { user: typeof users[0], viewedAt: Date }>()
+    
+    for (const view of views) {
+      if (view.userId && !uniqueViewers.has(view.userId)) {
+        const user = userMap.get(view.userId)
+        if (user) {
+          uniqueViewers.set(view.userId, {
+            user,
+            viewedAt: view.viewedAt,
+          })
+        }
+      }
+    }
+
+    // Get the last nudge time for each viewer (within the last hour)
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
+    const notificationLink = `/${listingType.toLowerCase()}/${listingId}`
+    
+    const recentNudges = await prisma.notification.findMany({
+      where: {
+        userId: { in: userIds },
+        type: "LISTING_NUDGE",
+        link: notificationLink,
+        createdAt: { gte: oneHourAgo },
+      },
+      select: {
+        userId: true,
+        createdAt: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    })
+
+    // Create a map of userId to last nudge time
+    const nudgeMap = new Map<string, Date>()
+    for (const nudge of recentNudges) {
+      if (!nudgeMap.has(nudge.userId)) {
+        nudgeMap.set(nudge.userId, nudge.createdAt)
+      }
+    }
+
+    const viewers = Array.from(uniqueViewers.values()).map(({ user, viewedAt }) => ({
+      id: user.id,
+      username: user.username,
+      profilePicture: user.profilePicture,
+      viewedAt,
+      lastNudgedAt: nudgeMap.get(user.id) || null,
+    }))
+
+    return {
+      success: true,
+      viewers,
+    }
+  } catch (error) {
+    console.error("Error fetching listing viewers:", error)
+    return {
+      success: false,
+      error: "Failed to fetch viewers",
+    }
+  }
+}
+
+/**
+ * Nudge a listing viewer to encourage them to purchase
+ * Can only be used once per hour per viewer
+ */
+export async function nudgeViewer(
+  viewerId: string,
+  listingId: string,
+  listingType: "ITEM" | "CURRENCY",
+  listingTitle: string
+): Promise<{
+  success: boolean
+  error?: string
+  canNudgeAgainAt?: Date
+}> {
+  try {
+    const session = await auth()
+    if (!session?.user?.email) {
+      return {
+        success: false,
+        error: "You must be logged in to nudge viewers",
+      }
+    }
+
+    const currentUser = await prisma.user.findUnique({
+      where: { email: session.user.email },
+      select: { id: true },
+    })
+
+    if (!currentUser) {
+      return {
+        success: false,
+        error: "User account not found",
+      }
+    }
+
+    // Check if user owns the listing
+    let isOwner = false
+    if (listingType === "ITEM") {
+      const listing = await prisma.itemListing.findUnique({
+        where: { id: listingId },
+        select: { sellerId: true },
+      })
+      isOwner = listing?.sellerId === currentUser.id
+    } else if (listingType === "CURRENCY") {
+      const listing = await prisma.currencyListing.findUnique({
+        where: { id: listingId },
+        select: { sellerId: true },
+      })
+      isOwner = listing?.sellerId === currentUser.id
+    }
+
+    if (!isOwner) {
+      return {
+        success: false,
+        error: "You can only nudge viewers for your own listings",
+      }
+    }
+
+    // Check for existing nudge in the last hour
+    // We'll check by looking at the notification link which contains the listing ID
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
+    const notificationLink = `/${listingType.toLowerCase()}/${listingId}`
+    
+    const recentNudge = await prisma.notification.findFirst({
+      where: {
+        userId: viewerId,
+        type: "LISTING_NUDGE",
+        link: notificationLink,
+        createdAt: {
+          gte: oneHourAgo,
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    })
+
+    if (recentNudge) {
+      const canNudgeAgainAt = new Date(recentNudge.createdAt.getTime() + 60 * 60 * 1000)
+      return {
+        success: false,
+        error: "You can only nudge this viewer once per hour",
+        canNudgeAgainAt,
+      }
+    }
+
+    // Create notification for the viewer
+    await prisma.notification.create({
+      data: {
+        userId: viewerId,
+        type: "LISTING_NUDGE",
+        title: "Someone noticed you viewed their listing! 👀",
+        message: `The seller wants to remind you about: ${listingTitle}`,
+        link: notificationLink,
+      },
+    })
+
+    return {
+      success: true,
+    }
+  } catch (error) {
+    console.error("Error nudging viewer:", error)
+    return {
+      success: false,
+      error: "Failed to send nudge",
     }
   }
 }

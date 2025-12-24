@@ -85,7 +85,7 @@ export default function MyListingsPage() {
     return (
       <>
         <Navigation />
-        <main className="container mx-auto px-4 py-8">
+        <main className="container max-w-[1920px] mx-auto px-6 py-8">
           <Skeleton className="h-12 w-64 mb-8" />
           <Skeleton className="h-24 mb-6" />
           <Skeleton className="h-96 mb-8" />
@@ -145,7 +145,7 @@ export default function MyListingsPage() {
   return (
     <>
       <Navigation />
-      <main className="container mx-auto px-4 py-8">
+      <main className="container max-w-[1920px] mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-3xl font-bold">My Listings</h1>
           <Link href="/sell">

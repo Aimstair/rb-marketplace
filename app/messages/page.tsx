@@ -420,7 +420,7 @@ export default function MessagesPage() {
     return (
       <>
         <Navigation />
-        <main className="container mx-auto px-4 py-8">
+        <main className="container max-w-[1920px] mx-auto px-6 py-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-[700px]">
             <div className="md:col-span-1 border rounded-lg bg-card overflow-hidden flex flex-col items-center justify-center">
               <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
@@ -1029,7 +1029,10 @@ export default function MessagesPage() {
             setTransaction(transactionResult.transaction)
           }
         }
-        alert("Counteroffer accepted successfully!")
+        toast({
+          title: "Success",
+          description: "Counteroffer accepted successfully!",
+        })
       } else {
         toast({
           title: "Error",
@@ -1074,7 +1077,10 @@ export default function MessagesPage() {
             setMessages(convertedMessages)
           }
         }
-        alert("Counteroffer declined")
+        toast({
+          title: "Counteroffer Declined",
+          description: "You have declined the counteroffer",
+        })
       } else {
         toast({
           title: "Error",
@@ -1209,7 +1215,7 @@ export default function MessagesPage() {
   return (
     <>
       <Navigation />
-      <main className="container mx-auto px-4 py-8">
+      <main className="container max-w-[1920px] mx-auto px-6 py-8">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-[700px]">
           {/* Contacts List */}
           <div className="md:col-span-1 border rounded-lg bg-card overflow-hidden flex flex-col">

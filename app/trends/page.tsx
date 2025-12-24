@@ -110,7 +110,7 @@ export default function TrendsPage() {
       <>
         <Navigation />
         <main className="min-h-screen bg-background py-8">
-          <div className="container mx-auto px-4">
+          <div className="container max-w-[1920px] mx-auto px-6">
             <div className="flex items-center justify-center h-[600px]">
               <div className="text-center">
                 <Loader2 className="w-12 h-12 animate-spin mx-auto mb-4 text-primary" />
@@ -127,7 +127,7 @@ export default function TrendsPage() {
     <>
       <Navigation />
       <main className="min-h-screen bg-background py-8">
-        <div className="container mx-auto px-4">
+        <div className="container max-w-[1920px] mx-auto px-6">
           <div className="mb-8">
             <h1 className="text-4xl font-bold text-balance">Marketplace Trends</h1>
             <p className="text-muted-foreground mt-2">

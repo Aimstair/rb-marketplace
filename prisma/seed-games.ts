@@ -8,12 +8,34 @@ async function main() {
   // Define game and currency data
   const gamesData = [
     {
+      name: "General",
+      displayName: "General",
+      description: "General marketplace items (Roblox Accessories, etc.)",
+      currencies: [],
+    },
+    {
       name: "Roblox",
       displayName: "Roblox",
       description: "Popular online gaming platform",
       currencies: [
         { name: "Robux", displayName: "Robux", description: "Official Roblox currency" },
-        { name: "Limited Items", displayName: "Limited Items", description: "Rare collectible items" },
+      ],
+    },
+    {
+      name: "Grow a Garden",
+      displayName: "Grow a Garden",
+      description: "Grow your own virtual garden",
+      currencies: [
+        { name: "Sheckles", displayName: "Sheckles", description: "In-game currency" },
+        { name: "Tokens", displayName: "Tokens", description: "In-game currency" },
+      ],
+    },
+    {
+      name: "Dragon Adventures",
+      displayName: "Dragon Adventures",
+      description: "Raise and train dragons",
+      currencies: [
+        { name: "Coins", displayName: "Coins", description: "In-game currency" },
       ],
     },
     {
@@ -21,8 +43,7 @@ async function main() {
       displayName: "Adopt Me",
       description: "Pet adoption and trading game",
       currencies: [
-        { name: "Bucks", displayName: "Bucks", description: "In-game currency" },
-        { name: "Pets", displayName: "Pets", description: "Adoptable pets" },
+        { name: "Gems", displayName: "Gems", description: "In-game currency" },
       ],
     },
     {
@@ -31,8 +52,7 @@ async function main() {
       description: "One Piece inspired adventure game",
       currencies: [
         { name: "Fragments", displayName: "Fragments", description: "Used for special purchases" },
-        { name: "Gems", displayName: "Gems", description: "Premium currency" },
-        { name: "Beli", displayName: "Beli", description: "Main currency" },
+        { name: "Bounty", displayName: "Bounty", description: "Player bounty" },
       ],
     },
     {
@@ -41,8 +61,6 @@ async function main() {
       description: "Pet collection and trading game",
       currencies: [
         { name: "Gems", displayName: "Gems", description: "In-game currency" },
-        { name: "Huge Pets", displayName: "Huge Pets", description: "Rare huge pets" },
-        { name: "Titanic Pets", displayName: "Titanic Pets", description: "Ultra rare pets" },
       ],
     },
     {
@@ -51,61 +69,67 @@ async function main() {
       description: "Latest pet collection game",
       currencies: [
         { name: "Gems", displayName: "Gems", description: "In-game currency" },
-        { name: "Huge Pets", displayName: "Huge Pets", description: "Rare huge pets" },
-        { name: "Titanic Pets", displayName: "Titanic Pets", description: "Ultra rare pets" },
       ],
+    },
+    {
+      name: "Steal a Brainrot",
+      displayName: "Steal a Brainrot",
+      description: "Steal and collect brainrot memes",
+      currencies: [],
+    },
+    {
+      name: "Plants vs Brainrot",
+      displayName: "Plants vs Brainrot",
+      description: "Tower defense with brainrot theme",
+      currencies: [],
+    },
+    {
+      name: "Fisch",
+      displayName: "Fisch",
+      description: "Fishing simulation game",
+      currencies: [],
+    },
+    {
+      name: "Fish It",
+      displayName: "Fish It",
+      description: "Fishing adventure game",
+      currencies: [],
+    },
+    {
+      name: "Anime Last Stand",
+      displayName: "Anime Last Stand",
+      description: "Anime tower defense game",
+      currencies: [],
+    },
+    {
+      name: "Anime Vanguards",
+      displayName: "Anime Vanguards",
+      description: "Anime battle game",
+      currencies: [],
     },
     {
       name: "Murder Mystery 2",
       displayName: "Murder Mystery 2",
       description: "Mystery and survival game",
-      currencies: [
-        { name: "Coins", displayName: "Coins", description: "In-game currency" },
-        { name: "Knives", displayName: "Knives", description: "Collectible weapons" },
-        { name: "Guns", displayName: "Guns", description: "Collectible weapons" },
-      ],
-    },
-    {
-      name: "Jailbreak",
-      displayName: "Jailbreak",
-      description: "Cops and robbers game",
-      currencies: [
-        { name: "Cash", displayName: "Cash", description: "In-game currency" },
-        { name: "Vehicles", displayName: "Vehicles", description: "Cars and vehicles" },
-      ],
-    },
-    {
-      name: "Tower of Hell",
-      displayName: "Tower of Hell",
-      description: "Parkour obstacle course",
-      currencies: [
-        { name: "Coins", displayName: "Coins", description: "In-game currency" },
-      ],
-    },
-    {
-      name: "Brookhaven",
-      displayName: "Brookhaven",
-      description: "Roleplay and life simulation",
-      currencies: [
-        { name: "Cash", displayName: "Cash", description: "In-game currency" },
-      ],
+      currencies: [],
     },
     {
       name: "Anime Fighting Simulator",
       displayName: "Anime Fighting Simulator",
       description: "Anime-themed combat game",
-      currencies: [
-        { name: "Yen", displayName: "Yen", description: "In-game currency" },
-        { name: "Chikara Shards", displayName: "Chikara Shards", description: "Premium currency" },
-      ],
+      currencies: [],
     },
     {
-      name: "Da Hood",
-      displayName: "Da Hood",
-      description: "Hood life roleplay game",
-      currencies: [
-        { name: "Cash", displayName: "Cash", description: "In-game currency" },
-      ],
+      name: "Bubble Gum Simulator",
+      displayName: "Bubble Gum Simulator",
+      description: "Bubble gum collection game",
+      currencies: [],
+    },
+    {
+      name: "Grand Piece Online",
+      displayName: "Grand Piece Online",
+      description: "One Piece inspired RPG",
+      currencies: [],
     },
   ]
 
