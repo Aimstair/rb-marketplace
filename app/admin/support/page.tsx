@@ -12,145 +12,79 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
 import { useToast } from "@/hooks/use-toast"
-import { getSupportTickets, closeTicket } from "@/app/actions/admin"
+import { getSupportTickets, closeTicket, updateTicketStatus, reopenTicket, getTicketMessages, addTicketReply } from "@/app/actions/admin"
 import { useSession } from "next-auth/react"
-
-const mockTickets = [
-  {
-    id: "TKT-001",
-    subject: "Cannot withdraw my Robux",
-    user: { username: "TrustyShopper", avatar: "/placeholder.svg?key=fjtii", email: "trusty@example.com" },
-    category: "account",
-    priority: "high",
-    status: "open",
-    createdAt: "2 hours ago",
-    messages: [
-      {
-        sender: "user",
-        message: "I've been trying to withdraw my Robux for 3 days now but it keeps failing. Please help!",
-        time: "2 hours ago",
-      },
-      {
-        sender: "admin",
-        message: "Hi! I'm looking into this for you. Can you provide your Roblox username?",
-        time: "1 hour ago",
-      },
-      { sender: "user", message: "My Roblox username is TrustyShopperRBX", time: "45 min ago" },
-    ],
-  },
-  {
-    id: "TKT-002",
-    subject: "Appeal for ban",
-    user: { username: "BannedUser", avatar: "/placeholder.svg?key=g0uez", email: "banned@example.com" },
-    category: "appeal",
-    priority: "medium",
-    status: "pending",
-    createdAt: "1 day ago",
-    messages: [
-      {
-        sender: "user",
-        message: "I was wrongfully banned. I never scammed anyone. Please review my case.",
-        time: "1 day ago",
-      },
-    ],
-  },
-  {
-    id: "TKT-003",
-    subject: "Transaction dispute - Item not received",
-    user: { username: "VictimUser", avatar: "/placeholder.svg?key=hqrx9", email: "victim@example.com" },
-    category: "dispute",
-    priority: "high",
-    status: "in-progress",
-    createdAt: "5 hours ago",
-    messages: [
-      {
-        sender: "user",
-        message: "I paid $200 for a Dominus but never received it. The seller blocked me.",
-        time: "5 hours ago",
-      },
-      {
-        sender: "admin",
-        message: "I'm sorry to hear this. We're investigating the seller. Can you share payment proof?",
-        time: "4 hours ago",
-      },
-    ],
-  },
-  {
-    id: "TKT-004",
-    subject: "How do I verify my account?",
-    user: { username: "NewUser123", avatar: "/placeholder.svg?key=0h7wm", email: "new@example.com" },
-    category: "general",
-    priority: "low",
-    status: "resolved",
-    createdAt: "3 days ago",
-    messages: [
-      { sender: "user", message: "What steps do I need to take to get verified?", time: "3 days ago" },
-      {
-        sender: "admin",
-        message: "To get verified, you need to complete 10 successful trades and have at least 20 vouches.",
-        time: "3 days ago",
-      },
-      { sender: "user", message: "Thank you!", time: "2 days ago" },
-    ],
-  },
-]
 
 export default function SupportTicketsPage() {
   const { data: session } = useSession()
   const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
-  const [selectedTicket, setSelectedTicket] = useState<(typeof mockTickets)[0] | null>(null)
+  const [selectedTicket, setSelectedTicket] = useState<any | null>(null)
   const [replyMessage, setReplyMessage] = useState("")
-  const [tickets, setTickets] = useState<typeof mockTickets>([])
+  const [tickets, setTickets] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [closingId, setClosingId] = useState<string | null>(null)
+  const [actionLoading, setActionLoading] = useState(false)
+  const [messages, setMessages] = useState<any[]>([])
+  const [messagesLoading, setMessagesLoading] = useState(false)
+  const [replyLoading, setReplyLoading] = useState(false)
 
   useEffect(() => {
-    const fetchTickets = async () => {
-      try {
-        const result = await getSupportTickets()
-        if (result.success && result.data) {
-          // Map database tickets to mock format for UI
-          const mapped = result.data.map((ticket: any) => ({
+    loadTickets()
+  }, [])
+
+  useEffect(() => {
+    if (selectedTicket) {
+      loadMessages(selectedTicket.dbId)
+    }
+  }, [selectedTicket])
+
+  const loadTickets = async () => {
+    setLoading(true)
+    try {
+      const result = await getSupportTickets()
+      if (result.success && result.data) {
+        // Map database tickets to display format
+        const mapped = result.data.map((ticket: any) => {
+          // Map status
+          let displayStatus = "open"
+          if (ticket.status === "CLOSED") displayStatus = "resolved"
+          else if (ticket.status === "IN_PROGRESS") displayStatus = "in-progress"
+          else if (ticket.status === "PENDING") displayStatus = "pending"
+
+          return {
             id: ticket.id.slice(0, 8),
             subject: ticket.subject,
             user: {
               username: ticket.user?.username || "Unknown User",
-              avatar: ticket.user?.profileImage || "/placeholder.svg",
+              avatar: ticket.user?.profilePicture || "/placeholder.svg",
               email: ticket.user?.email || "unknown@example.com",
             },
-            category: "support",
-            priority: "medium",
-            status: ticket.status.toLowerCase() === "open" ? "open" : "resolved",
+            category: ticket.category || "general",
+            priority: ticket.priority || "medium",
+            status: displayStatus,
             createdAt: new Date(ticket.createdAt).toLocaleDateString(),
-            messages: [
-              {
-                sender: "user",
-                message: ticket.message,
-                time: new Date(ticket.createdAt).toLocaleDateString(),
-              },
-            ],
+            initialMessage: ticket.message,
             dbId: ticket.id,
-          }))
-          setTickets(mapped)
-          if (mapped.length > 0) {
-            setSelectedTicket(mapped[0])
+            rawStatus: ticket.status,
           }
-        }
-      } catch (error) {
-        toast({
-          title: "Error",
-          description: "Failed to fetch support tickets",
-          variant: "destructive",
         })
-      } finally {
-        setLoading(false)
+        setTickets(mapped)
+        if (mapped.length > 0 && !selectedTicket) {
+          setSelectedTicket(mapped[0])
+        }
       }
+    } catch (error) {
+      console.error("Failed to load tickets:", error)
+      toast({
+        title: "Error",
+        description: "Failed to fetch support tickets",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
     }
-
-    fetchTickets()
-  }, [toast])
+  }
 
   const handleCloseTicket = async () => {
     if (!selectedTicket || !session?.user?.id) {
@@ -162,7 +96,7 @@ export default function SupportTicketsPage() {
       return
     }
 
-    setClosingId(selectedTicket.dbId)
+    setActionLoading(true)
     try {
       const result = await closeTicket(selectedTicket.dbId, session.user.id)
       if (result.success) {
@@ -171,35 +105,7 @@ export default function SupportTicketsPage() {
           description: "Ticket closed successfully",
         })
         setReplyMessage("")
-        // Refresh tickets
-        const refreshResult = await getSupportTickets()
-        if (refreshResult.success && refreshResult.data) {
-          const mapped = refreshResult.data.map((ticket: any) => ({
-            id: ticket.id.slice(0, 8),
-            subject: ticket.subject,
-            user: {
-              username: ticket.user?.username || "Unknown User",
-              avatar: ticket.user?.profileImage || "/placeholder.svg",
-              email: ticket.user?.email || "unknown@example.com",
-            },
-            category: "support",
-            priority: "medium",
-            status: ticket.status.toLowerCase() === "open" ? "open" : "resolved",
-            createdAt: new Date(ticket.createdAt).toLocaleDateString(),
-            messages: [
-              {
-                sender: "user",
-                message: ticket.message,
-                time: new Date(ticket.createdAt).toLocaleDateString(),
-              },
-            ],
-            dbId: ticket.id,
-          }))
-          setTickets(mapped)
-          if (mapped.length > 0) {
-            setSelectedTicket(mapped[0])
-          }
-        }
+        await loadTickets()
       } else {
         toast({
           title: "Error",
@@ -208,7 +114,61 @@ export default function SupportTicketsPage() {
         })
       }
     } finally {
-      setClosingId(null)
+      setActionLoading(false)
+    }
+  }
+
+  const handleUpdateStatus = async (newStatus: "IN_PROGRESS" | "PENDING") => {
+    if (!selectedTicket || !session?.user?.id) return
+
+    setActionLoading(true)
+    try {
+      const result = await updateTicketStatus(selectedTicket.dbId, newStatus, session.user.id)
+
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: `Ticket marked as ${newStatus === "IN_PROGRESS" ? "in progress" : "pending"}`,
+        })
+        await loadTickets()
+      } else {
+        throw new Error(result.error)
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to update ticket status",
+        variant: "destructive",
+      })
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleReopenTicket = async () => {
+    if (!selectedTicket || !session?.user?.id) return
+
+    setActionLoading(true)
+    try {
+      const result = await reopenTicket(selectedTicket.dbId, session.user.id)
+
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: "Ticket reopened successfully",
+        })
+        await loadTickets()
+      } else {
+        throw new Error(result.error)
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to reopen ticket",
+        variant: "destructive",
+      })
+    } finally {
+      setActionLoading(false)
     }
   }
 
@@ -259,10 +219,64 @@ export default function SupportTicketsPage() {
     }
   }
 
-  const handleSendReply = () => {
-    if (replyMessage.trim()) {
-      console.log("Sending reply:", replyMessage)
-      setReplyMessage("")
+  const loadMessages = async (ticketId: string) => {
+    setMessagesLoading(true)
+    try {
+      const result = await getTicketMessages(ticketId)
+      if (result.success && result.data) {
+        setMessages(result.data)
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to load messages",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Failed to load messages:", error)
+    } finally {
+      setMessagesLoading(false)
+    }
+  }
+
+  const handleSendReply = async () => {
+    if (!replyMessage.trim() || !selectedTicket || !session?.user?.id) {
+      return
+    }
+
+    setReplyLoading(true)
+    try {
+      const result = await addTicketReply(
+        selectedTicket.dbId,
+        session.user.id,
+        replyMessage,
+        true // isAdmin = true
+      )
+
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: "Reply sent successfully",
+        })
+        setReplyMessage("")
+        // Reload messages to show the new reply
+        await loadMessages(selectedTicket.dbId)
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to send reply",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Failed to send reply:", error)
+      toast({
+        title: "Error",
+          description: "Failed to send reply",
+        variant: "destructive",
+      })
+    } finally {
+      setReplyLoading(false)
     }
   }
 
@@ -420,27 +434,51 @@ export default function SupportTicketsPage() {
                 <div>
                   <p className="text-sm font-medium mb-3">Conversation</p>
                   <ScrollArea className="h-[300px] border rounded-lg p-4">
-                    <div className="space-y-4">
-                      {selectedTicket.messages.map((msg, i) => (
-                        <div key={i} className={`flex gap-3 ${msg.sender === "admin" ? "flex-row-reverse" : ""}`}>
+                    {messagesLoading ? (
+                      <div className="flex items-center justify-center h-full">
+                        <p className="text-sm text-muted-foreground">Loading messages...</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {/* Initial ticket message */}
+                        <div className="flex gap-3">
                           <Avatar className="h-8 w-8">
-                            <AvatarFallback>
-                              {msg.sender === "admin" ? "A" : selectedTicket.user.username.charAt(0)}
-                            </AvatarFallback>
+                            <AvatarImage src={selectedTicket.user.avatar || "/placeholder.svg"} />
+                            <AvatarFallback>{selectedTicket.user.username.charAt(0)}</AvatarFallback>
                           </Avatar>
-                          <div className={`max-w-[70%] ${msg.sender === "admin" ? "text-right" : ""}`}>
-                            <div
-                              className={`p-3 rounded-lg ${
-                                msg.sender === "admin" ? "bg-primary text-primary-foreground" : "bg-muted"
-                              }`}
-                            >
-                              <p className="text-sm">{msg.message}</p>
+                          <div className="flex flex-col max-w-[70%]">
+                            <div className="p-3 rounded-lg bg-muted w-fit">
+                              <p className="text-sm">{selectedTicket.initialMessage}</p>
                             </div>
-                            <p className="text-xs text-muted-foreground mt-1">{msg.time}</p>
+                            <p className="text-xs text-muted-foreground mt-1">{selectedTicket.createdAt}</p>
                           </div>
                         </div>
-                      ))}
-                    </div>
+                        
+                        {/* Replies */}
+                        {messages.map((msg) => (
+                          <div key={msg.id} className={`flex gap-3 ${msg.isAdmin ? "flex-row-reverse" : ""}`}>
+                            <Avatar className="h-8 w-8">
+                              <AvatarImage src={msg.user.profilePicture || "/placeholder.svg"} />
+                              <AvatarFallback>
+                                {msg.isAdmin ? "A" : msg.user.username.charAt(0)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className={`flex flex-col ${msg.isAdmin ? "items-end" : "items-start"}`}>
+                              <div
+                                className={`p-3 rounded-lg w-fit max-w-[70%] ${
+                                  msg.isAdmin ? "bg-primary text-primary-foreground" : "bg-muted"
+                                }`}
+                              >
+                                <p className="text-sm">{msg.message}</p>
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {new Date(msg.createdAt).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </ScrollArea>
                 </div>
 
@@ -452,9 +490,10 @@ export default function SupportTicketsPage() {
                       value={replyMessage}
                       onChange={(e) => setReplyMessage(e.target.value)}
                       className="flex-1"
+                      disabled={replyLoading}
                     />
-                    <Button onClick={handleSendReply}>
-                      <Send className="h-4 w-4" />
+                    <Button onClick={handleSendReply} disabled={replyLoading || !replyMessage.trim()}>
+                      {replyLoading ? "Sending..." : <Send className="h-4 w-4" />}
                     </Button>
                   </div>
                 )}
@@ -465,25 +504,37 @@ export default function SupportTicketsPage() {
                 <div className="flex gap-2">
                   {selectedTicket.status !== "resolved" && (
                     <>
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          // Mark as pending
-                        }}
-                      >
-                        Mark as Pending
-                      </Button>
+                      {selectedTicket.status !== "in-progress" && (
+                        <Button
+                          variant="outline"
+                          onClick={() => handleUpdateStatus("IN_PROGRESS")}
+                          disabled={actionLoading}
+                        >
+                          {actionLoading ? "Updating..." : "Mark as In Progress"}
+                        </Button>
+                      )}
+                      {selectedTicket.status !== "pending" && (
+                        <Button
+                          variant="outline"
+                          onClick={() => handleUpdateStatus("PENDING")}
+                          disabled={actionLoading}
+                        >
+                          {actionLoading ? "Updating..." : "Mark as Pending"}
+                        </Button>
+                      )}
                       <Button
                         className="bg-green-500 hover:bg-green-600"
                         onClick={handleCloseTicket}
-                        disabled={closingId === selectedTicket.dbId}
+                        disabled={actionLoading}
                       >
-                        {closingId === selectedTicket.dbId ? "Closing..." : "Resolve Ticket"}
+                        {actionLoading ? "Closing..." : "Resolve Ticket"}
                       </Button>
                     </>
                   )}
                   {selectedTicket.status === "resolved" && (
-                    <Button variant="outline">Reopen Ticket</Button>
+                    <Button variant="outline" onClick={handleReopenTicket} disabled={actionLoading}>
+                      {actionLoading ? "Reopening..." : "Reopen Ticket"}
+                    </Button>
                   )}
                 </div>
               </CardContent>

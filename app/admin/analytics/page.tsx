@@ -3,7 +3,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Users, ShoppingBag, TrendingUp, DollarSign, ArrowUpRight } from "lucide-react"
+import { Users, ShoppingBag, TrendingUp, DollarSign, ArrowUpRight, Loader2 } from "lucide-react"
 import {
   Area,
   AreaChart,
@@ -18,43 +18,18 @@ import {
   Cell,
 } from "recharts"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
-import { useState } from "react"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-
-const userGrowthData = [
-  { month: "Jan", users: 5200, newUsers: 420 },
-  { month: "Feb", users: 5800, newUsers: 600 },
-  { month: "Mar", users: 6400, newUsers: 580 },
-  { month: "Apr", users: 7200, newUsers: 800 },
-  { month: "May", users: 7900, newUsers: 700 },
-  { month: "Jun", users: 8324, newUsers: 424 },
-]
-
-const listingData = [
-  { month: "Jan", posted: 890, sold: 456 },
-  { month: "Feb", posted: 1020, sold: 534 },
-  { month: "Mar", posted: 1150, sold: 612 },
-  { month: "Apr", posted: 1340, sold: 745 },
-  { month: "May", posted: 1480, sold: 823 },
-  { month: "Jun", posted: 1620, sold: 912 },
-]
-
-const revenueData = [
-  { month: "Jan", subscriptions: 3200, boosts: 1800, featured: 900 },
-  { month: "Feb", subscriptions: 3800, boosts: 2100, featured: 1100 },
-  { month: "Mar", subscriptions: 4200, boosts: 2400, featured: 1300 },
-  { month: "Apr", subscriptions: 4800, boosts: 2900, featured: 1500 },
-  { month: "May", subscriptions: 5400, boosts: 3200, featured: 1700 },
-  { month: "Jun", subscriptions: 6100, boosts: 3600, featured: 1900 },
-]
-
-const categoryData = [
-  { name: "Adopt Me", value: 35 },
-  { name: "Blox Fruits", value: 25 },
-  { name: "MM2", value: 20 },
-  { name: "Roblox Items", value: 15 },
-  { name: "Other", value: 5 },
-]
+import { useState, useEffect } from "react"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import {
+  getAnalyticsOverview,
+  getUserGrowthData,
+  getListingActivityData,
+  getRevenueData,
+  getCategoryDistribution,
+  getTopSellers,
+  getTopFlaggedUsers
+} from "@/app/actions/admin-analytics"
+import { useToast } from "@/hooks/use-toast"
 
 const COLORS = [
   "hsl(var(--chart-1))",
@@ -64,23 +39,128 @@ const COLORS = [
   "hsl(var(--chart-5))",
 ]
 
-const topSellers = [
-  { username: "EliteTrader99", sales: 312, revenue: "$8,900", vouches: 567 },
-  { username: "NinjaTrader", sales: 245, revenue: "$6,200", vouches: 342 },
-  { username: "TrustyShopper", sales: 189, revenue: "$4,800", vouches: 189 },
-  { username: "ProTrader2024", sales: 156, revenue: "$3,900", vouches: 234 },
-  { username: "FastSeller123", sales: 134, revenue: "$3,200", vouches: 178 },
-]
-
-const topFlagged = [
-  { username: "ScammerJoe", reports: 23, flags: 45 },
-  { username: "SpamBot2024", reports: 18, flags: 32 },
-  { username: "FakeAccount123", reports: 15, flags: 28 },
-  { username: "SusTrader", reports: 12, flags: 19 },
-]
-
 export default function AnalyticsPage() {
+  const { toast } = useToast()
   const [timeRange, setTimeRange] = useState("6m")
+  const [loading, setLoading] = useState(true)
+  
+  // State for all data
+  const [metrics, setMetrics] = useState({
+    totalUsers: 0,
+    userGrowth: "+0%",
+    activeListings: 0,
+    listingGrowth: "+0%",
+    currentTrades: 0,
+    tradeGrowth: "+0%",
+    monthlyRevenue: 0,
+    revenueGrowth: "+0%"
+  })
+  const [userGrowthData, setUserGrowthData] = useState<any[]>([])
+  const [listingData, setListingData] = useState<any[]>([])
+  const [revenueData, setRevenueData] = useState<any[]>([])
+  const [categoryData, setCategoryData] = useState<any[]>([])
+  const [topSellers, setTopSellers] = useState<any[]>([])
+  const [topFlagged, setTopFlagged] = useState<any[]>([])
+
+  // Load all data
+  useEffect(() => {
+    loadAllData()
+  }, [timeRange])
+
+  const loadAllData = async () => {
+    setLoading(true)
+    try {
+      const [
+        overviewResult,
+        userGrowthResult,
+        listingActivityResult,
+        revenueResult,
+        categoryResult,
+        sellersResult,
+        flaggedResult
+      ] = await Promise.all([
+        getAnalyticsOverview(timeRange),
+        getUserGrowthData(timeRange),
+        getListingActivityData(timeRange),
+        getRevenueData(timeRange),
+        getCategoryDistribution(),
+        getTopSellers(5),
+        getTopFlaggedUsers(4)
+      ])
+
+      console.log("Analytics Results:", {
+        overviewResult,
+        userGrowthResult,
+        listingActivityResult,
+        revenueResult,
+        categoryResult,
+        sellersResult,
+        flaggedResult
+      })
+
+      if (overviewResult.success && overviewResult.metrics) {
+        setMetrics(overviewResult.metrics)
+      } else {
+        console.error("Overview failed:", overviewResult.error)
+      }
+      
+      if (userGrowthResult.success && userGrowthResult.data) {
+        setUserGrowthData(userGrowthResult.data)
+      } else {
+        console.error("User growth failed:", userGrowthResult.error)
+      }
+      
+      if (listingActivityResult.success && listingActivityResult.data) {
+        setListingData(listingActivityResult.data)
+      } else {
+        console.error("Listing activity failed:", listingActivityResult.error)
+      }
+      
+      if (revenueResult.success && revenueResult.data) {
+        setRevenueData(revenueResult.data)
+      } else {
+        console.error("Revenue failed:", revenueResult.error)
+      }
+      
+      if (categoryResult.success && categoryResult.data) {
+        setCategoryData(categoryResult.data)
+      } else {
+        console.error("Category failed:", categoryResult.error)
+      }
+      
+      if (sellersResult.success && sellersResult.data) {
+        setTopSellers(sellersResult.data)
+      } else {
+        console.error("Sellers failed:", sellersResult.error)
+      }
+      
+      if (flaggedResult.success && flaggedResult.data) {
+        setTopFlagged(flaggedResult.data)
+      } else {
+        console.error("Flagged users failed:", flaggedResult.error)
+      }
+    } catch (error) {
+      console.error("Failed to load analytics:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load analytics data",
+        variant: "destructive"
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="p-6 flex items-center justify-center h-[600px]">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading analytics...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -114,10 +194,10 @@ export default function AnalyticsPage() {
               </div>
               <div className="flex items-center text-green-500 text-sm">
                 <ArrowUpRight className="h-4 w-4" />
-                +12.5%
+                {metrics.userGrowth}
               </div>
             </div>
-            <p className="text-2xl font-bold">8,324</p>
+            <p className="text-2xl font-bold">{metrics.totalUsers.toLocaleString()}</p>
             <p className="text-sm text-muted-foreground">Total Users</p>
           </CardContent>
         </Card>
@@ -129,10 +209,10 @@ export default function AnalyticsPage() {
               </div>
               <div className="flex items-center text-green-500 text-sm">
                 <ArrowUpRight className="h-4 w-4" />
-                +8.2%
+                {metrics.listingGrowth}
               </div>
             </div>
-            <p className="text-2xl font-bold">12,457</p>
+            <p className="text-2xl font-bold">{metrics.activeListings.toLocaleString()}</p>
             <p className="text-sm text-muted-foreground">Active Listings</p>
           </CardContent>
         </Card>
@@ -144,10 +224,10 @@ export default function AnalyticsPage() {
               </div>
               <div className="flex items-center text-green-500 text-sm">
                 <ArrowUpRight className="h-4 w-4" />
-                +15.3%
+                {metrics.tradeGrowth}
               </div>
             </div>
-            <p className="text-2xl font-bold">4,521</p>
+            <p className="text-2xl font-bold">{metrics.currentTrades.toLocaleString()}</p>
             <p className="text-sm text-muted-foreground">Trades This Month</p>
           </CardContent>
         </Card>
@@ -159,10 +239,10 @@ export default function AnalyticsPage() {
               </div>
               <div className="flex items-center text-green-500 text-sm">
                 <ArrowUpRight className="h-4 w-4" />
-                +18.7%
+                {metrics.revenueGrowth}
               </div>
             </div>
-            <p className="text-2xl font-bold">$11,600</p>
+            <p className="text-2xl font-bold">₱{metrics.monthlyRevenue.toLocaleString()}</p>
             <p className="text-sm text-muted-foreground">Revenue This Month</p>
           </CardContent>
         </Card>
@@ -348,6 +428,7 @@ export default function AnalyticsPage() {
                   <div className="flex items-center gap-3">
                     <span className="text-sm font-medium text-muted-foreground w-5">#{index + 1}</span>
                     <Avatar className="h-8 w-8">
+                      <AvatarImage src={seller.avatar || "/placeholder.svg"} />
                       <AvatarFallback>{seller.username.charAt(0)}</AvatarFallback>
                     </Avatar>
                     <div>
@@ -377,6 +458,7 @@ export default function AnalyticsPage() {
                   <div className="flex items-center gap-3">
                     <span className="text-sm font-medium text-muted-foreground w-5">#{index + 1}</span>
                     <Avatar className="h-8 w-8">
+                      <AvatarImage src={user.avatar || "/placeholder.svg"} />
                       <AvatarFallback>{user.username.charAt(0)}</AvatarFallback>
                     </Avatar>
                     <p className="font-medium text-sm">{user.username}</p>

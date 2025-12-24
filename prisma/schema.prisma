@@ -66,8 +66,9 @@ model User {
   userReportsReceived     ReportUser[]    @relation("ReportedUser")
 
   // Admin relations
-  auditLogs      AuditLog[]      @relation("AdminUser")
-  supportTickets SupportTicket[]
+  auditLogs              AuditLog[]             @relation("AdminUser")
+  supportTickets         SupportTicket[]
+  supportTicketMessages  SupportTicketMessage[]
 
   // Custom role relation
   customRoleId String?
@@ -603,13 +604,16 @@ model SupportTicket {
   id String @id @default(cuid())
 
   // Relations
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages SupportTicketMessage[]
 
   // Details
-  subject String
-  message String @db.Text
-  status  String @default("OPEN") // "OPEN" | "CLOSED"
+  subject  String
+  message  String @db.Text
+  category String @default("GENERAL") // "GENERAL" | "TECHNICAL" | "ACCOUNT" | "PAYMENT" | "REPORT" | "OTHER"
+  priority String @default("MEDIUM") // "LOW" | "MEDIUM" | "HIGH"
+  status   String @default("OPEN") // "OPEN" | "IN_PROGRESS" | "PENDING" | "CLOSED"
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -618,6 +622,26 @@ model SupportTicket {
   @@index([status])
   @@index([createdAt])
   @@map("support_tickets")
+}
+
+model SupportTicketMessage {
+  id String @id @default(cuid())
+
+  // Relations
+  ticketId String
+  ticket   SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Content
+  message String  @db.Text
+  isAdmin Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([userId])
+  @@map("support_ticket_messages")
 }
 
 model Announcement {

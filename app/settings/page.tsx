@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/auth-context"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import { useSession } from "next-auth/react"
-import { Bell, Lock, User, Moon, Sun, Monitor, Shield, Trash2, Ban, Camera, LinkIcon } from "lucide-react"
+import { Bell, Lock, User, Moon, Sun, Monitor, Shield, Trash2, Ban, Camera, LinkIcon, HelpCircle, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -33,7 +33,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { getProfile, updateProfile, changePassword, type UserProfileData } from "@/app/actions/profile"
+import { createSupportTicket, getMyTickets, getTicketMessages, addTicketReply } from "@/app/actions/admin"
+import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/use-toast"
+import { ScrollArea } from "@/components/ui/scroll-area"
 
 export default function SettingsPage() {
   const { user } = useAuth()
@@ -98,6 +102,20 @@ export default function SettingsPage() {
     { id: 2, username: "FakeTrader", avatar: "/pandora-ocean-scene.png", blockedAt: "1 week ago" },
   ])
 
+  // Support ticket state
+  const [supportTickets, setSupportTickets] = useState<any[]>([])
+  const [ticketSubject, setTicketSubject] = useState("")
+  const [ticketMessage, setTicketMessage] = useState("")
+  const [ticketCategory, setTicketCategory] = useState("GENERAL")
+  const [ticketLoading, setTicketLoading] = useState(false)
+  const [loadingTickets, setLoadingTickets] = useState(false)
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null)
+  const [ticketReply, setTicketReply] = useState("")
+  const [replyLoading, setReplyLoading] = useState(false)
+  const [ticketMessages, setTicketMessages] = useState<any[]>([])
+  const [messagesLoading, setMessagesLoading] = useState(false)
+  const [ticketStatusFilter, setTicketStatusFilter] = useState("all")
+
   useEffect(() => {
     setMounted(true)
   }, [])
@@ -108,8 +126,18 @@ export default function SettingsPage() {
     } else {
       // Fetch profile data on mount
       loadProfileData()
+      // Load support tickets if on support tab
+      if (activeTab === "support") {
+        loadSupportTickets()
+      }
     }
-  }, [user, router])
+  }, [user, router, activeTab])
+
+  useEffect(() => {
+    if (selectedTicketId) {
+      loadTicketMessages(selectedTicketId)
+    }
+  }, [selectedTicketId])
 
   const loadProfileData = async () => {
     if (!user) return
@@ -148,6 +176,150 @@ export default function SettingsPage() {
 
   const handleUnblock = (userId: number) => {
     setBlockedUsers((prev) => prev.filter((u) => u.id !== userId))
+  }
+
+  const loadSupportTickets = async () => {
+    if (!user) return
+    setLoadingTickets(true)
+    try {
+      const result = await getMyTickets(user.id)
+      if (result.success && result.data) {
+        setSupportTickets(result.data)
+      }
+    } catch (error) {
+      console.error("Failed to load tickets:", error)
+    } finally {
+      setLoadingTickets(false)
+    }
+  }
+
+  const handleSubmitTicket = async () => {
+    console.log("Submit ticket clicked", { ticketSubject, ticketMessage, ticketCategory })
+    
+    if (!ticketSubject.trim() || !ticketMessage.trim()) {
+      toast({
+        title: "Error",
+        description: "Please fill in both subject and message fields",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!user?.id) {
+      toast({
+        title: "Error",
+        description: "User session not found. Please refresh and try again.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setTicketLoading(true)
+    try {
+      console.log("Creating support ticket...")
+      const result = await createSupportTicket({
+        userId: user.id,
+        subject: ticketSubject,
+        message: ticketMessage,
+        category: ticketCategory,
+      })
+
+      console.log("Support ticket result:", result)
+
+      if (result.success) {
+        toast({
+          title: "✅ Ticket Submitted!",
+          description: "Your support ticket has been submitted successfully. We'll get back to you soon.",
+        })
+        setTicketSubject("")
+        setTicketMessage("")
+        setTicketCategory("GENERAL")
+        await loadSupportTickets()
+      } else {
+        toast({
+          title: "❌ Submission Failed",
+          description: result.error || "Failed to submit support ticket. Please try again.",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Error submitting ticket:", error)
+      toast({
+        title: "❌ Error",
+        description: error instanceof Error ? error.message : "An unexpected error occurred. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setTicketLoading(false)
+    }
+  }
+
+  const loadTicketMessages = async (ticketId: string) => {
+    setMessagesLoading(true)
+    try {
+      const result = await getTicketMessages(ticketId)
+      if (result.success && result.data) {
+        setTicketMessages(result.data)
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to load messages",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Failed to load messages:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load messages",
+        variant: "destructive",
+      })
+    } finally {
+      setMessagesLoading(false)
+    }
+  }
+
+  const handleSendReply = async () => {
+    if (!ticketReply.trim() || !selectedTicketId || !user?.id) {
+      return
+    }
+
+    setReplyLoading(true)
+    try {
+      const result = await addTicketReply(
+        selectedTicketId,
+        user.id,
+        ticketReply,
+        false // isAdmin = false
+      )
+
+      if (result.success) {
+        toast({
+          title: "✅ Reply Sent!",
+          description: "Your reply has been sent successfully.",
+        })
+        setTicketReply("")
+        // Reload messages to show the new reply
+        await loadTicketMessages(selectedTicketId)
+        // Also reload tickets to update the updatedAt timestamp
+        await loadSupportTickets()
+      } else {
+        toast({
+          title: "❌ Failed to Send Reply",
+          description: result.error || "Failed to send reply. Please try again.",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Error sending reply:", error)
+      toast({
+        title: "❌ Error",
+        description: "An unexpected error occurred. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setReplyLoading(false)
+    }
   }
 
   const handleDeleteAccount = () => {
@@ -323,6 +495,7 @@ export default function SettingsPage() {
                 { id: "privacy", label: "Privacy & Safety", icon: Lock },
                 { id: "blocked", label: "Blocked Users", icon: Ban },
                 { id: "notifications", label: "Notifications", icon: Bell },
+                { id: "support", label: "Support", icon: HelpCircle },
                 { id: "appearance", label: "Appearance", icon: Moon },
                 { id: "security", label: "Security", icon: Shield },
                 { id: "danger", label: "Danger Zone", icon: Trash2 },
@@ -732,6 +905,253 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </Card>
+            )}
+
+            {/* Support */}
+            {activeTab === "support" && (
+              <div className="space-y-6">
+                <Card className="p-6">
+                  <h2 className="text-2xl font-bold mb-4">Submit Support Ticket</h2>
+                  <p className="text-muted-foreground mb-6">
+                    Need help? Create a support ticket and our team will get back to you as soon as possible.
+                  </p>
+                  
+                  <div className="space-y-4">
+                    <div>
+                      <Label>Subject</Label>
+                      <Input
+                        placeholder="Brief description of your issue"
+                        value={ticketSubject}
+                        onChange={(e) => setTicketSubject(e.target.value)}
+                        disabled={ticketLoading}
+                      />
+                    </div>
+
+                    <div>
+                      <Label>Category</Label>
+                      <Select value={ticketCategory} onValueChange={setTicketCategory} disabled={ticketLoading}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="GENERAL">General</SelectItem>
+                          <SelectItem value="TECHNICAL">Technical Issue</SelectItem>
+                          <SelectItem value="ACCOUNT">Account Issue</SelectItem>
+                          <SelectItem value="PAYMENT">Payment/Billing</SelectItem>
+                          <SelectItem value="REPORT">Report User/Listing</SelectItem>
+                          <SelectItem value="OTHER">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <Label>Message</Label>
+                      <Textarea
+                        placeholder="Describe your issue in detail..."
+                        value={ticketMessage}
+                        onChange={(e) => setTicketMessage(e.target.value)}
+                        disabled={ticketLoading}
+                        rows={6}
+                      />
+                    </div>
+
+                    <Button onClick={handleSubmitTicket} disabled={ticketLoading} className="w-full">
+                      {ticketLoading ? "Submitting..." : "Submit Ticket"}
+                      <Send className="w-4 h-4 ml-2" />
+                    </Button>
+                  </div>
+                </Card>
+
+                <Card className="p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-2xl font-bold">My Support Tickets</h2>
+                    <Select value={ticketStatusFilter} onValueChange={setTicketStatusFilter}>
+                      <SelectTrigger className="w-[150px]">
+                        <SelectValue placeholder="Filter by status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Tickets</SelectItem>
+                        <SelectItem value="OPEN">Open</SelectItem>
+                        <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
+                        <SelectItem value="PENDING">Pending</SelectItem>
+                        <SelectItem value="CLOSED">Closed</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  {loadingTickets ? (
+                    <div className="text-center py-8 text-muted-foreground">Loading tickets...</div>
+                  ) : supportTickets.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <HelpCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p>No support tickets yet</p>
+                    </div>
+                  ) : selectedTicketId ? (
+                    // Detailed ticket view
+                    (() => {
+                      const ticket = supportTickets.find(t => t.id === selectedTicketId)
+                      if (!ticket) return null
+                      
+                      return (
+                        <div className="space-y-4">
+                          <Button variant="outline" size="sm" onClick={() => setSelectedTicketId(null)}>
+                            ← Back to all tickets
+                          </Button>
+                          
+                          <div className="border rounded-lg p-4">
+                            <div className="flex items-start justify-between mb-4">
+                              <div>
+                                <h3 className="font-semibold text-lg">{ticket.subject}</h3>
+                                <p className="text-sm text-muted-foreground">
+                                  Created {new Date(ticket.createdAt).toLocaleString()}
+                                </p>
+                              </div>
+                              <Badge
+                                className={
+                                  ticket.status === "OPEN"
+                                    ? "bg-blue-500"
+                                    : ticket.status === "IN_PROGRESS"
+                                      ? "bg-yellow-500"
+                                      : ticket.status === "PENDING"
+                                        ? "bg-orange-500"
+                                        : "bg-green-500"
+                                }
+                              >
+                                {ticket.status}
+                              </Badge>
+                            </div>
+                            
+                            {/* Conversation */}
+                            <ScrollArea className="h-[400px] border rounded-lg p-4">
+                              <div className="space-y-3">
+                                {/* Initial ticket message */}
+                                <div className="flex justify-end">
+                                  <div className="bg-muted p-4 rounded-lg w-fit max-w-[85%]">
+                                    <div className="flex items-start gap-3">
+                                      <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-semibold shrink-0">
+                                        {user?.username?.charAt(0).toUpperCase() || 'U'}
+                                      </div>
+                                      <div>
+                                        <p className="text-sm font-medium">{user?.username}</p>
+                                        <p className="text-sm text-muted-foreground">{new Date(ticket.createdAt).toLocaleString()}</p>
+                                        <p className="text-sm mt-2 whitespace-pre-wrap">{ticket.message}</p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Replies */}
+                                {messagesLoading ? (
+                                  <div className="text-center py-4">
+                                    <p className="text-sm text-muted-foreground">Loading messages...</p>
+                                  </div>
+                                ) : (
+                                  ticketMessages.map((msg) => (
+                                    <div key={msg.id} className={`flex ${msg.isAdmin ? "justify-start" : "justify-end"}`}>
+                                      <div className={`w-fit max-w-[85%] ${msg.isAdmin ? "bg-primary/10 p-4 rounded-lg" : "bg-muted p-4 rounded-lg"}`}>
+                                        <div className="flex items-start gap-3">
+                                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold shrink-0 ${
+                                            msg.isAdmin ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"
+                                          }`}>
+                                            {msg.isAdmin ? 'A' : msg.user.username.charAt(0).toUpperCase()}
+                                          </div>
+                                          <div>
+                                            <p className="text-sm font-medium">{msg.isAdmin ? 'Support Team' : msg.user.username}</p>
+                                            <p className="text-sm text-muted-foreground">{new Date(msg.createdAt).toLocaleString()}</p>
+                                            <p className="text-sm mt-2 whitespace-pre-wrap">{msg.message}</p>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </ScrollArea>
+                          </div>
+
+                          {ticket.status !== "CLOSED" && (
+                            <div className="border rounded-lg p-4">
+                              <Label className="mb-2 block">Reply to Support</Label>
+                              <Textarea
+                                placeholder="Type your message..."
+                                value={ticketReply}
+                                onChange={(e) => setTicketReply(e.target.value)}
+                                disabled={replyLoading}
+                                rows={4}
+                                className="mb-2"
+                              />
+                              <Button 
+                                onClick={handleSendReply}
+                                disabled={replyLoading || !ticketReply.trim()}
+                                size="sm"
+                              >
+                                {replyLoading ? "Sending..." : "Send Reply"}
+                                <Send className="w-4 h-4 ml-2" />
+                              </Button>
+                              <p className="text-xs text-muted-foreground mt-2">
+                                Note: Our support team will be notified of your reply
+                              </p>
+                            </div>
+                          )}
+
+                          {ticket.status === "CLOSED" && (
+                            <div className="border border-green-500/20 bg-green-500/10 rounded-lg p-4 text-center">
+                              <p className="text-sm text-green-700 dark:text-green-400">
+                                ✓ This ticket has been resolved. If you need further assistance, please create a new ticket.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()
+                  ) : (
+                    <div className="space-y-4">
+                      {supportTickets
+                        .filter(ticket => ticketStatusFilter === "all" || ticket.status === ticketStatusFilter)
+                        .length === 0 ? (
+                          <div className="text-center py-8 text-muted-foreground">
+                            <HelpCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                            <p>No tickets found with this status</p>
+                          </div>
+                        ) : (
+                          supportTickets
+                            .filter(ticket => ticketStatusFilter === "all" || ticket.status === ticketStatusFilter)
+                            .map((ticket) => (
+                            <button
+                              key={ticket.id}
+                              onClick={() => setSelectedTicketId(ticket.id)}
+                              className="w-full border rounded-lg p-4 text-left hover:bg-muted/50 transition"
+                            >
+                              <div className="flex items-start justify-between mb-2">
+                                <div className="flex-1">
+                                  <h3 className="font-semibold">{ticket.subject}</h3>
+                                  <p className="text-sm text-muted-foreground">
+                                    {new Date(ticket.createdAt).toLocaleDateString()}
+                                  </p>
+                                </div>
+                                <Badge
+                                  className={
+                                    ticket.status === "OPEN"
+                                      ? "bg-blue-500"
+                                      : ticket.status === "IN_PROGRESS"
+                                        ? "bg-yellow-500"
+                                        : ticket.status === "PENDING"
+                                          ? "bg-orange-500"
+                                          : "bg-green-500"
+                                  }
+                                >
+                                  {ticket.status}
+                                </Badge>
+                              </div>
+                              <p className="text-sm text-muted-foreground line-clamp-2">{ticket.message}</p>
+                            </button>
+                          ))
+                        )
+                      }
+                    </div>
+                  )}
+                </Card>
+              </div>
             )}
 
             {/* Danger Zone */}

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -14,7 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Search, DollarSign, AlertTriangle, Clock, CheckCircle, XCircle, Shield, Wallet, Eye } from "lucide-react"
+import { Search, DollarSign, AlertTriangle, Clock, CheckCircle, XCircle, Shield, Wallet, Eye, Loader2 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
@@ -22,215 +22,144 @@ import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from "recharts"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
-
-const mockTrades = [
-  {
-    id: "1",
-    seller: {
-      username: "RobuxKing",
-      avatar: "/placeholder.svg?key=t5dxl",
-      vouches: 234,
-      joinDate: "Mar 2023",
-      riskScore: 12,
-    },
-    buyer: {
-      username: "NewBuyer123",
-      avatar: "/placeholder.svg?key=9nfei",
-      vouches: 5,
-      joinDate: "Dec 2024",
-      riskScore: 45,
-    },
-    amount: 10000,
-    price: 3500,
-    rate: 0.35,
-    status: "completed",
-    createdAt: "2 hours ago",
-    flags: [],
-    chatHistory: [
-      { sender: "buyer", message: "Hi, I'd like to buy 10,000 Robux", time: "2 hours ago" },
-      { sender: "seller", message: "That will be ₱3,500", time: "2 hours ago" },
-      { sender: "buyer", message: "Payment sent via GCash", time: "2 hours ago" },
-      { sender: "seller", message: "Received! Sending Robux now", time: "2 hours ago" },
-    ],
-  },
-  {
-    id: "2",
-    seller: {
-      username: "SusAccount",
-      avatar: "/placeholder.svg?key=s84xp",
-      vouches: 2,
-      joinDate: "Dec 2024",
-      riskScore: 89,
-    },
-    buyer: {
-      username: "TrustyShopper",
-      avatar: "/placeholder.svg?key=8mkdr",
-      vouches: 189,
-      joinDate: "Mar 2023",
-      riskScore: 8,
-    },
-    amount: 50000,
-    price: 15000,
-    rate: 0.3,
-    status: "flagged",
-    createdAt: "1 hour ago",
-    flags: ["high-value", "new-seller", "suspicious-rate"],
-    chatHistory: [
-      { sender: "buyer", message: "I want to buy 50,000 Robux", time: "1 hour ago" },
-      { sender: "seller", message: "Deal! ₱15,000 only", time: "1 hour ago" },
-    ],
-  },
-  {
-    id: "3",
-    seller: {
-      username: "EliteTrader99",
-      avatar: "/placeholder.svg?key=a1saz",
-      vouches: 567,
-      joinDate: "Jun 2022",
-      riskScore: 5,
-    },
-    buyer: {
-      username: "CasualGamer",
-      avatar: "/placeholder.svg?key=k3urc",
-      vouches: 45,
-      joinDate: "Aug 2024",
-      riskScore: 22,
-    },
-    amount: 25000,
-    price: 8750,
-    rate: 0.35,
-    status: "pending",
-    createdAt: "30 min ago",
-    flags: [],
-    chatHistory: [
-      { sender: "buyer", message: "Interested in 25,000 Robux", time: "30 min ago" },
-      { sender: "seller", message: "Available! ₱8,750", time: "30 min ago" },
-    ],
-  },
-  {
-    id: "4",
-    seller: {
-      username: "ScammerJoe",
-      avatar: "/placeholder.svg?key=ij2eo",
-      vouches: 12,
-      joinDate: "Nov 2024",
-      riskScore: 95,
-    },
-    buyer: {
-      username: "VictimUser",
-      avatar: "/placeholder.svg?key=r8qm9",
-      vouches: 23,
-      joinDate: "Sep 2024",
-      riskScore: 30,
-    },
-    amount: 100000,
-    price: 30000,
-    rate: 0.3,
-    status: "disputed",
-    createdAt: "5 hours ago",
-    flags: ["high-value", "high-risk-seller", "dispute-filed"],
-    dispute: {
-      reason: "Robux not received after payment",
-      filedBy: "VictimUser",
-      evidence: ["Payment screenshot", "Chat logs"],
-    },
-    chatHistory: [
-      { sender: "buyer", message: "I want 100,000 Robux", time: "5 hours ago" },
-      { sender: "seller", message: "₱30,000 via GCash", time: "5 hours ago" },
-      { sender: "buyer", message: "Sent!", time: "5 hours ago" },
-      { sender: "seller", message: "Processing...", time: "5 hours ago" },
-      { sender: "buyer", message: "Where's my Robux???", time: "4 hours ago" },
-    ],
-  },
-  {
-    id: "5",
-    seller: {
-      username: "NinjaTrader",
-      avatar: "/placeholder.svg?key=c1m1z",
-      vouches: 342,
-      joinDate: "Jan 2023",
-      riskScore: 10,
-    },
-    buyer: {
-      username: "RegularBuyer",
-      avatar: "/placeholder.svg?key=a8p54",
-      vouches: 78,
-      joinDate: "May 2024",
-      riskScore: 15,
-    },
-    amount: 15000,
-    price: 5250,
-    rate: 0.35,
-    status: "completed",
-    createdAt: "1 day ago",
-    flags: [],
-    chatHistory: [
-      { sender: "buyer", message: "Need 15,000 Robux", time: "1 day ago" },
-      { sender: "seller", message: "₱5,250. Send to my GCash", time: "1 day ago" },
-      { sender: "buyer", message: "Done!", time: "1 day ago" },
-      { sender: "seller", message: "Robux sent. Thanks!", time: "1 day ago" },
-    ],
-  },
-]
-
-const priceHistoryData = [
-  { date: "Mon", rate: 0.36 },
-  { date: "Tue", rate: 0.35 },
-  { date: "Wed", rate: 0.34 },
-  { date: "Thu", rate: 0.35 },
-  { date: "Fri", rate: 0.33 },
-  { date: "Sat", rate: 0.35 },
-  { date: "Sun", rate: 0.35 },
-]
-
-const highValueAlerts = [
-  { id: "1", user: "SusAccount", amount: 50000, riskScore: 89, reason: "New account selling large amount" },
-  { id: "2", user: "ScammerJoe", amount: 100000, riskScore: 95, reason: "Multiple dispute history" },
-]
+import { getCurrencyTrades, approveTransaction, cancelTransaction, resolveDispute, getPriceHistory } from "@/app/actions/admin-currency"
+import { useToast } from "@/hooks/use-toast"
 
 export default function CurrencyTradingPage() {
+  const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
-  const [selectedTrade, setSelectedTrade] = useState<(typeof mockTrades)[0] | null>(null)
+  const [selectedTrade, setSelectedTrade] = useState<any | null>(null)
   const [actionDialogOpen, setActionDialogOpen] = useState(false)
   const [actionType, setActionType] = useState<string>("")
   const [actionNotes, setActionNotes] = useState("")
   const [reviewDialogOpen, setReviewDialogOpen] = useState(false)
-  const [reviewingTrade, setReviewingTrade] = useState<(typeof mockTrades)[0] | null>(null)
+  const [reviewingTrade, setReviewingTrade] = useState<any | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [actionLoading, setActionLoading] = useState(false)
+  const [trades, setTrades] = useState<any[]>([])
+  const [stats, setStats] = useState({
+    total: 0,
+    completed: 0,
+    pending: 0,
+    flagged: 0,
+    disputed: 0,
+    totalVolume: 0
+  })
+  const [highValueAlerts, setHighValueAlerts] = useState<any[]>([])
+  const [priceHistoryData, setPriceHistoryData] = useState<any[]>([])
 
-  const filteredTrades = mockTrades.filter((trade) => {
-    const matchesSearch =
+  // Load data on mount and when filters change
+  useEffect(() => {
+    loadData()
+  }, [statusFilter])
+
+  const loadData = async () => {
+    setLoading(true)
+    try {
+      const [tradesResult, priceResult] = await Promise.all([
+        getCurrencyTrades({ status: statusFilter, search: searchQuery }),
+        getPriceHistory()
+      ])
+
+      if (tradesResult.success) {
+        setTrades(tradesResult.trades || [])
+        setStats(tradesResult.stats || stats)
+        setHighValueAlerts(tradesResult.highValueAlerts || [])
+      }
+
+      if (priceResult.success && priceResult.priceHistory) {
+        setPriceHistoryData(priceResult.priceHistory)
+      }
+    } catch (error) {
+      console.error("Failed to load data:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load currency trades",
+        variant: "destructive"
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const filteredTrades = trades.filter((trade) => {
+    if (!searchQuery) return true
+    return (
       trade.seller.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
       trade.buyer.username.toLowerCase().includes(searchQuery.toLowerCase())
-
-    const matchesStatus = statusFilter === "all" || trade.status === statusFilter
-
-    return matchesSearch && matchesStatus
+    )
   })
-
-  const stats = {
-    total: mockTrades.length,
-    completed: mockTrades.filter((t) => t.status === "completed").length,
-    pending: mockTrades.filter((t) => t.status === "pending").length,
-    flagged: mockTrades.filter((t) => t.status === "flagged").length,
-    disputed: mockTrades.filter((t) => t.status === "disputed").length,
-    totalVolume: mockTrades.reduce((acc, t) => acc + t.amount, 0),
-  }
 
   const handleAction = (action: string) => {
     setActionType(action)
     setActionDialogOpen(true)
   }
 
-  const executeAction = () => {
-    console.log(`Executing ${actionType} on trade ${selectedTrade?.id} with notes: ${actionNotes}`)
-    setActionDialogOpen(false)
-    setActionNotes("")
+  const executeAction = async () => {
+    if (!selectedTrade) return
+    
+    setActionLoading(true)
+    try {
+      let result
+      
+      if (selectedTrade.dispute && actionType === "resolve-approve") {
+        result = await resolveDispute(selectedTrade.id, "approve", actionNotes)
+      } else if (selectedTrade.dispute && actionType === "resolve-cancel") {
+        result = await resolveDispute(selectedTrade.id, "cancel", actionNotes)
+      } else if (actionType === "approve") {
+        result = await approveTransaction(selectedTrade.id, actionNotes)
+      } else if (actionType === "cancel") {
+        result = await cancelTransaction(selectedTrade.id, actionNotes)
+      }
+
+      if (result?.success) {
+        toast({
+          title: "Success",
+          description: `Transaction ${actionType}d successfully`
+        })
+        setActionDialogOpen(false)
+        setActionNotes("")
+        await loadData() // Reload data
+        setSelectedTrade(null)
+      } else {
+        toast({
+          title: "Error",
+          description: result?.error || "Failed to execute action",
+          variant: "destructive"
+        })
+      }
+    } catch (error) {
+      console.error("Failed to execute action:", error)
+      toast({
+        title: "Error",
+        description: "Failed to execute action",
+        variant: "destructive"
+      })
+    } finally {
+      setActionLoading(false)
+    }
   }
 
-  const handleReviewTrade = (trade: (typeof mockTrades)[0]) => {
+  const handleReviewTrade = (trade: any) => {
     setReviewingTrade(trade)
     setReviewDialogOpen(true)
+  }
+
+  // Handle search with debounce
+  const handleSearch = (value: string) => {
+    setSearchQuery(value)
+  }
+
+  if (loading) {
+    return (
+      <div className="p-6 flex items-center justify-center h-[600px]">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading currency trades...</p>
+        </div>
+      </div>
+    )
   }
 
   const getStatusBadge = (status: string) => {
@@ -347,7 +276,7 @@ export default function CurrencyTradingPage() {
                           size="sm"
                           variant="outline"
                           onClick={() => {
-                            const trade = mockTrades.find((t) => t.seller.username === alert.user)
+                            const trade = trades.find((t) => t.seller.username === alert.user)
                             if (trade) handleReviewTrade(trade)
                           }}
                         >
@@ -407,7 +336,7 @@ export default function CurrencyTradingPage() {
                     <Input
                       placeholder="Search..."
                       value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onChange={(e) => handleSearch(e.target.value)}
                       className="pl-10 w-[180px]"
                     />
                   </div>
@@ -659,11 +588,22 @@ export default function CurrencyTradingPage() {
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setActionDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setActionDialogOpen(false)} disabled={actionLoading}>
               Cancel
             </Button>
-            <Button variant={actionType === "cancel" ? "destructive" : "default"} onClick={executeAction}>
-              Confirm
+            <Button 
+              variant={actionType === "cancel" ? "destructive" : "default"} 
+              onClick={executeAction}
+              disabled={actionLoading}
+            >
+              {actionLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                "Confirm"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

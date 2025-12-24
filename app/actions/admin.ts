@@ -1436,12 +1436,14 @@ export async function resolveDispute(
  */
 export async function getSupportTickets(): Promise<{
   success: boolean
-  tickets?: Array<{
+  data?: Array<{
     id: string
     subject: string
     message: string
     status: string
-    user: { id: string; username: string; email: string }
+    priority: string
+    category: string
+    user: { id: string; username: string; email: string; profilePicture?: string }
     createdAt: Date
   }>
   error?: string
@@ -1449,15 +1451,141 @@ export async function getSupportTickets(): Promise<{
   try {
     const tickets = await prisma.supportTicket.findMany({
       include: {
-        user: { select: { id: true, username: true, email: true } },
+        user: { select: { id: true, username: true, email: true, profilePicture: true } },
       },
       orderBy: { createdAt: "desc" },
     })
 
-    return { success: true, tickets }
+    return { success: true, data: tickets }
   } catch (err) {
     console.error("Failed to get support tickets:", err)
     return { success: false, error: "Failed to get support tickets" }
+  }
+}
+
+/**
+ * Create a support ticket (user-facing)
+ */
+export async function createSupportTicket(data: {
+  userId: string
+  subject: string
+  message: string
+  category?: string
+  priority?: string
+}): Promise<{ success: boolean; ticketId?: string; error?: string }> {
+  try {
+    if (!data.subject || !data.message) {
+      return { success: false, error: "Subject and message are required" }
+    }
+
+    const ticket = await prisma.supportTicket.create({
+      data: {
+        userId: data.userId,
+        subject: data.subject,
+        message: data.message,
+        category: data.category || "GENERAL",
+        priority: data.priority || "MEDIUM",
+        status: "OPEN"
+      }
+    })
+
+    // Create notification for user
+    await prisma.notification.create({
+      data: {
+        userId: data.userId,
+        type: "SYSTEM",
+        title: "Support Ticket Created",
+        message: `Your support ticket "${data.subject}" has been submitted. We'll respond soon.`,
+        link: "/settings?tab=support",
+        isRead: false
+      }
+    })
+
+    return { success: true, ticketId: ticket.id }
+  } catch (err) {
+    console.error("Failed to create support ticket:", err)
+    return { success: false, error: "Failed to create support ticket" }
+  }
+}
+
+/**
+ * Get user's own support tickets
+ */
+export async function getMyTickets(userId: string): Promise<{
+  success: boolean
+  data?: Array<{
+    id: string
+    subject: string
+    message: string
+    status: string
+    category: string
+    priority: string
+    createdAt: Date
+  }>
+  error?: string
+}> {
+  try {
+    const tickets = await prisma.supportTicket.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" }
+    })
+
+    return { success: true, data: tickets }
+  } catch (err) {
+    console.error("Failed to get tickets:", err)
+    return { success: false, error: "Failed to get tickets" }
+  }
+}
+
+/**
+ * Update ticket status
+ * Admin only
+ */
+export async function updateTicketStatus(
+  ticketId: string,
+  status: string,
+  adminId: string
+): Promise<AdminResult> {
+  try {
+    const ticket = await prisma.supportTicket.findUnique({ 
+      where: { id: ticketId },
+      include: { user: true }
+    })
+    if (!ticket) {
+      return { success: false, error: "Ticket not found" }
+    }
+
+    await prisma.supportTicket.update({
+      where: { id: ticketId },
+      data: { status: status.toUpperCase() }
+    })
+
+    // Notify user of status change
+    await prisma.notification.create({
+      data: {
+        userId: ticket.userId,
+        type: "SYSTEM",
+        title: "Support Ticket Updated",
+        message: `Your ticket "${ticket.subject}" status changed to ${status}`,
+        link: "/settings?tab=support",
+        isRead: false
+      }
+    })
+
+    // Log audit trail
+    await prisma.auditLog.create({
+      data: {
+        adminId,
+        action: "TICKET_STATUS_UPDATE",
+        targetId: ticketId,
+        details: `Updated ticket status to ${status}`
+      }
+    })
+
+    return { success: true }
+  } catch (err) {
+    console.error("Failed to update ticket status:", err)
+    return { success: false, error: "Failed to update ticket status" }
   }
 }
 
@@ -1467,7 +1595,10 @@ export async function getSupportTickets(): Promise<{
  */
 export async function closeTicket(ticketId: string, adminId: string): Promise<AdminResult> {
   try {
-    const ticket = await prisma.supportTicket.findUnique({ where: { id: ticketId } })
+    const ticket = await prisma.supportTicket.findUnique({ 
+      where: { id: ticketId },
+      include: { user: true }
+    })
     if (!ticket) {
       return { success: false, error: "Ticket not found" }
     }
@@ -1475,6 +1606,18 @@ export async function closeTicket(ticketId: string, adminId: string): Promise<Ad
     await prisma.supportTicket.update({
       where: { id: ticketId },
       data: { status: "CLOSED" },
+    })
+
+    // Notify user
+    await prisma.notification.create({
+      data: {
+        userId: ticket.userId,
+        type: "SYSTEM",
+        title: "Support Ticket Resolved",
+        message: `Your ticket "${ticket.subject}" has been resolved`,
+        link: "/settings?tab=support",
+        isRead: false
+      }
     })
 
     // Log audit trail
@@ -1495,12 +1638,173 @@ export async function closeTicket(ticketId: string, adminId: string): Promise<Ad
 }
 
 /**
+ * Reopen a support ticket
+ * Admin only
+ */
+export async function reopenTicket(ticketId: string, adminId: string): Promise<AdminResult> {
+  try {
+    const ticket = await prisma.supportTicket.findUnique({ 
+      where: { id: ticketId },
+      include: { user: true }
+    })
+    if (!ticket) {
+      return { success: false, error: "Ticket not found" }
+    }
+
+    await prisma.supportTicket.update({
+      where: { id: ticketId },
+      data: { status: "OPEN" }
+    })
+
+    // Notify user
+    await prisma.notification.create({
+      data: {
+        userId: ticket.userId,
+        type: "SYSTEM",
+        title: "Support Ticket Reopened",
+        message: `Your ticket "${ticket.subject}" has been reopened`,
+        link: "/settings?tab=support",
+        isRead: false
+      }
+    })
+
+    // Log audit trail
+    await prisma.auditLog.create({
+      data: {
+        adminId,
+        action: "TICKET_REOPENED",
+        targetId: ticketId,
+        details: `Support ticket reopened`
+      }
+    })
+
+    return { success: true }
+  } catch (err) {
+    console.error("Failed to reopen ticket:", err)
+    return { success: false, error: "Failed to reopen ticket" }
+  }
+}
+
+/**
+ * Add a reply to a support ticket
+ */
+export async function addTicketReply(
+  ticketId: string,
+  userId: string,
+  message: string,
+  isAdmin: boolean = false
+): Promise<{ success: boolean; error?: string; data?: any }> {
+  try {
+    if (!message.trim()) {
+      return { success: false, error: "Message cannot be empty" }
+    }
+
+    // Verify ticket exists
+    const ticket = await prisma.supportTicket.findUnique({
+      where: { id: ticketId },
+      include: { user: true }
+    })
+
+    if (!ticket) {
+      return { success: false, error: "Ticket not found" }
+    }
+
+    // Create the reply
+    const reply = await prisma.supportTicketMessage.create({
+      data: {
+        ticketId,
+        userId,
+        message: message.trim(),
+        isAdmin
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            profilePicture: true
+          }
+        }
+      }
+    })
+
+    // Update ticket's updatedAt timestamp
+    await prisma.supportTicket.update({
+      where: { id: ticketId },
+      data: { updatedAt: new Date() }
+    })
+
+    // Create notification for the other party
+    const notificationUserId = isAdmin ? ticket.userId : ticket.user.id
+    if (notificationUserId !== userId) {
+      await prisma.notification.create({
+        data: {
+          userId: notificationUserId,
+          type: "SYSTEM",
+          title: isAdmin ? "Support Ticket Response" : "New Ticket Reply",
+          message: isAdmin 
+            ? `A support team member replied to your ticket "${ticket.subject}"`
+            : `User replied to ticket "${ticket.subject}"`,
+          link: isAdmin ? "/settings?tab=support" : "/admin/support",
+          isRead: false
+        }
+      })
+    }
+
+    return { success: true, data: reply }
+  } catch (err) {
+    console.error("Failed to add ticket reply:", err)
+    return { success: false, error: "Failed to send reply" }
+  }
+}
+
+/**
+ * Get all messages for a support ticket
+ */
+export async function getTicketMessages(ticketId: string): Promise<{
+  success: boolean
+  data?: Array<{
+    id: string
+    message: string
+    isAdmin: boolean
+    createdAt: Date
+    user: {
+      id: string
+      username: string
+      profilePicture: string | null
+    }
+  }>
+  error?: string
+}> {
+  try {
+    const messages = await prisma.supportTicketMessage.findMany({
+      where: { ticketId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            profilePicture: true
+          }
+        }
+      },
+      orderBy: { createdAt: "asc" }
+    })
+
+    return { success: true, data: messages }
+  } catch (err) {
+    console.error("Failed to get ticket messages:", err)
+    return { success: false, error: "Failed to load messages" }
+  }
+}
+
+/**
  * Get all announcements
  * Admin only
  */
 export async function getAnnouncements(): Promise<{
   success: boolean
-  announcements?: Array<{
+  data?: Array<{
     id: string
     title: string
     content: string
@@ -1516,7 +1820,7 @@ export async function getAnnouncements(): Promise<{
       orderBy: { createdAt: "desc" },
     })
 
-    return { success: true, announcements }
+    return { success: true, data: announcements }
   } catch (err) {
     console.error("Failed to get announcements:", err)
     return { success: false, error: "Failed to get announcements" }
@@ -1627,6 +1931,58 @@ export async function deleteAnnouncement(announcementId: string, adminId: string
 }
 
 /**
+ * Update an announcement
+ * Admin only
+ */
+export async function updateAnnouncement(
+  announcementId: string,
+  data: {
+    title?: string
+    content?: string
+    type?: string
+    isActive?: boolean
+    expiresAt?: string | null
+  },
+  adminId: string
+): Promise<AdminResult> {
+  try {
+    const announcement = await prisma.announcement.findUnique({ where: { id: announcementId } })
+    if (!announcement) {
+      return { success: false, error: "Announcement not found" }
+    }
+
+    const updateData: any = {}
+    if (data.title !== undefined) updateData.title = data.title
+    if (data.content !== undefined) updateData.content = data.content
+    if (data.type !== undefined) updateData.type = data.type
+    if (data.isActive !== undefined) updateData.isActive = data.isActive
+    if (data.expiresAt !== undefined) {
+      updateData.expiresAt = data.expiresAt ? new Date(data.expiresAt) : null
+    }
+
+    await prisma.announcement.update({
+      where: { id: announcementId },
+      data: updateData
+    })
+
+    // Log audit trail
+    await prisma.auditLog.create({
+      data: {
+        adminId,
+        action: "ANNOUNCEMENT_UPDATED",
+        targetId: announcementId,
+        details: `Updated announcement: ${announcement.title}`
+      }
+    })
+
+    return { success: true }
+  } catch (err) {
+    console.error("Failed to update announcement:", err)
+    return { success: false, error: "Failed to update announcement" }
+  }
+}
+
+/**
  * Get audit logs
  * Admin only
  */
@@ -1655,6 +2011,82 @@ export async function getAuditLogs(limit: number = 50): Promise<{
   } catch (err) {
     console.error("Failed to get audit logs:", err)
     return { success: false, error: "Failed to get audit logs" }
+  }
+}
+
+/**
+ * Export audit logs as CSV
+ * Admin only
+ */
+export async function exportAuditLogs(
+  filters?: {
+    action?: string
+    adminUsername?: string
+    startDate?: Date
+    endDate?: Date
+  }
+): Promise<{
+  success: boolean
+  csv?: string
+  error?: string
+}> {
+  try {
+    const session = await auth()
+    if (!session?.user || session.user.role !== "admin") {
+      return { success: false, error: "Unauthorized" }
+    }
+
+    // Build where clause based on filters
+    const where: any = {}
+    
+    if (filters?.action && filters.action !== "all") {
+      where.action = filters.action
+    }
+
+    if (filters?.adminUsername && filters.adminUsername !== "all") {
+      where.admin = {
+        username: filters.adminUsername
+      }
+    }
+
+    if (filters?.startDate || filters?.endDate) {
+      where.createdAt = {}
+      if (filters.startDate) {
+        where.createdAt.gte = filters.startDate
+      }
+      if (filters.endDate) {
+        where.createdAt.lte = filters.endDate
+      }
+    }
+
+    const logs = await prisma.auditLog.findMany({
+      where,
+      include: {
+        admin: { select: { id: true, username: true, email: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    })
+
+    // Generate CSV
+    const headers = ["Timestamp", "Admin", "Admin Email", "Action", "Target ID", "Details"]
+    const rows = logs.map(log => [
+      new Date(log.createdAt).toISOString(),
+      log.admin.username,
+      log.admin.email,
+      log.action,
+      log.targetId || "",
+      log.details?.replace(/"/g, '""') || "" // Escape quotes in CSV
+    ])
+
+    const csv = [
+      headers.join(","),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(","))
+    ].join("\n")
+
+    return { success: true, csv }
+  } catch (err) {
+    console.error("Failed to export audit logs:", err)
+    return { success: false, error: "Failed to export audit logs" }
   }
 }
 
@@ -2236,7 +2668,20 @@ export async function muteUser(
   duration?: number // duration in hours, undefined = permanent
 ): Promise<AdminResult> {
   try {
-    // TODO: Verify admin role from auth context
+    const session = await auth()
+    if (!session?.user || session.user.role !== "admin") {
+      return { success: false, error: "Unauthorized" }
+    }
+
+    // Get admin user from database
+    const adminUser = await prisma.user.findUnique({
+      where: { email: session.user.email! },
+      select: { id: true },
+    })
+
+    if (!adminUser) {
+      return { success: false, error: "Admin user not found" }
+    }
 
     if (!userId || !reason) {
       return { success: false, error: "User ID and reason are required" }
@@ -2273,6 +2718,16 @@ export async function muteUser(
       `Your messaging privileges have been ${duration ? `temporarily suspended for ${duration} hours` : "permanently suspended"}. Reason: ${reason}`,
       undefined
     )
+
+    // Create audit log
+    await prisma.auditLog.create({
+      data: {
+        adminId: adminUser.id,
+        action: "USER_MUTED",
+        targetId: userId,
+        details: `Muted user ${user.username}${duration ? ` for ${duration} hours` : " permanently"}. Reason: ${reason}`,
+      },
+    })
 
     return { success: true }
   } catch (err) {
@@ -2693,6 +3148,16 @@ export async function invalidateVouch(vouchId: string, reason: string): Promise<
       undefined
     )
 
+    // Create audit log
+    await prisma.auditLog.create({
+      data: {
+        adminId: adminUser.id,
+        action: "VOUCH_INVALIDATED",
+        targetId: vouchId,
+        details: `Invalidated vouch from ${vouch.fromUser.username} to ${vouch.toUser.username}. Reason: ${reason}`,
+      },
+    })
+
     return { success: true }
   } catch (err) {
     console.error("Failed to invalidate vouch:", err)
@@ -2711,8 +3176,22 @@ export async function approveVouch(vouchId: string): Promise<AdminResult> {
       return { success: false, error: "Unauthorized" }
     }
 
+    // Get admin user from database
+    const adminUser = await prisma.user.findUnique({
+      where: { email: session.user.email! },
+      select: { id: true },
+    })
+
+    if (!adminUser) {
+      return { success: false, error: "Admin user not found" }
+    }
+
     const vouch = await prisma.vouch.findUnique({
       where: { id: vouchId },
+      include: {
+        fromUser: { select: { username: true } },
+        toUser: { select: { username: true } },
+      },
     })
 
     if (!vouch) {
@@ -2728,6 +3207,16 @@ export async function approveVouch(vouchId: string): Promise<AdminResult> {
         invalidatedBy: null,
         invalidatedAt: null,
         invalidReason: null,
+      },
+    })
+
+    // Create audit log
+    await prisma.auditLog.create({
+      data: {
+        adminId: adminUser.id,
+        action: "VOUCH_APPROVED",
+        targetId: vouchId,
+        details: `Approved vouch from ${vouch.fromUser.username} to ${vouch.toUser.username}`,
       },
     })
 
@@ -2797,6 +3286,16 @@ export async function invalidatePattern(
         )
       )
     )
+
+    // Create audit log
+    await prisma.auditLog.create({
+      data: {
+        adminId: adminUser.id,
+        action: "VOUCH_PATTERN_INVALIDATED",
+        targetId: vouchIds[0], // First vouch ID as reference
+        details: `Invalidated ${vouchIds.length} vouches in pattern. Reason: ${reason}`,
+      },
+    })
 
     return { success: true }
   } catch (err) {

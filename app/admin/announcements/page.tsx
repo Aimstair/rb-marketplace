@@ -33,57 +33,8 @@ import {
   Info,
   Sparkles,
 } from "lucide-react"
-import { getAnnouncements, createAnnouncement, deleteAnnouncement } from "@/app/actions/admin"
+import { getAnnouncements, createAnnouncement, deleteAnnouncement, updateAnnouncement } from "@/app/actions/admin"
 import { useSession } from "next-auth/react"
-
-const mockAnnouncements = [
-  {
-    id: "1",
-    title: "System Maintenance Notice",
-    content:
-      "We will be performing scheduled maintenance on December 20th from 2-4 AM UTC. Trading will be temporarily disabled during this time.",
-    type: "maintenance",
-    status: "active",
-    createdAt: "Dec 15, 2024",
-    expiresAt: "Dec 21, 2024",
-  },
-  {
-    id: "2",
-    title: "New Feature: Enhanced Vouch System",
-    content: "We've upgraded our vouch system with better fraud detection. Check out the new features in your profile!",
-    type: "update",
-    status: "active",
-    createdAt: "Dec 10, 2024",
-    expiresAt: "Jan 10, 2025",
-  },
-  {
-    id: "3",
-    title: "Holiday Trading Event",
-    content: "Special holiday trading event with reduced fees! Valid from Dec 20 - Jan 5.",
-    type: "event",
-    status: "scheduled",
-    createdAt: "Dec 12, 2024",
-    expiresAt: "Jan 5, 2025",
-  },
-  {
-    id: "4",
-    title: "Warning: Scam Alert",
-    content: "We've detected an increase in phishing attempts. Never share your password or 2FA codes with anyone.",
-    type: "warning",
-    status: "active",
-    createdAt: "Dec 5, 2024",
-    expiresAt: "Dec 31, 2024",
-  },
-  {
-    id: "5",
-    title: "Black Friday Sale Complete",
-    content: "Thank you for participating in our Black Friday event!",
-    type: "event",
-    status: "expired",
-    createdAt: "Nov 24, 2024",
-    expiresAt: "Nov 30, 2024",
-  },
-]
 
 const typeConfig: Record<string, { icon: React.ComponentType<{ className?: string }>; color: string; label: string }> =
   {
@@ -108,10 +59,13 @@ export default function AnnouncementsPage() {
   const [typeFilter, setTypeFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
   const [isCreateOpen, setIsCreateOpen] = useState(false)
-  const [announcements, setAnnouncements] = useState<typeof mockAnnouncements>([])
+  const [isEditOpen, setIsEditOpen] = useState(false)
+  const [announcements, setAnnouncements] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
+  const [updating, setUpdating] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [selectedAnnouncement, setSelectedAnnouncement] = useState<any>(null)
 
   // Form fields for create
   const [formData, setFormData] = useState({
@@ -121,37 +75,67 @@ export default function AnnouncementsPage() {
     expiresAt: "",
   })
 
+  // Form fields for edit
+  const [editFormData, setEditFormData] = useState({
+    title: "",
+    content: "",
+    type: "info",
+    isActive: true,
+    expiresAt: "",
+  })
+
   useEffect(() => {
-    const fetchAnnouncements = async () => {
-      try {
-        const result = await getAnnouncements()
-        if (result.success && result.data) {
-          // Map database announcements to mock format
-          const mapped = result.data.map((ann: any) => ({
+    loadAnnouncements()
+  }, [])
+
+  const loadAnnouncements = async () => {
+    setLoading(true)
+    try {
+      const result = await getAnnouncements()
+      if (result.success && result.data) {
+        // Map database announcements to display format
+        const mapped = result.data.map((ann: any) => {
+          // Determine status based on isActive and expiresAt
+          let status = "active"
+          if (!ann.isActive) {
+            status = "draft"
+          } else if (ann.expiresAt) {
+            const expiryDate = new Date(ann.expiresAt)
+            const now = new Date()
+            if (expiryDate < now) {
+              status = "expired"
+            } else if (expiryDate.getTime() - now.getTime() < 7 * 24 * 60 * 60 * 1000) {
+              // Within 7 days
+              status = "scheduled"
+            }
+          }
+
+          return {
             id: ann.id.slice(0, 8),
             title: ann.title,
             content: ann.content,
             type: ann.type.toLowerCase(),
-            status: ann.isActive ? "active" : "expired",
+            status,
+            isActive: ann.isActive,
             createdAt: new Date(ann.createdAt).toLocaleDateString(),
             expiresAt: ann.expiresAt ? new Date(ann.expiresAt).toLocaleDateString() : "No expiry",
+            expiresAtRaw: ann.expiresAt ? new Date(ann.expiresAt).toISOString().split('T')[0] : "",
             dbId: ann.id,
-          }))
-          setAnnouncements(mapped)
-        }
-      } catch (error) {
-        toast({
-          title: "Error",
-          description: "Failed to fetch announcements",
-          variant: "destructive",
+          }
         })
-      } finally {
-        setLoading(false)
+        setAnnouncements(mapped)
       }
+    } catch (error) {
+      console.error("Failed to load announcements:", error)
+      toast({
+        title: "Error",
+        description: "Failed to fetch announcements",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
     }
-
-    fetchAnnouncements()
-  }, [toast])
+  }
 
   const handleCreate = async () => {
     if (!session?.user?.id || !formData.title.trim() || !formData.content.trim()) {
@@ -170,8 +154,7 @@ export default function AnnouncementsPage() {
           title: formData.title,
           content: formData.content,
           type: formData.type,
-          isActive: true,
-          expiresAt: formData.expiresAt ? new Date(formData.expiresAt) : undefined,
+          expiresAt: formData.expiresAt || undefined,
         },
         session.user.id
       )
@@ -182,21 +165,7 @@ export default function AnnouncementsPage() {
         })
         setFormData({ title: "", content: "", type: "info", expiresAt: "" })
         setIsCreateOpen(false)
-        // Refresh
-        const refreshResult = await getAnnouncements()
-        if (refreshResult.success && refreshResult.data) {
-          const mapped = refreshResult.data.map((ann: any) => ({
-            id: ann.id.slice(0, 8),
-            title: ann.title,
-            content: ann.content,
-            type: ann.type.toLowerCase(),
-            status: ann.isActive ? "active" : "expired",
-            createdAt: new Date(ann.createdAt).toLocaleDateString(),
-            expiresAt: ann.expiresAt ? new Date(ann.expiresAt).toLocaleDateString() : "No expiry",
-            dbId: ann.id,
-          }))
-          setAnnouncements(mapped)
-        }
+        loadAnnouncements()
       } else {
         toast({
           title: "Error",
@@ -204,8 +173,77 @@ export default function AnnouncementsPage() {
           variant: "destructive",
         })
       }
+    } catch (error) {
+      console.error("Failed to create announcement:", error)
+      toast({
+        title: "Error",
+        description: "Failed to create announcement",
+        variant: "destructive",
+      })
     } finally {
       setCreating(false)
+    }
+  }
+
+  const handleEdit = (announcement: any) => {
+    setSelectedAnnouncement(announcement)
+    setEditFormData({
+      title: announcement.title,
+      content: announcement.content,
+      type: announcement.type,
+      isActive: announcement.isActive,
+      expiresAt: announcement.expiresAtRaw,
+    })
+    setIsEditOpen(true)
+  }
+
+  const handleUpdate = async () => {
+    if (!session?.user?.id || !selectedAnnouncement || !editFormData.title.trim() || !editFormData.content.trim()) {
+      toast({
+        title: "Error",
+        description: "Please fill in all required fields",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setUpdating(true)
+    try {
+      const result = await updateAnnouncement(
+        selectedAnnouncement.dbId,
+        {
+          title: editFormData.title,
+          content: editFormData.content,
+          type: editFormData.type,
+          isActive: editFormData.isActive,
+          expiresAt: editFormData.expiresAt || null,
+        },
+        session.user.id
+      )
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: "Announcement updated successfully",
+        })
+        setIsEditOpen(false)
+        setSelectedAnnouncement(null)
+        loadAnnouncements()
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to update announcement",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Failed to update announcement:", error)
+      toast({
+        title: "Error",
+        description: "Failed to update announcement",
+        variant: "destructive",
+      })
+    } finally {
+      setUpdating(false)
     }
   }
 
@@ -441,7 +479,7 @@ export default function AnnouncementsPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button variant="ghost" size="icon" disabled>
+                      <Button variant="ghost" size="icon" onClick={() => handleEdit(announcement)}>
                         <Edit className="h-4 w-4" />
                       </Button>
                       <Button
@@ -461,6 +499,81 @@ export default function AnnouncementsPage() {
           })
         )}
       </div>
+
+      {/* Edit Dialog */}
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent className="sm:max-w-[525px]">
+          <DialogHeader>
+            <DialogTitle>Edit Announcement</DialogTitle>
+            <DialogDescription>Update the announcement details.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="edit-title">Title</Label>
+              <Input
+                id="edit-title"
+                placeholder="Announcement title..."
+                value={editFormData.title}
+                onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="edit-content">Content</Label>
+              <Textarea
+                id="edit-content"
+                placeholder="Announcement content..."
+                rows={4}
+                value={editFormData.content}
+                onChange={(e) => setEditFormData({ ...editFormData, content: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="edit-type">Type</Label>
+                <Select value={editFormData.type} onValueChange={(value) => setEditFormData({ ...editFormData, type: value })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="info">Info</SelectItem>
+                    <SelectItem value="update">Update</SelectItem>
+                    <SelectItem value="event">Event</SelectItem>
+                    <SelectItem value="maintenance">Maintenance</SelectItem>
+                    <SelectItem value="warning">Warning</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="edit-expires">Expires</Label>
+                <Input
+                  id="edit-expires"
+                  type="date"
+                  value={editFormData.expiresAt}
+                  onChange={(e) => setEditFormData({ ...editFormData, expiresAt: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="edit-active"
+                checked={editFormData.isActive}
+                onChange={(e) => setEditFormData({ ...editFormData, isActive: e.target.checked })}
+                className="h-4 w-4"
+              />
+              <Label htmlFor="edit-active" className="cursor-pointer">Active</Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleUpdate} disabled={updating}>
+              {updating ? "Updating..." : "Update"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

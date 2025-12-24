@@ -6,10 +6,11 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Search, FileText, Ban, Trash2, Edit, AlertTriangle, Settings, LogIn, Loader2 } from "lucide-react"
+import { Search, FileText, Ban, Trash2, Edit, AlertTriangle, Settings, LogIn, Loader2, Download } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { getAuditLogs } from "@/app/actions/admin"
+import { getAuditLogs, exportAuditLogs } from "@/app/actions/admin"
+import { useToast } from "@/components/ui/use-toast"
 
 interface AuditLog {
   id: string
@@ -27,24 +28,80 @@ export default function AuditLogsPage() {
   const [logs, setLogs] = useState<AuditLog[]>([])
   const [loading, setLoading] = useState(true)
   const [uniqueAdmins, setUniqueAdmins] = useState<string[]>([])
+  const [exporting, setExporting] = useState(false)
+  const { toast } = useToast()
+
+  const loadLogs = async () => {
+    try {
+      setLoading(true)
+      const result = await getAuditLogs(500) // Increased limit
+      if (result.success && result.logs) {
+        setLogs(result.logs)
+        const admins = [...new Set(result.logs.map((log) => log.admin.username))]
+        setUniqueAdmins(admins)
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to load audit logs",
+          variant: "destructive",
+        })
+      }
+    } catch (err) {
+      console.error("Failed to load audit logs:", err)
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleExportLogs = async () => {
+    try {
+      setExporting(true)
+      const result = await exportAuditLogs({
+        action: actionFilter !== "all" ? actionFilter : undefined,
+        adminUsername: adminFilter !== "all" ? adminFilter : undefined,
+      })
+
+      if (result.success && result.csv) {
+        // Create a blob and download
+        const blob = new Blob([result.csv], { type: "text/csv" })
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = url
+        a.download = `audit-logs-${new Date().toISOString().split('T')[0]}.csv`
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+
+        toast({
+          title: "✅ Export Successful",
+          description: "Audit logs have been exported to CSV",
+        })
+      } else {
+        toast({
+          title: "❌ Export Failed",
+          description: result.error || "Failed to export audit logs",
+          variant: "destructive",
+        })
+      }
+    } catch (err) {
+      console.error("Failed to export logs:", err)
+      toast({
+        title: "❌ Error",
+        description: "An unexpected error occurred during export",
+        variant: "destructive",
+      })
+    } finally {
+      setExporting(false)
+    }
+  }
 
   useEffect(() => {
-    const loadLogs = async () => {
-      try {
-        setLoading(true)
-        const result = await getAuditLogs(100)
-        if (result.success && result.logs) {
-          setLogs(result.logs)
-          const admins = [...new Set(result.logs.map((log) => log.admin.username))]
-          setUniqueAdmins(admins)
-        }
-      } catch (err) {
-        console.error("Failed to load audit logs:", err)
-      } finally {
-        setLoading(false)
-      }
-    }
-
     loadLogs()
   }, [])
 
@@ -64,10 +121,13 @@ export default function AuditLogsPage() {
     switch (action) {
       case "USER_BANNED":
       case "USER_UNBANNED":
+      case "USER_MUTED":
         return <Ban className="h-4 w-4" />
       case "LISTING_REMOVED":
         return <Trash2 className="h-4 w-4" />
       case "VOUCH_INVALIDATED":
+      case "VOUCH_APPROVED":
+      case "VOUCH_PATTERN_INVALIDATED":
         return <AlertTriangle className="h-4 w-4" />
       case "USER_WARNING":
         return <AlertTriangle className="h-4 w-4" />
@@ -89,10 +149,16 @@ export default function AuditLogsPage() {
         return <Badge variant="destructive">User Banned</Badge>
       case "USER_UNBANNED":
         return <Badge className="bg-green-500 text-white">User Unbanned</Badge>
+      case "USER_MUTED":
+        return <Badge className="bg-orange-500 text-white">User Muted</Badge>
       case "LISTING_REMOVED":
         return <Badge variant="destructive">Listing Removed</Badge>
       case "VOUCH_INVALIDATED":
         return <Badge className="bg-orange-500 text-white">Vouch Invalidated</Badge>
+      case "VOUCH_APPROVED":
+        return <Badge className="bg-green-500 text-white">Vouch Approved</Badge>
+      case "VOUCH_PATTERN_INVALIDATED":
+        return <Badge variant="destructive">Pattern Invalidated</Badge>
       case "USER_WARNING":
         return <Badge className="bg-yellow-500 text-white">Warning Issued</Badge>
       case "ADMIN_LOGIN":
@@ -160,14 +226,18 @@ export default function AuditLogsPage() {
                 <SelectItem value="all">All Actions</SelectItem>
                 <SelectItem value="USER_BANNED">User Banned</SelectItem>
                 <SelectItem value="USER_UNBANNED">User Unbanned</SelectItem>
+                <SelectItem value="USER_MUTED">User Muted</SelectItem>
                 <SelectItem value="LISTING_REMOVED">Listing Removed</SelectItem>
                 <SelectItem value="VOUCH_INVALIDATED">Vouch Invalidated</SelectItem>
+                <SelectItem value="VOUCH_APPROVED">Vouch Approved</SelectItem>
+                <SelectItem value="VOUCH_PATTERN_INVALIDATED">Pattern Invalidated</SelectItem>
                 <SelectItem value="USER_WARNING">Warning Issued</SelectItem>
                 <SelectItem value="ADMIN_LOGIN">Admin Login</SelectItem>
                 <SelectItem value="USER_ROLE_UPDATED">Role Updated</SelectItem>
                 <SelectItem value="DISPUTE_RESOLVED">Dispute Resolved</SelectItem>
                 <SelectItem value="TICKET_CLOSED">Ticket Closed</SelectItem>
                 <SelectItem value="ANNOUNCEMENT_CREATED">Announcement Created</SelectItem>
+                <SelectItem value="ANNOUNCEMENT_DELETED">Announcement Deleted</SelectItem>
               </SelectContent>
             </Select>
             <Select value={adminFilter} onValueChange={setAdminFilter}>
@@ -183,8 +253,22 @@ export default function AuditLogsPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Button variant="outline" disabled>
-              Export Logs
+            <Button 
+              variant="outline" 
+              onClick={handleExportLogs}
+              disabled={exporting || loading || filteredLogs.length === 0}
+            >
+              {exporting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Exporting...
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4 mr-2" />
+                  Export Logs
+                </>
+              )}
             </Button>
           </div>
         </CardContent>
