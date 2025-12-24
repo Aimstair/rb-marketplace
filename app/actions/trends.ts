@@ -485,6 +485,7 @@ export async function getTopTraders(
         isVerified: true,
         joinDate: true,
         vouchesReceived: {
+          where: { status: "VALID" }, // Only count valid vouches
           select: { id: true },
         },
         itemListings: {

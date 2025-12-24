@@ -25,6 +25,7 @@ export interface UserProfileData {
   reports: any[]
   soldItems: number
   isFollowing: boolean
+  isOwnProfile: boolean
   robloxProfile?: string
   discordTag?: string
   lastActive: Date
@@ -81,6 +82,9 @@ export async function getProfile(usernameOrId: string): Promise<GetProfileResult
           orderBy: { createdAt: "desc" }
         },
         vouchesReceived: {
+          where: {
+            status: "VALID", // Only include valid vouches
+          },
           include: {
             fromUser: {
               select: { id: true, username: true, profilePicture: true },
@@ -164,6 +168,56 @@ export async function getProfile(usernameOrId: string): Promise<GetProfileResult
       })
     }
 
+    // Calculate successful transactions (COMPLETED status)
+    const successfulTransactions = await prisma.transaction.count({
+      where: {
+        OR: [
+          { buyerId: user.id },
+          { sellerId: user.id },
+        ],
+        status: "COMPLETED",
+      },
+    })
+
+    // Calculate response rate from conversations
+    const conversations = await prisma.conversation.findMany({
+      where: {
+        OR: [
+          { buyerId: user.id },
+          { sellerId: user.id },
+        ],
+      },
+      include: {
+        messages: {
+          orderBy: { createdAt: "asc" },
+          take: 2, // First message and first response
+        },
+      },
+    })
+
+    let responseRate = 100 // Default to 100% if no data
+    if (conversations.length > 0) {
+      const conversationsWithResponses = conversations.filter((conv) => {
+        if (conv.messages.length < 2) return false
+        const firstMessage = conv.messages[0]
+        const secondMessage = conv.messages[1]
+        // Check if user responded to the first message
+        return firstMessage.senderId !== user.id && secondMessage.senderId === user.id
+      })
+      responseRate = Math.round((conversationsWithResponses.length / conversations.length) * 100)
+    }
+
+    // Check if current user is viewing their own profile
+    const session = await auth()
+    let isOwnProfile = false
+    if (session?.user?.email) {
+      const currentUser = await prisma.user.findUnique({
+        where: { email: session.user.email },
+        select: { id: true },
+      })
+      isOwnProfile = currentUser?.id === user.id
+    }
+
     const profileData: UserProfileData = {
       id: user.id,
       username: user.username,
@@ -177,7 +231,7 @@ export async function getProfile(usernameOrId: string): Promise<GetProfileResult
       vouchCount: vouches.length,
       averageRating,
       ratingBreakdown,
-      responseRate: 95, // TODO: Calculate from actual message response times
+      responseRate,
       followers: 0, // TODO: Query UserFollow model when available
       following: 0, // TODO: Query UserFollow model when available
       listings: allListings,
@@ -196,8 +250,9 @@ export async function getProfile(usernameOrId: string): Promise<GetProfileResult
         createdAt: report.createdAt,
         reporter: report.reporter,
       })),
-      soldItems: 0, // TODO: Query sellerTransactions when available
+      soldItems: successfulTransactions,
       isFollowing: false, // TODO: Check current user follow status when auth is implemented
+      isOwnProfile,
       robloxProfile: user.robloxProfile || undefined,
       discordTag: user.discordTag || undefined,
       lastActive: user.lastActive || new Date(),
@@ -335,7 +390,7 @@ export async function getProfileStats(userId: string) {
       select: {
         id: true,
         listings: { where: { status: "available" }, select: { id: true } },
-        vouchesReceived: { select: { id: true } },
+        vouchesReceived: { where: { status: "VALID" }, select: { id: true } }, // Only count valid vouches
       } as any,
     }) as any
 

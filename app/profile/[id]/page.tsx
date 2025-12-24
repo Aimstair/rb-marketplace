@@ -339,7 +339,7 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Response Rate</p>
-                  <p className="font-semibold text-sm">{profile.responseRate || 95}%</p>
+                  <p className="font-semibold text-sm">{profile.responseRate || 0}%</p>
                 </div>
               </div>
 
@@ -357,29 +357,33 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
 
               {/* Action Buttons */}
               <div className="flex flex-wrap gap-2">
-                <Button onClick={handleMessage} disabled={isBlocked}>
-                  <MessageCircle className="w-4 h-4 mr-2" />
-                  Message
-                </Button>
-                <Button
-                  variant={isFollowing ? "secondary" : "outline"}
-                  onClick={handleToggleFollow}
-                  disabled={followLoading}
-                >
-                  {followLoading ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : isFollowing ? (
-                    <>
-                      <Check className="w-4 h-4 mr-2" />
-                      Following
-                    </>
-                  ) : (
-                    <>
-                      <Users className="w-4 h-4 mr-2" />
-                      Follow
-                    </>
-                  )}
-                </Button>
+                {!profile.isOwnProfile && (
+                  <>
+                    <Button onClick={handleMessage} disabled={isBlocked}>
+                      <MessageCircle className="w-4 h-4 mr-2" />
+                      Message
+                    </Button>
+                    <Button
+                      variant={isFollowing ? "secondary" : "outline"}
+                      onClick={handleToggleFollow}
+                      disabled={followLoading}
+                    >
+                      {followLoading ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : isFollowing ? (
+                        <>
+                          <Check className="w-4 h-4 mr-2" />
+                          Following
+                        </>
+                      ) : (
+                        <>
+                          <Users className="w-4 h-4 mr-2" />
+                          Follow
+                        </>
+                      )}
+                    </Button>
+                  </>
+                )}
                 <Button variant="outline" onClick={handleCopyUsername}>
                   {copied ? <Check className="w-4 h-4 mr-2" /> : <Copy className="w-4 h-4 mr-2" />}
                   {copied ? "Copied!" : "Copy Username"}
@@ -388,23 +392,25 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
                   <Share2 className="w-4 h-4 mr-2" />
                   Share
                 </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="icon">
-                      <Flag className="w-4 h-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent>
-                    <DropdownMenuItem onClick={() => setShowReportDialog(true)}>
-                      <Flag className="w-4 h-4 mr-2" />
-                      Report User
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setShowBlockDialog(true)} className="text-destructive">
-                      <Ban className="w-4 h-4 mr-2" />
-                      {isBlocked ? "Unblock User" : "Block User"}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                {!profile.isOwnProfile && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="icon">
+                        <Flag className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuItem onClick={() => setShowReportDialog(true)}>
+                        <Flag className="w-4 h-4 mr-2" />
+                        Report User
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setShowBlockDialog(true)} className="text-destructive">
+                        <Ban className="w-4 h-4 mr-2" />
+                        {isBlocked ? "Unblock User" : "Block User"}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </div>
             </div>
 

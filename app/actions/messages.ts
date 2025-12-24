@@ -365,12 +365,47 @@ export async function sendMessage(
     // Find the current user by email from session
     const currentUser = await prisma.user.findUnique({
       where: { email: session.user.email },
+      select: {
+        id: true,
+        isBanned: true,
+        isMuted: true,
+        mutedUntil: true,
+        mutedReason: true,
+      },
     })
 
     if (!currentUser) {
       return {
         success: false,
         error: "User account not found",
+      }
+    }
+
+    // Check if user is banned
+    if (currentUser.isBanned) {
+      return {
+        success: false,
+        error: "Your account is banned and cannot send messages",
+      }
+    }
+
+    // Check if user is muted
+    if (currentUser.isMuted) {
+      // Check if temporary mute has expired
+      if (currentUser.mutedUntil && new Date() > currentUser.mutedUntil) {
+        // Auto-unmute user
+        await prisma.user.update({
+          where: { id: currentUser.id },
+          data: { isMuted: false, mutedUntil: null, mutedReason: null },
+        })
+      } else {
+        const muteMsg = currentUser.mutedUntil
+          ? `You are muted until ${currentUser.mutedUntil.toLocaleString()}. Reason: ${currentUser.mutedReason || "Policy violation"}`
+          : `You are permanently muted. Reason: ${currentUser.mutedReason || "Policy violation"}`
+        return {
+          success: false,
+          error: muteMsg,
+        }
       }
     }
 

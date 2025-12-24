@@ -18,6 +18,15 @@ interface DashboardStats {
     activeListings: number
     pendingReports: number
   }
+  recentReports: Array<{
+    id: string
+    type: "user" | "listing"
+    reason: string
+    reporterUsername: string
+    reportedUsername?: string
+    listingTitle?: string
+    createdAt: Date
+  }>
   recentActivity: Array<{
     id: string
     type: "user_joined" | "transaction_completed"
@@ -126,6 +135,75 @@ export async function getDashboardStats(): Promise<{ success: boolean; data?: Da
       where: { status: "PENDING" },
     })
     const pendingReports = pendingListingReports + pendingUserReports
+
+    // Get 5 most recent pending reports from both tables
+    const recentListingReports = await prisma.reportListing.findMany({
+      where: { status: "PENDING" },
+      select: {
+        id: true,
+        reason: true,
+        createdAt: true,
+        listingId: true,
+        listingType: true,
+        reporter: { select: { username: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    })
+
+    const recentUserReports = await prisma.reportUser.findMany({
+      where: { status: "PENDING" },
+      select: {
+        id: true,
+        reason: true,
+        createdAt: true,
+        reporter: { select: { username: true } },
+        reported: { select: { username: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    })
+
+    // Fetch listing titles for listing reports
+    const listingReportsWithTitles = await Promise.all(
+      recentListingReports.map(async (report) => {
+        let listingTitle = "Unknown Listing"
+        if (report.listingType === "ITEM") {
+          const listing = await prisma.itemListing.findUnique({
+            where: { id: report.listingId },
+            select: { title: true },
+          })
+          if (listing) listingTitle = listing.title
+        } else if (report.listingType === "CURRENCY") {
+          const listing = await prisma.currencyListing.findUnique({
+            where: { id: report.listingId },
+            select: { title: true },
+          })
+          if (listing) listingTitle = listing.title
+        }
+        return {
+          id: report.id,
+          type: "listing" as const,
+          reason: report.reason,
+          reporterUsername: report.reporter.username,
+          listingTitle,
+          createdAt: report.createdAt,
+        }
+      })
+    )
+
+    // Combine and sort reports
+    const recentReports = [
+      ...listingReportsWithTitles,
+      ...recentUserReports.map(r => ({
+        id: r.id,
+        type: "user" as const,
+        reason: r.reason,
+        reporterUsername: r.reporter.username,
+        reportedUsername: r.reported.username,
+        createdAt: r.createdAt,
+      })),
+    ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, 5)
 
     // Get recent activity: 5 most recent users + 5 most recent transactions
     const recentUsers = await prisma.user.findMany({
@@ -416,6 +494,7 @@ export async function getDashboardStats(): Promise<{ success: boolean; data?: Da
           activeListings: previousActiveListings,
           pendingReports: previousPendingReports,
         },
+        recentReports,
         recentActivity: recentActivity.slice(0, 10), // Limit to 10 most recent
         weeklyTraffic,
         monthlyRevenue,
@@ -481,7 +560,7 @@ export async function getUsers(
             itemListings: true,
             currencyListings: true,
             sellerTransactions: true,
-            vouchesReceived: true,
+            vouchesReceived: { where: { status: "VALID" } }, // Only count valid vouches
           },
         },
       },
@@ -1912,5 +1991,816 @@ export async function assignUserRole(
   } catch (err) {
     console.error("Failed to assign user role:", err)
     return { success: false, error: "Failed to assign user to role" }
+  }
+}
+
+/**
+ * Chat Monitoring - Get conversations with flagging
+ * Admin only
+ */
+export async function getChatConversations(searchQuery: string = "", filterType: string = "all"): Promise<{
+  success: boolean
+  conversations?: Array<{
+    id: string
+    participants: Array<{ id: string; username: string; avatar: string | null; isBanned: boolean }>
+    lastMessage: string | null
+    lastMessageTime: Date | null
+    flagged: boolean
+    flagReason?: string
+    messageCount: number
+  }>
+  stats?: {
+    total: number
+    flagged: number
+    aiDetections: number
+    usersMuted: number
+  }
+  error?: string
+}> {
+  try {
+    // TODO: Verify admin role from auth context
+
+    // Get all conversations with messages
+    const conversations = await prisma.conversation.findMany({
+      include: {
+        buyer: { select: { id: true, username: true, profilePicture: true, isBanned: true } },
+        seller: { select: { id: true, username: true, profilePicture: true, isBanned: true } },
+        messages: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { content: true, createdAt: true },
+        },
+        _count: { select: { messages: true } },
+      },
+      orderBy: { updatedAt: "desc" },
+    })
+
+    // Define suspicious keywords for flagging
+    const suspiciousKeywords = [
+      "send first",
+      "trust me",
+      "promise",
+      "quick before",
+      "another site",
+      "free robux",
+      "outside of platform",
+      "paypal",
+      "gift card",
+      "discord",
+      "private message",
+      "cashapp",
+      "venmo",
+      "zelle",
+      "wire transfer",
+      "refund later",
+      "guaranteed",
+    ]
+
+    // Format conversations
+    const formattedConversations = await Promise.all(
+      conversations.map(async (conv) => {
+        const participants = [
+          {
+            id: conv.buyer.id,
+            username: conv.buyer.username,
+            avatar: conv.buyer.profilePicture,
+            isBanned: conv.buyer.isBanned,
+          },
+          {
+            id: conv.seller.id,
+            username: conv.seller.username,
+            avatar: conv.seller.profilePicture,
+            isBanned: conv.seller.isBanned,
+          },
+        ]
+
+        // Check last message for suspicious content
+        const lastMessage = conv.messages[0]?.content || null
+        let flagged = false
+        let flagReason = undefined
+
+        if (lastMessage) {
+          const lowerMessage = lastMessage.toLowerCase()
+          const foundKeywords = suspiciousKeywords.filter((kw) => lowerMessage.includes(kw))
+          if (foundKeywords.length > 0) {
+            flagged = true
+            flagReason = `Suspicious keywords detected: ${foundKeywords.slice(0, 2).join(", ")}`
+          }
+        }
+
+        // Also flag if either participant is banned
+        if (conv.buyer.isBanned || conv.seller.isBanned) {
+          flagged = true
+          flagReason = "Banned user in conversation"
+        }
+
+        return {
+          id: conv.id,
+          participants,
+          lastMessage,
+          lastMessageTime: conv.messages[0]?.createdAt || null,
+          flagged,
+          flagReason,
+          messageCount: conv._count.messages,
+        }
+      })
+    )
+
+    // Apply filters
+    let filteredConversations = formattedConversations
+
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase()
+      filteredConversations = filteredConversations.filter((conv) =>
+        conv.participants.some((p) => p.username.toLowerCase().includes(query))
+      )
+    }
+
+    if (filterType === "flagged") {
+      filteredConversations = filteredConversations.filter((conv) => conv.flagged)
+    } else if (filterType === "normal") {
+      filteredConversations = filteredConversations.filter((conv) => !conv.flagged)
+    }
+
+    // Calculate stats
+    const usersMuted = await prisma.user.count({
+      where: {
+        isMuted: true,
+        OR: [
+          { mutedUntil: null }, // permanent mute
+          { mutedUntil: { gt: new Date() } }, // active temporary mute
+        ],
+      },
+    })
+
+    const stats = {
+      total: formattedConversations.length,
+      flagged: formattedConversations.filter((c) => c.flagged).length,
+      aiDetections: formattedConversations.filter((c) => c.flagged && c.flagReason?.includes("Suspicious keywords"))
+        .length,
+      usersMuted,
+    }
+
+    return {
+      success: true,
+      conversations: filteredConversations,
+      stats,
+    }
+  } catch (err) {
+    console.error("Failed to get chat conversations:", err)
+    return { success: false, error: `Failed to load conversations: ${err instanceof Error ? err.message : String(err)}` }
+  }
+}
+
+/**
+ * Get conversation messages for chat monitoring
+ * Admin only
+ */
+export async function getConversationMessages(conversationId: string): Promise<{
+  success: boolean
+  messages?: Array<{
+    id: string
+    sender: string
+    senderId: string
+    message: string
+    time: string
+    createdAt: Date
+    flagged: boolean
+  }>
+  error?: string
+}> {
+  try {
+    // TODO: Verify admin role from auth context
+
+    const messages = await prisma.message.findMany({
+      where: { conversationId },
+      include: {
+        sender: { select: { username: true, id: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    })
+
+    // Suspicious keywords for flagging
+    const suspiciousKeywords = [
+      "send first",
+      "trust me",
+      "promise",
+      "quick before",
+      "another site",
+      "free robux",
+      "outside of platform",
+      "paypal",
+      "gift card",
+      "discord",
+      "private message",
+      "cashapp",
+      "venmo",
+      "zelle",
+      "wire transfer",
+      "refund later",
+      "guaranteed",
+    ]
+
+    const formattedMessages = messages.map((msg) => {
+      const lowerContent = msg.content.toLowerCase()
+      const flagged = suspiciousKeywords.some((kw) => lowerContent.includes(kw))
+
+      return {
+        id: msg.id,
+        sender: msg.sender.username,
+        senderId: msg.sender.id,
+        message: msg.content,
+        time: msg.createdAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }),
+        createdAt: msg.createdAt,
+        flagged,
+      }
+    })
+
+    return {
+      success: true,
+      messages: formattedMessages,
+    }
+  } catch (err) {
+    console.error("Failed to get conversation messages:", err)
+    return { success: false, error: "Failed to load messages" }
+  }
+}
+
+/**
+ * Mute user - prevents them from sending messages
+ * Admin only
+ */
+export async function muteUser(
+  userId: string,
+  reason: string,
+  duration?: number // duration in hours, undefined = permanent
+): Promise<AdminResult> {
+  try {
+    // TODO: Verify admin role from auth context
+
+    if (!userId || !reason) {
+      return { success: false, error: "User ID and reason are required" }
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId } })
+    if (!user) {
+      return { success: false, error: "User not found" }
+    }
+
+    // Prevent muting admins
+    if (user.role === "admin") {
+      return { success: false, error: "Cannot mute admin users" }
+    }
+
+    // Calculate mute end time if duration provided
+    const mutedUntil = duration ? new Date(Date.now() + duration * 60 * 60 * 1000) : null
+
+    // Update user mute status
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        isMuted: true,
+        mutedUntil,
+        mutedReason: reason,
+      },
+    })
+
+    // Send notification
+    await createNotification(
+      userId,
+      "SYSTEM",
+      "Account Muted",
+      `Your messaging privileges have been ${duration ? `temporarily suspended for ${duration} hours` : "permanently suspended"}. Reason: ${reason}`,
+      undefined
+    )
+
+    return { success: true }
+  } catch (err) {
+    console.error("Failed to mute user:", err)
+    return { success: false, error: "Failed to mute user" }
+  }
+}
+
+/**
+ * Get all vouches with detection of suspicious patterns
+ * Admin only
+ */
+export async function getVouches(searchQuery: string = "", statusFilter: string = "all"): Promise<{
+  success: boolean
+  vouches?: Array<{
+    id: string
+    giver: {
+      id: string
+      username: string
+      avatar: string | null
+      vouchCount: number
+      joinDate: Date
+    }
+    receiver: {
+      id: string
+      username: string
+      avatar: string | null
+      vouchCount: number
+      joinDate: Date
+    }
+    type: string
+    message: string | null
+    rating: number
+    createdAt: Date
+    status: "valid" | "suspicious" | "invalid"
+    flags: string[]
+    transaction?: {
+      id: string
+      item: string
+      price: number
+      date: Date
+    } | null
+    invalidReason?: string
+  }>
+  stats?: {
+    total: number
+    valid: number
+    suspicious: number
+    invalid: number
+  }
+  suspiciousPatterns?: Array<{
+    id: string
+    type: "circular" | "rapid" | "new-accounts"
+    users: string[]
+    description: string
+    severity: "high" | "medium" | "low"
+    vouchCount: number
+  }>
+  trendData?: Array<{
+    date: string
+    vouches: number
+    invalid: number
+  }>
+  error?: string
+}> {
+  try {
+    // Fetch all vouches with user details and transaction info
+    const vouches = await prisma.vouch.findMany({
+      select: {
+        id: true,
+        fromUserId: true,
+        toUserId: true,
+        transactionId: true,
+        type: true,
+        message: true,
+        rating: true,
+        createdAt: true,
+        status: true,
+        invalidatedBy: true,
+        invalidatedAt: true,
+        invalidReason: true,
+        fromUser: {
+          select: {
+            id: true,
+            username: true,
+            profilePicture: true,
+            joinDate: true,
+            vouchesReceived: { where: { status: "VALID" }, select: { id: true } }, // Only count valid vouches
+          },
+        },
+        toUser: {
+          select: {
+            id: true,
+            username: true,
+            profilePicture: true,
+            joinDate: true,
+            vouchesReceived: { where: { status: "VALID" }, select: { id: true } }, // Only count valid vouches
+          },
+        },
+        transaction: {
+          select: {
+            id: true,
+            price: true,
+            createdAt: true,
+            listingId: true,
+            listingType: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    })
+
+    // Detect suspicious patterns
+    const suspiciousVouches = new Set<string>()
+    const vouchFlags = new Map<string, string[]>()
+
+    // Pattern 1: Rapid vouching (more than 5 vouches in last hour)
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
+    const recentVouchesByUser = new Map<string, number>()
+    vouches.forEach((v) => {
+      if (v.createdAt > oneHourAgo) {
+        recentVouchesByUser.set(v.fromUserId, (recentVouchesByUser.get(v.fromUserId) || 0) + 1)
+      }
+    })
+    recentVouchesByUser.forEach((count, userId) => {
+      if (count > 5) {
+        vouches
+          .filter((v) => v.fromUserId === userId && v.createdAt > oneHourAgo)
+          .forEach((v) => {
+            suspiciousVouches.add(v.id)
+            const flags = vouchFlags.get(v.id) || []
+            flags.push("rapid-vouching")
+            vouchFlags.set(v.id, flags)
+          })
+      }
+    })
+
+    // Pattern 2: New accounts (joined less than 7 days ago)
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+    vouches.forEach((v) => {
+      if (v.fromUser.joinDate > sevenDaysAgo || v.toUser.joinDate > sevenDaysAgo) {
+        suspiciousVouches.add(v.id)
+        const flags = vouchFlags.get(v.id) || []
+        flags.push("new-account")
+        vouchFlags.set(v.id, flags)
+      }
+    })
+
+    // Pattern 3: Circular vouching (A vouches B, B vouches A)
+    const vouchPairs = new Map<string, Set<string>>()
+    vouches.forEach((v) => {
+      const key = `${v.fromUserId}-${v.toUserId}`
+      const reverseKey = `${v.toUserId}-${v.fromUserId}`
+      
+      if (!vouchPairs.has(v.fromUserId)) {
+        vouchPairs.set(v.fromUserId, new Set())
+      }
+      vouchPairs.get(v.fromUserId)!.add(v.toUserId)
+
+      // Check if reverse vouch exists
+      const hasReverseVouch = vouches.some(
+        (rv) => rv.fromUserId === v.toUserId && rv.toUserId === v.fromUserId
+      )
+      if (hasReverseVouch) {
+        suspiciousVouches.add(v.id)
+        const flags = vouchFlags.get(v.id) || []
+        flags.push("circular-vouch")
+        vouchFlags.set(v.id, flags)
+      }
+    })
+
+    // Fetch listing titles for transactions
+    const formattedVouches = await Promise.all(
+      vouches.map(async (v) => {
+        let transactionData = null
+        if (v.transaction) {
+          let listingTitle = "Unknown Item"
+          if (v.transaction.listingType === "ITEM") {
+            const listing = await prisma.itemListing.findUnique({
+              where: { id: v.transaction.listingId },
+              select: { title: true },
+            })
+            if (listing) listingTitle = listing.title
+          } else if (v.transaction.listingType === "CURRENCY") {
+            const listing = await prisma.currencyListing.findUnique({
+              where: { id: v.transaction.listingId },
+              select: { title: true },
+            })
+            if (listing) listingTitle = listing.title
+          }
+
+          transactionData = {
+            id: v.transaction.id,
+            item: listingTitle,
+            price: v.transaction.price,
+            date: v.transaction.createdAt,
+          }
+        }
+
+        const flags = vouchFlags.get(v.id) || []
+        const isSuspicious = suspiciousVouches.has(v.id)
+        
+        // Use database status if INVALID, otherwise check suspicious flags
+        let status: "valid" | "suspicious" | "invalid" = "valid"
+        if (v.status === "INVALID") {
+          status = "invalid"
+        } else if (isSuspicious) {
+          status = "suspicious"
+        }
+
+        return {
+          id: v.id,
+          giver: {
+            id: v.fromUser.id,
+            username: v.fromUser.username,
+            avatar: v.fromUser.profilePicture,
+            vouchCount: v.fromUser.vouchesReceived.length,
+            joinDate: v.fromUser.joinDate,
+          },
+          receiver: {
+            id: v.toUser.id,
+            username: v.toUser.username,
+            avatar: v.toUser.profilePicture,
+            vouchCount: v.toUser.vouchesReceived.length,
+            joinDate: v.toUser.joinDate,
+          },
+          type: v.type,
+          message: v.message,
+          rating: v.rating,
+          createdAt: v.createdAt,
+          status,
+          flags,
+          transaction: transactionData,
+        }
+      })
+    )
+
+    // Apply filters
+    let filteredVouches = formattedVouches
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase()
+      filteredVouches = filteredVouches.filter(
+        (v) =>
+          v.giver.username.toLowerCase().includes(query) || v.receiver.username.toLowerCase().includes(query)
+      )
+    }
+    if (statusFilter !== "all") {
+      filteredVouches = filteredVouches.filter((v) => v.status === statusFilter)
+    }
+
+    // Generate suspicious patterns summary
+    const suspiciousPatterns: Array<{
+      id: string
+      type: "circular" | "rapid" | "new-accounts"
+      users: string[]
+      description: string
+      severity: "high" | "medium" | "low"
+      vouchCount: number
+    }> = []
+
+    // Detect circular patterns
+    const circularGroups = new Map<string, Set<string>>()
+    formattedVouches
+      .filter((v) => v.flags.includes("circular-vouch"))
+      .forEach((v) => {
+        const key = [v.giver.username, v.receiver.username].sort().join("-")
+        if (!circularGroups.has(key)) {
+          circularGroups.set(key, new Set())
+        }
+        circularGroups.get(key)!.add(v.giver.username)
+        circularGroups.get(key)!.add(v.receiver.username)
+      })
+
+    circularGroups.forEach((users, key) => {
+      suspiciousPatterns.push({
+        id: key,
+        type: "circular",
+        users: Array.from(users),
+        description: `${users.size} accounts vouching each other in a circle`,
+        severity: users.size > 3 ? "high" : "medium",
+        vouchCount: formattedVouches.filter(
+          (v) => users.has(v.giver.username) && users.has(v.receiver.username)
+        ).length,
+      })
+    })
+
+    // Detect rapid vouching patterns
+    recentVouchesByUser.forEach((count, userId) => {
+      if (count > 5) {
+        const user = formattedVouches.find((v) => v.giver.id === userId)
+        if (user) {
+          suspiciousPatterns.push({
+            id: `rapid-${userId}`,
+            type: "rapid",
+            users: [user.giver.username],
+            description: `Gave ${count} vouches in the last hour`,
+            severity: count > 10 ? "high" : "medium",
+            vouchCount: count,
+          })
+        }
+      }
+    })
+
+    // Detect new account patterns
+    const newAccountVouches = formattedVouches.filter((v) => v.flags.includes("new-account"))
+    if (newAccountVouches.length > 3) {
+      const newUsers = new Set<string>()
+      newAccountVouches.forEach((v) => {
+        if (v.giver.joinDate > sevenDaysAgo) newUsers.add(v.giver.username)
+        if (v.receiver.joinDate > sevenDaysAgo) newUsers.add(v.receiver.username)
+      })
+      suspiciousPatterns.push({
+        id: "new-accounts",
+        type: "new-accounts",
+        users: Array.from(newUsers),
+        description: `${newUsers.size} new accounts (< 7 days) involved in vouching`,
+        severity: "medium",
+        vouchCount: newAccountVouches.length,
+      })
+    }
+
+    // Generate trend data (last 7 days)
+    const trendData = []
+    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date()
+      date.setDate(date.getDate() - i)
+      date.setHours(0, 0, 0, 0)
+      const nextDay = new Date(date)
+      nextDay.setDate(nextDay.getDate() + 1)
+
+      const dayVouches = formattedVouches.filter(
+        (v) => v.createdAt >= date && v.createdAt < nextDay
+      )
+
+      trendData.push({
+        date: dayNames[date.getDay()],
+        vouches: dayVouches.length,
+        invalid: dayVouches.filter((v) => v.status === "suspicious" || v.status === "invalid").length,
+      })
+    }
+
+    // Calculate stats
+    const stats = {
+      total: formattedVouches.length,
+      valid: formattedVouches.filter((v) => v.status === "valid").length,
+      suspicious: formattedVouches.filter((v) => v.status === "suspicious").length,
+      invalid: formattedVouches.filter((v) => v.status === "invalid").length,
+    }
+
+    return {
+      success: true,
+      vouches: filteredVouches,
+      stats,
+      suspiciousPatterns,
+      trendData,
+    }
+  } catch (err) {
+    console.error("Failed to get vouches:", err)
+    return { success: false, error: `Failed to load vouches: ${err instanceof Error ? err.message : String(err)}` }
+  }
+}
+
+/**
+ * Invalidate a vouch
+ * Admin only
+ */
+export async function invalidateVouch(vouchId: string, reason: string): Promise<AdminResult> {
+  try {
+    const session = await auth()
+    if (!session?.user || session.user.role !== "admin") {
+      return { success: false, error: "Unauthorized" }
+    }
+
+    // Get admin user from database
+    const adminUser = await prisma.user.findUnique({
+      where: { email: session.user.email! },
+      select: { id: true },
+    })
+
+    if (!adminUser) {
+      return { success: false, error: "Admin user not found" }
+    }
+
+    if (!vouchId || !reason) {
+      return { success: false, error: "Vouch ID and reason are required" }
+    }
+
+    const vouch = await prisma.vouch.findUnique({
+      where: { id: vouchId },
+      include: {
+        fromUser: { select: { username: true } },
+        toUser: { select: { id: true, username: true } },
+      },
+    })
+
+    if (!vouch) {
+      return { success: false, error: "Vouch not found" }
+    }
+
+    // Mark vouch as invalid instead of deleting
+    await prisma.vouch.update({
+      where: { id: vouchId },
+      data: {
+        status: "INVALID",
+        invalidatedBy: adminUser.id,
+        invalidatedAt: new Date(),
+        invalidReason: reason,
+      },
+    })
+
+    // Notify the receiver
+    await createNotification(
+      vouch.toUser.id,
+      "SYSTEM",
+      "Vouch Removed",
+      `A vouch from ${vouch.fromUser.username} has been removed. Reason: ${reason}`,
+      undefined
+    )
+
+    return { success: true }
+  } catch (err) {
+    console.error("Failed to invalidate vouch:", err)
+    return { success: false, error: "Failed to invalidate vouch" }
+  }
+}
+
+/**
+ * Approve a suspicious vouch (mark as valid)
+ * Admin only
+ */
+export async function approveVouch(vouchId: string): Promise<AdminResult> {
+  try {
+    const session = await auth()
+    if (!session?.user || session.user.role !== "admin") {
+      return { success: false, error: "Unauthorized" }
+    }
+
+    const vouch = await prisma.vouch.findUnique({
+      where: { id: vouchId },
+    })
+
+    if (!vouch) {
+      return { success: false, error: "Vouch not found" }
+    }
+
+    // Mark vouch as valid (in case it was flagged as suspicious)
+    await prisma.vouch.update({
+      where: { id: vouchId },
+      data: {
+        status: "VALID",
+        // Clear invalidation data if it was previously invalid
+        invalidatedBy: null,
+        invalidatedAt: null,
+        invalidReason: null,
+      },
+    })
+
+    return { success: true }
+  } catch (err) {
+    console.error("Failed to approve vouch:", err)
+    return { success: false, error: "Failed to approve vouch" }
+  }
+}
+
+/**
+ * Invalidate multiple vouches in a pattern
+ * Admin only
+ */
+export async function invalidatePattern(
+  vouchIds: string[],
+  reason: string
+): Promise<AdminResult> {
+  try {
+    const session = await auth()
+    if (!session?.user || session.user.role !== "admin") {
+      return { success: false, error: "Unauthorized" }
+    }
+
+    // Get admin user from database
+    const adminUser = await prisma.user.findUnique({
+      where: { email: session.user.email! },
+      select: { id: true },
+    })
+
+    if (!adminUser) {
+      return { success: false, error: "Admin user not found" }
+    }
+
+    if (!vouchIds.length || !reason) {
+      return { success: false, error: "Vouch IDs and reason are required" }
+    }
+
+    const vouches = await prisma.vouch.findMany({
+      where: { id: { in: vouchIds } },
+      include: {
+        toUser: { select: { id: true } },
+      },
+    })
+
+    // Mark all vouches as invalid
+    await prisma.vouch.updateMany({
+      where: { id: { in: vouchIds } },
+      data: {
+        status: "INVALID",
+        invalidatedBy: adminUser.id,
+        invalidatedAt: new Date(),
+        invalidReason: reason,
+      },
+    })
+
+    // Notify affected users
+    const uniqueUserIds = [...new Set(vouches.map((v) => v.toUser.id))]
+    await Promise.all(
+      uniqueUserIds.map((userId) =>
+        createNotification(
+          userId,
+          "SYSTEM",
+          "Vouches Removed",
+          `Multiple vouches have been removed from your account. Reason: ${reason}`,
+          undefined
+        )
+      )
+    )
+
+    return { success: true }
+  } catch (err) {
+    console.error("Failed to invalidate pattern:", err)
+    return { success: false, error: "Failed to invalidate pattern" }
   }
 }

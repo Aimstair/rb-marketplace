@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -14,7 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Search, Award, AlertTriangle, ArrowRight, Trash2, XCircle, Network, Eye } from "lucide-react"
+import { Search, Award, AlertTriangle, ArrowRight, Trash2, XCircle, Network, Eye, Loader2, Star } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
@@ -22,214 +22,101 @@ import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from "recharts"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
+import { getVouches, invalidateVouch, approveVouch, invalidatePattern } from "@/app/actions/admin"
+import { useToast } from "@/hooks/use-toast"
 
-// Mock vouch data
-const mockVouches = [
-  {
-    id: "1",
-    giver: {
-      username: "TrustyShopper",
-      avatar: "/placeholder.svg?key=l5w1d",
-      vouches: 189,
-      joinDate: "Mar 2023",
-      ip: "192.168.1.100",
-    },
-    receiver: {
-      username: "NinjaTrader",
-      avatar: "/placeholder.svg?key=20fdb",
-      vouches: 342,
-      joinDate: "Jan 2023",
-      ip: "192.168.1.200",
-    },
-    type: "seller",
-    message: "Great trader! Fast delivery and very communicative.",
-    createdAt: "2 hours ago",
-    status: "valid",
-    flags: [],
-    transaction: { item: "Golden Dragon Pet", price: 15000, date: "2 hours ago" },
-  },
-  {
-    id: "2",
-    giver: {
-      username: "AltAccount1",
-      avatar: "/placeholder.svg?key=hy1ns",
-      vouches: 5,
-      joinDate: "Dec 2024",
-      ip: "192.168.1.50",
-    },
-    receiver: {
-      username: "ScammerJoe",
-      avatar: "/placeholder.svg?key=i0nkb",
-      vouches: 12,
-      joinDate: "Nov 2024",
-      ip: "192.168.1.50",
-    },
-    type: "buyer",
-    message: "Best trader ever!",
-    createdAt: "5 hours ago",
-    status: "suspicious",
-    flags: ["same-ip", "new-account"],
-    transaction: { item: "10,000 Robux", price: 3500, date: "5 hours ago" },
-  },
-  {
-    id: "3",
-    giver: {
-      username: "AltAccount2",
-      avatar: "/placeholder.svg?key=k8bhb",
-      vouches: 3,
-      joinDate: "Dec 2024",
-      ip: "192.168.1.50",
-    },
-    receiver: {
-      username: "ScammerJoe",
-      avatar: "/placeholder.svg?key=3hckv",
-      vouches: 12,
-      joinDate: "Nov 2024",
-      ip: "192.168.1.50",
-    },
-    type: "seller",
-    message: "Amazing!",
-    createdAt: "5 hours ago",
-    status: "suspicious",
-    flags: ["same-ip", "rapid-vouching"],
-    transaction: { item: "Neon Unicorn", price: 8000, date: "5 hours ago" },
-  },
-  {
-    id: "4",
-    giver: {
-      username: "EliteTrader99",
-      avatar: "/placeholder.svg?key=mepqz",
-      vouches: 567,
-      joinDate: "Jun 2022",
-      ip: "192.168.2.100",
-    },
-    receiver: {
-      username: "TrustyShopper",
-      avatar: "/placeholder.svg?key=mf8qd",
-      vouches: 189,
-      joinDate: "Mar 2023",
-      ip: "192.168.1.100",
-    },
-    type: "seller",
-    message: "Smooth transaction, highly recommend!",
-    createdAt: "1 day ago",
-    status: "valid",
-    flags: [],
-    transaction: { item: "Shadow Dragon", price: 25000, date: "1 day ago" },
-  },
-  {
-    id: "5",
-    giver: {
-      username: "NewUser123",
-      avatar: "/placeholder.svg?key=izcpl",
-      vouches: 0,
-      joinDate: "Dec 2024",
-      ip: "192.168.3.50",
-    },
-    receiver: {
-      username: "FakeAccount123",
-      avatar: "/placeholder.svg?key=cjhw9",
-      vouches: 2,
-      joinDate: "Dec 2024",
-      ip: "192.168.3.50",
-    },
-    type: "buyer",
-    message: "Good",
-    createdAt: "2 days ago",
-    status: "invalid",
-    flags: ["circular-vouch", "removed"],
-    invalidReason: "Detected circular vouching pattern",
-    transaction: { item: "5,000 Robux", price: 1750, date: "2 days ago" },
-  },
-  {
-    id: "6",
-    giver: {
-      username: "QuickVoucher",
-      avatar: "/placeholder.svg?key=9r1nb",
-      vouches: 45,
-      joinDate: "Aug 2024",
-      ip: "192.168.4.100",
-    },
-    receiver: {
-      username: "SusUser",
-      avatar: "/placeholder.svg?key=2u27f",
-      vouches: 28,
-      joinDate: "Sep 2024",
-      ip: "192.168.5.200",
-    },
-    type: "seller",
-    message: "Perfect!",
-    createdAt: "3 hours ago",
-    status: "suspicious",
-    flags: ["rapid-vouching"],
-    transaction: { item: "Mega Neon Cat", price: 5000, date: "3 hours ago" },
-  },
-]
+interface VouchData {
+  id: string
+  giver: {
+    id: string
+    username: string
+    avatar: string | null
+    vouchCount: number
+    joinDate: Date
+  }
+  receiver: {
+    id: string
+    username: string
+    avatar: string | null
+    vouchCount: number
+    joinDate: Date
+  }
+  type: string
+  message: string | null
+  rating: number | null
+  createdAt: Date
+  status: "valid" | "suspicious" | "invalid"
+  flags: string[]
+  transaction?: {
+    id: string
+    item: string
+    price: number
+    date: Date
+  } | null
+  transactionTitle?: string
+}
 
-const suspiciousPatterns = [
-  {
-    id: "1",
-    type: "circular",
-    users: ["ScammerJoe", "AltAccount1", "AltAccount2", "AltAccount3"],
-    description: "4 accounts vouching each other in a circle",
-    severity: "high",
-    vouchCount: 12,
-  },
-  {
-    id: "2",
-    type: "rapid",
-    users: ["QuickVoucher"],
-    description: "Gave 15 vouches in the last hour",
-    severity: "medium",
-    vouchCount: 15,
-  },
-  {
-    id: "3",
-    type: "same-ip",
-    users: ["NewUser123", "FakeAccount123", "AnotherFake"],
-    description: "Multiple accounts from same IP vouching each other",
-    severity: "high",
-    vouchCount: 8,
-  },
-]
-
-const vouchTrendData = [
-  { date: "Mon", vouches: 45, invalid: 3 },
-  { date: "Tue", vouches: 52, invalid: 5 },
-  { date: "Wed", vouches: 48, invalid: 2 },
-  { date: "Thu", vouches: 61, invalid: 8 },
-  { date: "Fri", vouches: 55, invalid: 4 },
-  { date: "Sat", vouches: 72, invalid: 6 },
-  { date: "Sun", vouches: 68, invalid: 5 },
-]
+interface SuspiciousPattern {
+  id: string
+  type: "circular" | "rapid" | "new-accounts"
+  users: string[]
+  description: string
+  severity: "high" | "medium" | "low"
+  vouchCount: number
+}
 
 export default function VouchesPage() {
+  const { toast } = useToast()
+  const [loading, setLoading] = useState(true)
+  const [vouches, setVouches] = useState<VouchData[]>([])
+  const [stats, setStats] = useState({ total: 0, valid: 0, suspicious: 0, invalid: 0 })
+  const [suspiciousPatterns, setSuspiciousPatterns] = useState<SuspiciousPattern[]>([])
+  const [trendData, setTrendData] = useState<Array<{ date: string; vouches: number; invalid: number }>>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
-  const [selectedVouch, setSelectedVouch] = useState<(typeof mockVouches)[0] | null>(null)
+  const [selectedVouch, setSelectedVouch] = useState<VouchData | null>(null)
   const [actionDialogOpen, setActionDialogOpen] = useState(false)
   const [actionType, setActionType] = useState<string>("")
   const [actionNotes, setActionNotes] = useState("")
+  const [actionLoading, setActionLoading] = useState(false)
   const [reviewDialogOpen, setReviewDialogOpen] = useState(false)
-  const [reviewingVouch, setReviewingVouch] = useState<(typeof mockVouches)[0] | null>(null)
+  const [reviewingVouch, setReviewingVouch] = useState<VouchData | null>(null)
   const [patternReviewDialogOpen, setPatternReviewDialogOpen] = useState(false)
-  const [reviewingPattern, setReviewingPattern] = useState<(typeof suspiciousPatterns)[0] | null>(null)
+  const [reviewingPattern, setReviewingPattern] = useState<SuspiciousPattern | null>(null)
+  const [patternActionDialogOpen, setPatternActionDialogOpen] = useState(false)
+  const [patternActionNotes, setPatternActionNotes] = useState("")
 
-  const filteredVouches = mockVouches.filter((vouch) => {
-    const matchesSearch =
-      vouch.giver.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      vouch.receiver.username.toLowerCase().includes(searchQuery.toLowerCase())
+  // Load vouches
+  useEffect(() => {
+    loadVouches()
+  }, [searchQuery, statusFilter])
 
-    const matchesStatus = statusFilter === "all" || vouch.status === statusFilter
-
-    return matchesSearch && matchesStatus
-  })
-
-  const stats = {
-    total: mockVouches.length,
-    valid: mockVouches.filter((v) => v.status === "valid").length,
-    suspicious: mockVouches.filter((v) => v.status === "suspicious").length,
-    invalid: mockVouches.filter((v) => v.status === "invalid").length,
+  const loadVouches = async () => {
+    try {
+      setLoading(true)
+      const result = await getVouches(searchQuery, statusFilter)
+      if (result.success) {
+        setVouches(result.vouches || [])
+        setStats(result.stats || { total: 0, valid: 0, suspicious: 0, invalid: 0 })
+        setSuspiciousPatterns(result.suspiciousPatterns || [])
+        setTrendData(result.trendData || [])
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: result.error || "Failed to load vouches",
+        })
+      }
+    } catch (err) {
+      console.error("Failed to load vouches:", err)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to load vouches",
+      })
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleAction = (action: string) => {
@@ -237,20 +124,128 @@ export default function VouchesPage() {
     setActionDialogOpen(true)
   }
 
-  const executeAction = () => {
-    console.log(`Executing ${actionType} on vouch ${selectedVouch?.id} with notes: ${actionNotes}`)
-    setActionDialogOpen(false)
-    setActionNotes("")
+  const executeAction = async () => {
+    if (!selectedVouch?.id || !actionNotes.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Please provide a reason for this action",
+      })
+      return
+    }
+
+    try {
+      setActionLoading(true)
+      let result
+
+      if (actionType === "invalidate") {
+        result = await invalidateVouch(selectedVouch.id, actionNotes)
+      } else if (actionType === "approve") {
+        result = await approveVouch(selectedVouch.id)
+      }
+
+      if (result?.success) {
+        toast({
+          title: "Success",
+          description: `Vouch has been ${actionType === "invalidate" ? "invalidated" : "approved"}`,
+        })
+        setActionDialogOpen(false)
+        setActionNotes("")
+        setSelectedVouch(null)
+        loadVouches()
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: result?.error || `Failed to ${actionType} vouch`,
+        })
+      }
+    } catch (err) {
+      console.error(`Failed to ${actionType} vouch:`, err)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: `Failed to ${actionType} vouch`,
+      })
+    } finally {
+      setActionLoading(false)
+    }
   }
 
-  const handleReviewVouch = (vouch: (typeof mockVouches)[0]) => {
+  const handleReviewVouch = (vouch: VouchData) => {
     setReviewingVouch(vouch)
     setReviewDialogOpen(true)
   }
 
-  const handleReviewPattern = (pattern: (typeof suspiciousPatterns)[0]) => {
+  const handleReviewPattern = (pattern: SuspiciousPattern) => {
     setReviewingPattern(pattern)
     setPatternReviewDialogOpen(true)
+  }
+
+  const handleInvalidatePattern = async (pattern: SuspiciousPattern) => {
+    if (!patternActionNotes.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Please provide a reason for invalidating these vouches",
+      })
+      return
+    }
+
+    try {
+      setActionLoading(true)
+      // Get all vouch IDs for users in this pattern
+      const patternVouchIds = vouches
+        .filter(
+          (v) => pattern.users.includes(v.giver.username) && pattern.users.includes(v.receiver.username)
+        )
+        .map((v) => v.id)
+
+      const result = await invalidatePattern(patternVouchIds, patternActionNotes)
+
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: `Invalidated ${patternVouchIds.length} vouches in pattern`,
+        })
+        setPatternActionDialogOpen(false)
+        setPatternActionNotes("")
+        setReviewingPattern(null)
+        loadVouches()
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: result.error || "Failed to invalidate pattern",
+        })
+      }
+    } catch (err) {
+      console.error("Failed to invalidate pattern:", err)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to invalidate pattern",
+      })
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const formatTimeAgo = (date: Date) => {
+    const now = new Date()
+    const diffMs = now.getTime() - new Date(date).getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMs / 3600000)
+    const diffDays = Math.floor(diffMs / 86400000)
+
+    if (diffMins < 1) return "Just now"
+    if (diffMins < 60) return `${diffMins} min ago`
+    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`
+    return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`
+  }
+
+  const formatDate = (date: Date) => {
+    return new Date(date).toLocaleDateString("en-US", { month: "short", year: "numeric" })
   }
 
   const getStatusBadge = (status: string) => {
@@ -354,48 +349,66 @@ export default function VouchesPage() {
               <CardDescription>AI-detected vouch abuse patterns requiring review</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                {suspiciousPatterns.map((pattern) => (
-                  <div key={pattern.id} className="p-4 border rounded-lg bg-orange-500/5 border-orange-500/20">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <Network className="h-4 w-4 text-orange-500" />
-                        <span className="font-medium capitalize">{pattern.type} Pattern</span>
-                        <Badge className={getSeverityColor(pattern.severity)} variant="outline">
-                          {pattern.severity}
-                        </Badge>
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                </div>
+              ) : suspiciousPatterns.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Network className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No suspicious patterns detected</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {suspiciousPatterns.map((pattern) => (
+                    <div key={pattern.id} className="p-4 border rounded-lg bg-orange-500/5 border-orange-500/20">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <Network className="h-4 w-4 text-orange-500" />
+                          <span className="font-medium capitalize">{pattern.type} Pattern</span>
+                          <Badge className={getSeverityColor(pattern.severity)} variant="outline">
+                            {pattern.severity}
+                          </Badge>
+                        </div>
+                        <span className="text-sm text-muted-foreground">{pattern.vouchCount} vouches affected</span>
                       </div>
-                      <span className="text-sm text-muted-foreground">{pattern.vouchCount} vouches affected</span>
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-3">{pattern.description}</p>
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="text-sm text-muted-foreground">Involved users:</span>
-                      <div className="flex -space-x-2">
-                        {pattern.users.slice(0, 4).map((user, i) => (
-                          <Avatar key={i} className="h-6 w-6 border-2 border-background">
-                            <AvatarFallback className="text-xs">{user.charAt(0)}</AvatarFallback>
-                          </Avatar>
-                        ))}
-                        {pattern.users.length > 4 && (
-                          <div className="h-6 w-6 rounded-full bg-muted border-2 border-background flex items-center justify-center text-xs">
-                            +{pattern.users.length - 4}
-                          </div>
-                        )}
+                      <p className="text-sm text-muted-foreground mb-3">{pattern.description}</p>
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-sm text-muted-foreground">Involved users:</span>
+                        <div className="flex -space-x-2">
+                          {pattern.users.slice(0, 4).map((user, i) => (
+                            <Avatar key={i} className="h-6 w-6 border-2 border-background">
+                              <AvatarFallback className="text-xs">{user.charAt(0)}</AvatarFallback>
+                            </Avatar>
+                          ))}
+                          {pattern.users.length > 4 && (
+                            <div className="h-6 w-6 rounded-full bg-muted border-2 border-background flex items-center justify-center text-xs">
+                              +{pattern.users.length - 4}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => {
+                            setReviewingPattern(pattern)
+                            setPatternActionDialogOpen(true)
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4 mr-1" />
+                          Invalidate All
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => handleReviewPattern(pattern)}>
+                          <Eye className="h-4 w-4 mr-1" />
+                          Review
+                        </Button>
                       </div>
                     </div>
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="destructive">
-                        <Trash2 className="h-4 w-4 mr-1" />
-                        Invalidate All
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => handleReviewPattern(pattern)}>
-                        <Eye className="h-4 w-4 mr-1" />
-                        Review
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -406,24 +419,30 @@ export default function VouchesPage() {
               <CardDescription>Daily vouches and invalid detections</CardDescription>
             </CardHeader>
             <CardContent className="overflow-hidden">
-              <ChartContainer
-                config={{
-                  vouches: { label: "Total Vouches", color: "hsl(var(--chart-1))" },
-                  invalid: { label: "Invalid", color: "hsl(var(--chart-4))" },
-                }}
-                className="h-[200px] min-w-0"
-              >
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={vouchTrendData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                    <XAxis dataKey="date" className="text-xs" />
-                    <YAxis className="text-xs" />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Line type="monotone" dataKey="vouches" stroke="hsl(var(--chart-1))" strokeWidth={2} />
-                    <Line type="monotone" dataKey="invalid" stroke="hsl(var(--chart-4))" strokeWidth={2} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </ChartContainer>
+              {loading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                </div>
+              ) : (
+                <ChartContainer
+                  config={{
+                    vouches: { label: "Total Vouches", color: "hsl(var(--chart-1))" },
+                    invalid: { label: "Invalid", color: "hsl(var(--chart-4))" },
+                  }}
+                  className="h-[200px] min-w-0"
+                >
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={trendData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                      <XAxis dataKey="date" className="text-xs" />
+                      <YAxis className="text-xs" />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Line type="monotone" dataKey="vouches" stroke="hsl(var(--chart-1))" strokeWidth={2} />
+                      <Line type="monotone" dataKey="invalid" stroke="hsl(var(--chart-4))" strokeWidth={2} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </ChartContainer>
+              )}
             </CardContent>
           </Card>
 
@@ -461,62 +480,73 @@ export default function VouchesPage() {
             </CardHeader>
             <CardContent>
               <ScrollArea className="h-[400px]">
-                <div className="space-y-3">
-                  {filteredVouches.map((vouch) => (
-                    <div
-                      key={vouch.id}
-                      onClick={() => setSelectedVouch(vouch)}
-                      className={`p-4 border rounded-lg cursor-pointer transition-colors hover:bg-muted/50 ${
-                        selectedVouch?.id === vouch.id ? "border-primary bg-muted/50" : ""
-                      } ${vouch.status === "suspicious" ? "border-orange-500/50" : ""} ${
-                        vouch.status === "invalid" ? "border-red-500/50 bg-red-500/5" : ""
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-8 w-8">
-                            <AvatarImage src={vouch.giver.avatar || "/placeholder.svg"} />
-                            <AvatarFallback>{vouch.giver.username.charAt(0)}</AvatarFallback>
-                          </Avatar>
-                          <ArrowRight className="h-4 w-4 text-muted-foreground" />
-                          <Avatar className="h-8 w-8">
-                            <AvatarImage src={vouch.receiver.avatar || "/placeholder.svg"} />
-                            <AvatarFallback>{vouch.receiver.username.charAt(0)}</AvatarFallback>
-                          </Avatar>
-                          <div className="ml-2">
-                            <p className="text-sm font-medium">
-                              {vouch.giver.username} vouched {vouch.receiver.username}
-                            </p>
-                            <p className="text-xs text-muted-foreground">{vouch.createdAt}</p>
+                {loading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                  </div>
+                ) : vouches.length === 0 ? (
+                  <div className="p-8 text-center text-muted-foreground">
+                    <Award className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>No vouches found</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {vouches.map((vouch) => (
+                      <div
+                        key={vouch.id}
+                        onClick={() => setSelectedVouch(vouch)}
+                        className={`p-4 border rounded-lg cursor-pointer transition-colors hover:bg-muted/50 ${
+                          selectedVouch?.id === vouch.id ? "border-primary bg-muted/50" : ""
+                        } ${vouch.status === "suspicious" ? "border-orange-500/50" : ""} ${
+                          vouch.status === "invalid" ? "border-red-500/50 bg-red-500/5" : ""
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-8 w-8">
+                              <AvatarImage src={vouch.giver.avatar || undefined} />
+                              <AvatarFallback>{vouch.giver.username.charAt(0).toUpperCase()}</AvatarFallback>
+                            </Avatar>
+                            <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                            <Avatar className="h-8 w-8">
+                              <AvatarImage src={vouch.receiver.avatar || undefined} />
+                              <AvatarFallback>{vouch.receiver.username.charAt(0).toUpperCase()}</AvatarFallback>
+                            </Avatar>
+                            <div className="ml-2">
+                              <p className="text-sm font-medium">
+                                {vouch.giver.username} vouched {vouch.receiver.username}
+                              </p>
+                              <p className="text-xs text-muted-foreground">{formatTimeAgo(vouch.createdAt)}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleReviewVouch(vouch)
+                              }}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            {getStatusBadge(vouch.status)}
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleReviewVouch(vouch)
-                            }}
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          {getStatusBadge(vouch.status)}
-                        </div>
+                        <p className="text-sm text-muted-foreground mb-2">"{vouch.message || "No message"}"</p>
+                        {vouch.flags.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {vouch.flags.map((flag) => (
+                              <Badge key={flag} variant="outline" className="text-xs">
+                                {flag}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                      <p className="text-sm text-muted-foreground mb-2">"{vouch.message}"</p>
-                      {vouch.flags.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {vouch.flags.map((flag) => (
-                            <Badge key={flag} variant="outline" className="text-xs">
-                              {flag}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </ScrollArea>
             </CardContent>
           </Card>
@@ -536,20 +566,24 @@ export default function VouchesPage() {
                   <div className="flex items-center justify-center gap-4 mb-4">
                     <div className="text-center">
                       <Avatar className="h-12 w-12 mx-auto mb-1">
-                        <AvatarImage src={selectedVouch.giver.avatar || "/placeholder.svg"} />
-                        <AvatarFallback>{selectedVouch.giver.username.charAt(0)}</AvatarFallback>
+                        <AvatarImage src={selectedVouch.giver.avatar || undefined} />
+                        <AvatarFallback>{selectedVouch.giver.username.charAt(0).toUpperCase()}</AvatarFallback>
                       </Avatar>
                       <p className="text-sm font-medium">{selectedVouch.giver.username}</p>
-                      <p className="text-xs text-muted-foreground">{selectedVouch.giver.vouches} vouches</p>
+                      <p className="text-xs text-muted-foreground">
+                        Joined {formatDate(selectedVouch.giver.joinDate)}
+                      </p>
                     </div>
                     <ArrowRight className="h-6 w-6 text-muted-foreground" />
                     <div className="text-center">
                       <Avatar className="h-12 w-12 mx-auto mb-1">
-                        <AvatarImage src={selectedVouch.receiver.avatar || "/placeholder.svg"} />
-                        <AvatarFallback>{selectedVouch.receiver.username.charAt(0)}</AvatarFallback>
+                        <AvatarImage src={selectedVouch.receiver.avatar || undefined} />
+                        <AvatarFallback>{selectedVouch.receiver.username.charAt(0).toUpperCase()}</AvatarFallback>
                       </Avatar>
                       <p className="text-sm font-medium">{selectedVouch.receiver.username}</p>
-                      <p className="text-xs text-muted-foreground">{selectedVouch.receiver.vouches} vouches</p>
+                      <p className="text-xs text-muted-foreground">
+                        Joined {formatDate(selectedVouch.receiver.joinDate)}
+                      </p>
                     </div>
                   </div>
                   {getStatusBadge(selectedVouch.status)}
@@ -557,7 +591,9 @@ export default function VouchesPage() {
 
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Message</p>
-                  <p className="p-3 bg-muted/50 rounded-lg text-sm">"{selectedVouch.message}"</p>
+                  <p className="p-3 bg-muted/50 rounded-lg text-sm">
+                    "{selectedVouch.message || "No message provided"}"
+                  </p>
                 </div>
 
                 <div>
@@ -565,6 +601,28 @@ export default function VouchesPage() {
                   <Badge variant="outline" className="capitalize">
                     {selectedVouch.type} vouch
                   </Badge>
+                </div>
+
+                {selectedVouch.rating && (
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Rating</p>
+                    <div className="flex items-center gap-1">
+                      <Star className="h-4 w-4 fill-yellow-500 text-yellow-500" />
+                      <span className="text-sm">{selectedVouch.rating}/5</span>
+                    </div>
+                  </div>
+                )}
+
+                {selectedVouch.transaction && (
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Related Transaction</p>
+                    <p className="text-sm">{selectedVouch.transaction.item}</p>
+                  </div>
+                )}
+
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Created</p>
+                  <p className="text-sm">{formatTimeAgo(selectedVouch.createdAt)}</p>
                 </div>
 
                 {selectedVouch.flags.length > 0 && (
@@ -580,31 +638,34 @@ export default function VouchesPage() {
                   </div>
                 )}
 
-                {selectedVouch.invalidReason && (
-                  <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
-                    <p className="text-sm font-medium text-red-500 mb-1">Invalid Reason</p>
-                    <p className="text-sm text-muted-foreground">{selectedVouch.invalidReason}</p>
-                  </div>
-                )}
-
-                {selectedVouch.status !== "invalid" && (
-                  <div className="flex gap-2 pt-4">
-                    <Button variant="destructive" className="flex-1" onClick={() => handleAction("invalidate")}>
+                <div className="flex gap-2 pt-4">
+                  <Button
+                    variant="destructive"
+                    className="flex-1"
+                    disabled={actionLoading}
+                    onClick={() => handleAction("invalidate")}
+                  >
+                    {actionLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                    ) : (
                       <Trash2 className="h-4 w-4 mr-1" />
-                      Invalidate
-                    </Button>
-                    {selectedVouch.status === "suspicious" && (
-                      <Button
-                        variant="outline"
-                        className="flex-1 bg-transparent"
-                        onClick={() => handleAction("approve")}
-                      >
-                        <Award className="h-4 w-4 mr-1" />
-                        Approve
-                      </Button>
                     )}
-                  </div>
-                )}
+                    Invalidate
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    disabled={actionLoading}
+                    onClick={() => handleAction("approve")}
+                  >
+                    {actionLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                    ) : (
+                      <Award className="h-4 w-4 mr-1" />
+                    )}
+                    Approve
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           ) : (
@@ -693,20 +754,17 @@ export default function VouchesPage() {
                   <p className="text-sm text-muted-foreground mb-2">Vouch Giver</p>
                   <div className="flex items-center gap-3 mb-3">
                     <Avatar className="h-10 w-10">
-                      <AvatarImage src={reviewingVouch.giver.avatar || "/placeholder.svg"} />
-                      <AvatarFallback>{reviewingVouch.giver.username.charAt(0)}</AvatarFallback>
+                      <AvatarImage src={reviewingVouch.giver.avatar || undefined} />
+                      <AvatarFallback>{reviewingVouch.giver.username.charAt(0).toUpperCase()}</AvatarFallback>
                     </Avatar>
                     <div>
                       <p className="font-medium">{reviewingVouch.giver.username}</p>
-                      <p className="text-xs text-muted-foreground">{reviewingVouch.giver.vouches} vouches</p>
+                      <p className="text-xs text-muted-foreground">{reviewingVouch.giver.vouchCount} vouches</p>
                     </div>
                   </div>
                   <div className="space-y-1 text-sm">
                     <p>
-                      <span className="text-muted-foreground">Joined:</span> {reviewingVouch.giver.joinDate}
-                    </p>
-                    <p>
-                      <span className="text-muted-foreground">IP:</span> {reviewingVouch.giver.ip}
+                      <span className="text-muted-foreground">Joined:</span> {formatDate(reviewingVouch.giver.joinDate)}
                     </p>
                   </div>
                 </div>
@@ -714,41 +772,57 @@ export default function VouchesPage() {
                   <p className="text-sm text-muted-foreground mb-2">Vouch Receiver</p>
                   <div className="flex items-center gap-3 mb-3">
                     <Avatar className="h-10 w-10">
-                      <AvatarImage src={reviewingVouch.receiver.avatar || "/placeholder.svg"} />
-                      <AvatarFallback>{reviewingVouch.receiver.username.charAt(0)}</AvatarFallback>
+                      <AvatarImage src={reviewingVouch.receiver.avatar || undefined} />
+                      <AvatarFallback>{reviewingVouch.receiver.username.charAt(0).toUpperCase()}</AvatarFallback>
                     </Avatar>
                     <div>
                       <p className="font-medium">{reviewingVouch.receiver.username}</p>
-                      <p className="text-xs text-muted-foreground">{reviewingVouch.receiver.vouches} vouches</p>
+                      <p className="text-xs text-muted-foreground">{reviewingVouch.receiver.vouchCount} vouches</p>
                     </div>
                   </div>
                   <div className="space-y-1 text-sm">
                     <p>
-                      <span className="text-muted-foreground">Joined:</span> {reviewingVouch.receiver.joinDate}
-                    </p>
-                    <p>
-                      <span className="text-muted-foreground">IP:</span> {reviewingVouch.receiver.ip}
+                      <span className="text-muted-foreground">Joined:</span> {formatDate(reviewingVouch.receiver.joinDate)}
                     </p>
                   </div>
                 </div>
               </div>
 
               {/* Transaction Details */}
-              <div className="p-4 border rounded-lg">
-                <p className="text-sm text-muted-foreground mb-2">Related Transaction</p>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">{reviewingVouch.transaction.item}</p>
-                    <p className="text-sm text-muted-foreground">{reviewingVouch.transaction.date}</p>
+              {reviewingVouch.transaction && (
+                <div className="p-4 border rounded-lg">
+                  <p className="text-sm text-muted-foreground mb-2">Related Transaction</p>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">{reviewingVouch.transaction.item}</p>
+                      <p className="text-sm text-muted-foreground">{formatTimeAgo(reviewingVouch.transaction.date)}</p>
+                    </div>
+                    <p className="text-lg font-bold text-primary">₱{reviewingVouch.transaction.price.toLocaleString()}</p>
                   </div>
-                  <p className="text-lg font-bold text-primary">₱{reviewingVouch.transaction.price.toLocaleString()}</p>
                 </div>
-              </div>
+              )}
 
               {/* Vouch Message */}
               <div className="p-4 border rounded-lg">
                 <p className="text-sm text-muted-foreground mb-2">Vouch Message</p>
-                <p className="text-sm">"{reviewingVouch.message}"</p>
+                <p className="text-sm">"{reviewingVouch.message || "No message provided"}"</p>
+              </div>
+
+              {/* Type and Rating */}
+              <div className="flex items-center gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Type</p>
+                  <Badge variant="outline" className="capitalize">{reviewingVouch.type}</Badge>
+                </div>
+                {reviewingVouch.rating && (
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Rating</p>
+                    <div className="flex items-center gap-1">
+                      <Star className="h-4 w-4 fill-yellow-500 text-yellow-500" />
+                      <span className="text-sm">{reviewingVouch.rating}/5</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Status and Flags */}
@@ -771,13 +845,11 @@ export default function VouchesPage() {
                 )}
               </div>
 
-              {/* IP Match Warning */}
-              {reviewingVouch.giver.ip === reviewingVouch.receiver.ip && (
-                <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5 text-red-500" />
-                  <p className="text-sm text-red-500 font-medium">Warning: Both users share the same IP address</p>
-                </div>
-              )}
+              {/* Time Info */}
+              <div className="p-4 border rounded-lg">
+                <p className="text-sm text-muted-foreground mb-2">Timeline</p>
+                <p className="text-sm">Created: {formatTimeAgo(reviewingVouch.createdAt)}</p>
+              </div>
             </div>
           )}
           <DialogFooter>
@@ -791,18 +863,9 @@ export default function VouchesPage() {
                 handleAction("invalidate")
               }}
             >
-              Invalidate Vouch
+              <Trash2 className="h-4 w-4 mr-1" />
+              Invalidate
             </Button>
-            {reviewingVouch?.status === "suspicious" && (
-              <Button
-                onClick={() => {
-                  setReviewDialogOpen(false)
-                  handleAction("approve")
-                }}
-              >
-                Approve Vouch
-              </Button>
-            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -831,7 +894,7 @@ export default function VouchesPage() {
                   {reviewingPattern.users.map((user, i) => (
                     <div key={i} className="flex items-center gap-3 p-3 border rounded-lg">
                       <Avatar className="h-8 w-8">
-                        <AvatarFallback>{user.charAt(0)}</AvatarFallback>
+                        <AvatarFallback>{user.charAt(0).toUpperCase()}</AvatarFallback>
                       </Avatar>
                       <span className="font-medium text-sm">{user}</span>
                     </div>
@@ -849,9 +912,53 @@ export default function VouchesPage() {
             <Button variant="outline" onClick={() => setPatternReviewDialogOpen(false)}>
               Close
             </Button>
-            <Button variant="destructive">
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setPatternReviewDialogOpen(false)
+                setPatternActionDialogOpen(true)
+              }}
+            >
               <Trash2 className="h-4 w-4 mr-1" />
-              Invalidate All Vouches
+              Invalidate All
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pattern Action Dialog */}
+      <Dialog open={patternActionDialogOpen} onOpenChange={setPatternActionDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Invalidate Pattern Vouches</DialogTitle>
+            <DialogDescription>
+              This will invalidate all vouches in this pattern and notify affected users.
+            </DialogDescription>
+          </DialogHeader>
+          <div>
+            <Label>Reason for Invalidation</Label>
+            <Textarea
+              placeholder="Explain why these vouches are being invalidated..."
+              value={patternActionNotes}
+              onChange={(e) => setPatternActionNotes(e.target.value)}
+              className="mt-2"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPatternActionDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={actionLoading}
+              onClick={() => {
+                if (reviewingPattern) {
+                  handleInvalidatePattern(reviewingPattern)
+                }
+              }}
+            >
+              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Trash2 className="h-4 w-4 mr-1" />}
+              Confirm Invalidation
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -526,12 +526,11 @@ export async function getTransactionByPeers(
 
     // Check if current user has already vouched for the counterparty (global vouch rule)
     const counterpartyId = transaction.buyerId === currentUser.id ? transaction.sellerId : transaction.buyerId
-    const userVouch = await prisma.vouch.findUnique({
+    const userVouch = await prisma.vouch.findFirst({
       where: {
-        fromUserId_toUserId: {
-          fromUserId: currentUser.id,
-          toUserId: counterpartyId,
-        },
+        fromUserId: currentUser.id,
+        toUserId: counterpartyId,
+        // No status filter - users can only vouch once, even if invalidated
       },
     })
 
@@ -803,6 +802,7 @@ export async function toggleTransactionConfirmation(
         where: {
           transactionId,
           fromUserId: currentUser.id,
+          // No status filter - users can only vouch once, even if invalidated
         },
       })
 
@@ -878,6 +878,7 @@ export async function toggleTransactionConfirmation(
         where: {
           transactionId,
           fromUserId: currentUser.id,
+          // No status filter - users can only vouch once, even if invalidated
         },
       })
 
@@ -987,13 +988,12 @@ export async function submitVouch(
     const vouchType =
       transaction.buyerId === currentUser.id ? "seller" : "buyer"
 
-    // Check if vouch already exists
-    const existingVouch = await prisma.vouch.findUnique({
+    // Check if vouch already exists (check any vouch, even if invalidated)
+    const existingVouch = await prisma.vouch.findFirst({
       where: {
-        fromUserId_toUserId: {
-          fromUserId: currentUser.id,
-          toUserId: vouchToUserId,
-        },
+        fromUserId: currentUser.id,
+        toUserId: vouchToUserId,
+        // No status filter - users can only vouch once per person, ever
       },
     })
 
@@ -1013,6 +1013,7 @@ export async function submitVouch(
         type: vouchType,
         message: comment,
         rating,
+        status: "VALID", // Set default status for new vouches
       },
     })
 

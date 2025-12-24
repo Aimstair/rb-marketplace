@@ -905,10 +905,15 @@ export default function MessagesPage() {
       const result = await submitVouch(transaction.id, vouchRating, vouchMessage)
 
       if (result.success) {
-        // Update transaction status
-        const updatedResult = await getTransactionById(transaction.id)
-        if (updatedResult.success && updatedResult.transaction) {
-          setTransaction(updatedResult.transaction)
+        // Update transaction status with proper userVouched flag
+        if (selectedContact.item.id && selectedContact.item.id !== "unknown") {
+          const updatedResult = await getTransactionByPeers(
+            selectedContact.item.id,
+            selectedContact.otherUserId
+          )
+          if (updatedResult.success && updatedResult.transaction) {
+            setTransaction(updatedResult.transaction)
+          }
         }
 
         setShowVouchModal(false)

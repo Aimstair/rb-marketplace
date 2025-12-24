@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -14,111 +14,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Search, MessageSquare, AlertTriangle, Ban, MessageSquareOff, Shield, Bot } from "lucide-react"
+import { Search, MessageSquare, AlertTriangle, Ban, MessageSquareOff, Shield, Bot, Loader2 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
-
-// Mock chat data
-const mockConversations = [
-  {
-    id: "1",
-    participants: [
-      { username: "TrustyShopper", avatar: "/placeholder.svg?key=v0rj5" },
-      { username: "NinjaTrader", avatar: "/placeholder.svg?key=6qwnp" },
-    ],
-    lastMessage: "Thanks for the trade! Great doing business with you.",
-    lastMessageTime: "5 min ago",
-    flagged: false,
-    messageCount: 24,
-  },
-  {
-    id: "2",
-    participants: [
-      { username: "ScammerJoe", avatar: "/placeholder.svg?key=c8y3y" },
-      { username: "VictimUser", avatar: "/placeholder.svg?key=m0g3m" },
-    ],
-    lastMessage: "Send the money first, I promise I'll send the item after",
-    lastMessageTime: "1 hour ago",
-    flagged: true,
-    flagReason: "Potential scam attempt detected",
-    messageCount: 15,
-  },
-  {
-    id: "3",
-    participants: [
-      { username: "EliteTrader99", avatar: "/placeholder.svg?key=k2ky5" },
-      { username: "CasualGamer", avatar: "/placeholder.svg?key=vdgfv" },
-    ],
-    lastMessage: "Deal! I'll send the Robux now.",
-    lastMessageTime: "2 hours ago",
-    flagged: false,
-    messageCount: 8,
-  },
-  {
-    id: "4",
-    participants: [
-      { username: "HarasserXX", avatar: "/placeholder.svg?key=hdzit" },
-      { username: "InnocentUser", avatar: "/placeholder.svg?key=qjz2n" },
-    ],
-    lastMessage: "You're going to regret this! I know where you live!",
-    lastMessageTime: "3 hours ago",
-    flagged: true,
-    flagReason: "Harassment and threatening language",
-    messageCount: 32,
-  },
-]
-
-const mockMessages = [
-  {
-    id: "1",
-    sender: "ScammerJoe",
-    message: "Hey, I saw your listing for the Dominus",
-    time: "1:00 PM",
-    flagged: false,
-  },
-  {
-    id: "2",
-    sender: "VictimUser",
-    message: "Yes! It's still available. 50,000 Robux",
-    time: "1:01 PM",
-    flagged: false,
-  },
-  { id: "3", sender: "ScammerJoe", message: "That's too much. Can you do 30,000?", time: "1:02 PM", flagged: false },
-  { id: "4", sender: "VictimUser", message: "Hmm, lowest I can go is 45,000", time: "1:03 PM", flagged: false },
-  {
-    id: "5",
-    sender: "ScammerJoe",
-    message: "Ok deal. But can you send the item first?",
-    time: "1:05 PM",
-    flagged: true,
-  },
-  { id: "6", sender: "VictimUser", message: "I'd prefer if you sent the Robux first", time: "1:06 PM", flagged: false },
-  {
-    id: "7",
-    sender: "ScammerJoe",
-    message: "Send the money first, I promise I'll send the item after",
-    time: "1:07 PM",
-    flagged: true,
-  },
-  {
-    id: "8",
-    sender: "ScammerJoe",
-    message: "Trust me bro, I have 500 vouches on another site",
-    time: "1:08 PM",
-    flagged: true,
-  },
-  { id: "9", sender: "VictimUser", message: "That sounds sketchy...", time: "1:10 PM", flagged: false },
-  {
-    id: "10",
-    sender: "ScammerJoe",
-    message: "Just do it quick before someone else buys it from me",
-    time: "1:11 PM",
-    flagged: true,
-  },
-]
+import { getChatConversations, getConversationMessages, banUser, muteUser } from "@/app/actions/admin"
+import { useToast } from "@/hooks/use-toast"
 
 const flaggedKeywords = [
   "send first",
@@ -132,36 +35,181 @@ const flaggedKeywords = [
   "gift card",
   "discord",
   "private message",
+  "cashapp",
+  "venmo",
+  "zelle",
 ]
 
+interface Conversation {
+  id: string
+  participants: Array<{ id: string; username: string; avatar: string | null; isBanned: boolean }>
+  lastMessage: string | null
+  lastMessageTime: Date | null
+  flagged: boolean
+  flagReason?: string
+  messageCount: number
+}
+
+interface Message {
+  id: string
+  sender: string
+  senderId: string
+  message: string
+  time: string
+  createdAt: Date
+  flagged: boolean
+}
+
 export default function ChatMonitoringPage() {
+  const { toast } = useToast()
+  const [loading, setLoading] = useState(true)
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [stats, setStats] = useState({ total: 0, flagged: 0, aiDetections: 0, usersMuted: 0 })
+  const [messages, setMessages] = useState<Message[]>([])
+  const [messagesLoading, setMessagesLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [filterType, setFilterType] = useState("all")
-  const [selectedConversation, setSelectedConversation] = useState<(typeof mockConversations)[0] | null>(null)
+  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null)
   const [actionDialogOpen, setActionDialogOpen] = useState(false)
   const [actionType, setActionType] = useState<string>("")
   const [actionNotes, setActionNotes] = useState("")
-  const [selectedUser, setSelectedUser] = useState<string>("")
+  const [selectedUser, setSelectedUser] = useState<{ id: string; username: string }>({ id: "", username: "" })
+  const [actionLoading, setActionLoading] = useState(false)
 
-  const filteredConversations = mockConversations.filter((conv) => {
-    const matchesSearch = conv.participants.some((p) => p.username.toLowerCase().includes(searchQuery.toLowerCase()))
-    const matchesFilter =
-      filterType === "all" || (filterType === "flagged" && conv.flagged) || (filterType === "normal" && !conv.flagged)
+  // Load conversations
+  useEffect(() => {
+    loadConversations()
+  }, [searchQuery, filterType])
 
-    return matchesSearch && matchesFilter
-  })
+  const loadConversations = async () => {
+    try {
+      setLoading(true)
+      const result = await getChatConversations(searchQuery, filterType)
+      if (result.success && result.conversations) {
+        setConversations(result.conversations)
+        if (result.stats) {
+          setStats(result.stats)
+        }
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: result.error || "Failed to load conversations",
+        })
+      }
+    } catch (err) {
+      console.error("Failed to load conversations:", err)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to load conversations",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
 
-  const handleAction = (action: string, user?: string) => {
+  // Load messages for selected conversation
+  const loadMessages = async (conversationId: string) => {
+    try {
+      setMessagesLoading(true)
+      const result = await getConversationMessages(conversationId)
+      if (result.success && result.messages) {
+        setMessages(result.messages)
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: result.error || "Failed to load messages",
+        })
+      }
+    } catch (err) {
+      console.error("Failed to load messages:", err)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to load messages",
+      })
+    } finally {
+      setMessagesLoading(false)
+    }
+  }
+
+  const handleConversationSelect = (conv: Conversation) => {
+    setSelectedConversation(conv)
+    loadMessages(conv.id)
+  }
+
+  const handleAction = (action: string, user: { id: string; username: string }) => {
     setActionType(action)
-    setSelectedUser(user || "")
+    setSelectedUser(user)
     setActionDialogOpen(true)
   }
 
-  const executeAction = () => {
-    console.log(`Executing ${actionType} on user ${selectedUser} with notes: ${actionNotes}`)
-    setActionDialogOpen(false)
-    setActionNotes("")
-    setSelectedUser("")
+  const executeAction = async () => {
+    if (!selectedUser.id || !actionNotes.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Please provide a reason for this action",
+      })
+      return
+    }
+
+    try {
+      setActionLoading(true)
+      let result
+
+      if (actionType === "ban") {
+        result = await banUser(selectedUser.id, true)
+      } else if (actionType === "mute") {
+        result = await muteUser(selectedUser.id, actionNotes, 24) // 24 hour mute
+      }
+
+      if (result?.success) {
+        toast({
+          title: "Success",
+          description: `User ${selectedUser.username} has been ${actionType === "ban" ? "banned" : "muted"}`,
+        })
+        setActionDialogOpen(false)
+        setActionNotes("")
+        setSelectedUser({ id: "", username: "" })
+        // Reload conversations to reflect changes
+        loadConversations()
+        if (selectedConversation) {
+          loadMessages(selectedConversation.id)
+        }
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: result?.error || `Failed to ${actionType} user`,
+        })
+      }
+    } catch (err) {
+      console.error(`Failed to ${actionType} user:`, err)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: `Failed to ${actionType} user`,
+      })
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const formatTimeAgo = (date: Date | null) => {
+    if (!date) return "No messages"
+    const now = new Date()
+    const diffMs = now.getTime() - new Date(date).getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMs / 3600000)
+    const diffDays = Math.floor(diffMs / 86400000)
+
+    if (diffMins < 1) return "Just now"
+    if (diffMins < 60) return `${diffMins} min ago`
+    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`
+    return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`
   }
 
   return (
@@ -179,7 +227,7 @@ export default function ChatMonitoringPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total Conversations</p>
-                <p className="text-2xl font-bold">{mockConversations.length}</p>
+                <p className="text-2xl font-bold">{stats.total}</p>
               </div>
               <MessageSquare className="h-8 w-8 text-muted-foreground" />
             </div>
@@ -190,7 +238,7 @@ export default function ChatMonitoringPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Flagged</p>
-                <p className="text-2xl font-bold text-red-500">{mockConversations.filter((c) => c.flagged).length}</p>
+                <p className="text-2xl font-bold text-red-500">{stats.flagged}</p>
               </div>
               <AlertTriangle className="h-8 w-8 text-red-500" />
             </div>
@@ -200,8 +248,8 @@ export default function ChatMonitoringPage() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">AI Detections Today</p>
-                <p className="text-2xl font-bold">23</p>
+                <p className="text-sm text-muted-foreground">AI Detections</p>
+                <p className="text-2xl font-bold">{stats.aiDetections}</p>
               </div>
               <Bot className="h-8 w-8 text-muted-foreground" />
             </div>
@@ -212,7 +260,7 @@ export default function ChatMonitoringPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Users Muted</p>
-                <p className="text-2xl font-bold">5</p>
+                <p className="text-2xl font-bold">{stats.usersMuted}</p>
               </div>
               <MessageSquareOff className="h-8 w-8 text-muted-foreground" />
             </div>
@@ -250,44 +298,65 @@ export default function ChatMonitoringPage() {
             </CardHeader>
             <CardContent className="p-0">
               <ScrollArea className="h-[500px]">
-                <div className="divide-y">
-                  {filteredConversations.map((conv) => (
-                    <div
-                      key={conv.id}
-                      onClick={() => setSelectedConversation(conv)}
-                      className={`p-4 cursor-pointer hover:bg-muted/50 transition-colors ${
-                        selectedConversation?.id === conv.id ? "bg-muted/50 border-l-2 border-l-primary" : ""
-                      } ${conv.flagged ? "bg-red-500/5" : ""}`}
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="flex -space-x-2">
-                          {conv.participants.map((p, i) => (
-                            <Avatar key={i} className="h-8 w-8 border-2 border-background">
-                              <AvatarImage src={p.avatar || "/placeholder.svg"} />
-                              <AvatarFallback>{p.username.charAt(0)}</AvatarFallback>
-                            </Avatar>
-                          ))}
+                {loading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                  </div>
+                ) : conversations.length === 0 ? (
+                  <div className="p-8 text-center text-muted-foreground">
+                    <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>No conversations found</p>
+                  </div>
+                ) : (
+                  <div className="divide-y">
+                    {conversations.map((conv) => (
+                      <div
+                        key={conv.id}
+                        onClick={() => handleConversationSelect(conv)}
+                        className={`p-4 cursor-pointer hover:bg-muted/50 transition-colors ${
+                          selectedConversation?.id === conv.id ? "bg-muted/50 border-l-2 border-l-primary" : ""
+                        } ${conv.flagged ? "bg-red-500/5" : ""}`}
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="flex -space-x-2 relative">
+                            {conv.participants.map((p, i) => (
+                              <Avatar key={i} className="h-8 w-8 border-2 border-background">
+                                <AvatarImage src={p.avatar || undefined} />
+                                <AvatarFallback>{p.username.charAt(0).toUpperCase()}</AvatarFallback>
+                              </Avatar>
+                            ))}
+                            {conv.flagged && (
+                              <div className="absolute -top-1 -right-1 bg-red-500 rounded-full p-1">
+                                <AlertTriangle className="h-3 w-3 text-white" />
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm truncate">
+                              {conv.participants.map((p) => p.username).join(" & ")}
+                            </p>
+                            {conv.flagged && (
+                              <p className="text-xs text-red-500 truncate">{conv.flagReason}</p>
+                            )}
+                          </div>
+                          {conv.flagged && (
+                            <Badge variant="destructive" className="text-xs shrink-0">
+                              <AlertTriangle className="h-3 w-3 mr-1" />
+                              Flagged
+                            </Badge>
+                          )}
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm truncate">
-                            {conv.participants.map((p) => p.username).join(" & ")}
-                          </p>
+                        <p className="text-sm text-muted-foreground truncate">
+                          {conv.lastMessage || "No messages yet"}
+                        </p>
+                        <div className="flex items-center justify-between mt-2">
+                          <span className="text-xs text-muted-foreground">{conv.messageCount} messages</span>
+                          <span className="text-xs text-muted-foreground">{formatTimeAgo(conv.lastMessageTime)}</span>
                         </div>
-                        {conv.flagged && (
-                          <Badge variant="destructive" className="text-xs">
-                            <AlertTriangle className="h-3 w-3 mr-1" />
-                            Flagged
-                          </Badge>
-                        )}
                       </div>
-                      <p className="text-sm text-muted-foreground truncate">{conv.lastMessage}</p>
-                      <div className="flex items-center justify-between mt-2">
-                        <span className="text-xs text-muted-foreground">{conv.messageCount} messages</span>
-                        <span className="text-xs text-muted-foreground">{conv.lastMessageTime}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </ScrollArea>
             </CardContent>
           </Card>
@@ -326,36 +395,53 @@ export default function ChatMonitoringPage() {
               <CardContent className="space-y-4">
                 {/* Messages */}
                 <ScrollArea className="h-[400px] border rounded-lg p-4">
-                  <div className="space-y-4">
-                    {mockMessages.map((msg) => {
-                      const isScammer = msg.sender === "ScammerJoe"
-                      return (
-                        <div
-                          key={msg.id}
-                          className={`flex gap-3 ${msg.flagged ? "bg-red-500/10 -mx-2 px-2 py-2 rounded-lg border border-red-500/20" : ""}`}
-                        >
-                          <Avatar className="h-8 w-8">
-                            <AvatarFallback>{msg.sender.charAt(0)}</AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className={`font-medium text-sm ${isScammer ? "text-red-500" : ""}`}>
-                                {msg.sender}
-                              </span>
-                              <span className="text-xs text-muted-foreground">{msg.time}</span>
-                              {msg.flagged && (
-                                <Badge variant="destructive" className="text-xs">
-                                  <AlertTriangle className="h-3 w-3 mr-1" />
-                                  AI Flagged
-                                </Badge>
-                              )}
+                  {messagesLoading ? (
+                    <div className="flex items-center justify-center py-12">
+                      <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                    </div>
+                  ) : messages.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <p>No messages in this conversation</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {messages.map((msg) => {
+                        const participant = selectedConversation?.participants.find((p) => p.id === msg.senderId)
+                        const isBanned = participant?.isBanned || false
+                        return (
+                          <div
+                            key={msg.id}
+                            className={`flex gap-3 ${msg.flagged ? "bg-red-500/10 -mx-2 px-2 py-2 rounded-lg border border-red-500/20" : ""}`}
+                          >
+                            <Avatar className="h-8 w-8">
+                              <AvatarImage src={participant?.avatar || undefined} />
+                              <AvatarFallback>{msg.sender.charAt(0).toUpperCase()}</AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className={`font-medium text-sm ${isBanned ? "text-red-500" : ""}`}>
+                                  {msg.sender}
+                                </span>
+                                {isBanned && (
+                                  <Badge variant="destructive" className="text-xs">
+                                    Banned
+                                  </Badge>
+                                )}
+                                <span className="text-xs text-muted-foreground">{msg.time}</span>
+                                {msg.flagged && (
+                                  <Badge variant="destructive" className="text-xs">
+                                    <AlertTriangle className="h-3 w-3 mr-1" />
+                                    AI Flagged
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="text-sm">{msg.message}</p>
                             </div>
-                            <p className="text-sm">{msg.message}</p>
                           </div>
-                        </div>
-                      )
-                    })}
-                  </div>
+                        )
+                      })}
+                    </div>
+                  )}
                 </ScrollArea>
 
                 <Separator />
@@ -366,13 +452,23 @@ export default function ChatMonitoringPage() {
                   <div className="flex flex-wrap gap-2">
                     {selectedConversation.participants.map((p) => (
                       <div key={p.username} className="flex gap-2">
-                        <Button size="sm" variant="outline" onClick={() => handleAction("mute", p.username)}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleAction("mute", { id: p.id, username: p.username })}
+                          disabled={p.isBanned}
+                        >
                           <MessageSquareOff className="h-4 w-4 mr-1" />
                           Mute {p.username}
                         </Button>
-                        <Button size="sm" variant="destructive" onClick={() => handleAction("ban", p.username)}>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => handleAction("ban", { id: p.id, username: p.username })}
+                          disabled={p.isBanned}
+                        >
                           <Ban className="h-4 w-4 mr-1" />
-                          Ban {p.username}
+                          {p.isBanned ? "Already Banned" : `Ban ${p.username}`}
                         </Button>
                       </div>
                     ))}
@@ -413,8 +509,8 @@ export default function ChatMonitoringPage() {
             <DialogTitle className="capitalize">{actionType} User</DialogTitle>
             <DialogDescription>
               {actionType === "mute"
-                ? `This will prevent ${selectedUser} from sending messages.`
-                : `This will ban ${selectedUser} from the platform.`}
+                ? `This will prevent ${selectedUser.username} from sending messages for 24 hours.`
+                : `This will ban ${selectedUser.username} from the platform and hide all their listings.`}
             </DialogDescription>
           </DialogHeader>
           <div>
@@ -424,14 +520,26 @@ export default function ChatMonitoringPage() {
               value={actionNotes}
               onChange={(e) => setActionNotes(e.target.value)}
               className="mt-2"
+              disabled={actionLoading}
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setActionDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setActionDialogOpen(false)} disabled={actionLoading}>
               Cancel
             </Button>
-            <Button variant={actionType === "ban" ? "destructive" : "default"} onClick={executeAction}>
-              Confirm {actionType}
+            <Button
+              variant={actionType === "ban" ? "destructive" : "default"}
+              onClick={executeAction}
+              disabled={actionLoading || !actionNotes.trim()}
+            >
+              {actionLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                `Confirm ${actionType}`
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

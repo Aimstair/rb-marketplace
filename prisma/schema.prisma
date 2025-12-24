@@ -23,6 +23,9 @@ model User {
   socialLinks    Json? // { discord?: string, twitter?: string, ... }
   isVerified     Boolean   @default(false)
   isBanned       Boolean   @default(false)
+  isMuted        Boolean   @default(false)
+  mutedUntil     DateTime?
+  mutedReason    String?
   lastActive     DateTime  @default(now())
   joinDate       DateTime  @default(now())
   robloxProfile  String?
@@ -267,9 +270,15 @@ model Vouch {
   message String?
   rating  Int     @default(5) // 1-5 star rating
 
+  // Status tracking
+  status          String    @default("VALID") // "VALID" | "INVALID"
+  invalidatedBy   String? // Admin user ID
+  invalidatedAt   DateTime?
+  invalidReason   String?
+
   createdAt DateTime @default(now())
 
-  @@unique([fromUserId, toUserId])
+  @@index([fromUserId, toUserId]) // Changed from unique to index to allow multiple vouches with different statuses
   @@index([toUserId])
   @@index([transactionId])
   @@map("vouches")

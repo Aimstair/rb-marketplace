@@ -23,6 +23,7 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [recentActivityData, setRecentActivityData] = useState<any[]>([])
+  const [recentReportsData, setRecentReportsData] = useState<any[]>([])
   const [trafficData, setTrafficData] = useState<any[]>([])
   const [revenueData, setRevenueData] = useState<any[]>([])
 
@@ -40,7 +41,8 @@ export default function AdminDashboard() {
           console.log("Weekly Traffic:", result.data.weeklyTraffic)
           console.log("Recent Activity:", result.data.recentActivity)
           setStats(result.data)
-          setRecentActivityData(result.data.recentActivity)
+          setRecentActivityData(result.data.recentActivity.slice(0, 5))
+          setRecentReportsData(result.data.recentReports || [])
           setTrafficData(result.data.weeklyTraffic || [])
           setRevenueData(result.data.monthlyRevenue || [])
         } else {
@@ -244,9 +246,36 @@ export default function AdminDashboard() {
                 </Link>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  Review reports on the Reports page to moderate user and listing violations.
-                </p>
+                {recentReportsData.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No pending reports
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {recentReportsData.map((report) => (
+                      <div key={report.id} className="p-3 bg-muted/50 rounded-lg">
+                        <div className="flex items-start justify-between mb-1">
+                          <Badge variant="outline" className="text-xs">
+                            {report.type === "user" ? "User" : "Listing"}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(report.createdAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <p className="text-sm font-medium mb-1">{report.reason}</p>
+                        <p className="text-xs text-muted-foreground">
+                          By {report.reporterUsername}
+                          {report.type === "user" && report.reportedUsername && (
+                            <> → {report.reportedUsername}</>
+                          )}
+                          {report.type === "listing" && report.listingTitle && (
+                            <> → {report.listingTitle}</>
+                          )}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
 
