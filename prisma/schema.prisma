@@ -58,8 +58,9 @@ model User {
   following UserFollow[] @relation("Following")
 
   // Report relations
-  reportsSubmitted Report[] @relation("ReporterUser")
-  reportsReceived  Report[] @relation("ReportedUser")
+  listingReportsSubmitted ReportListing[] @relation("ListingReporterUser")
+  userReportsSubmitted    ReportUser[]    @relation("UserReporterUser")
+  userReportsReceived     ReportUser[]    @relation("ReportedUser")
 
   // Admin relations
   auditLogs      AuditLog[]      @relation("AdminUser")
@@ -412,27 +413,50 @@ model Notification {
   @@map("notifications")
 }
 
-model Report {
+model ReportListing {
   id String @id @default(cuid())
 
   // Reporter
   reporterId String
-  reporter   User   @relation("ReporterUser", fields: [reporterId], references: [id], onDelete: Cascade)
-
-  // Reported user (optional - for profile reports)
-  reportedId String?
-  reported   User?   @relation("ReportedUser", fields: [reportedId], references: [id], onDelete: Cascade)
+  reporter   User   @relation("ListingReporterUser", fields: [reporterId], references: [id], onDelete: Cascade)
 
   // Reported listing with type discriminator
-  listingId   String?
-  listingType String? // "ITEM" | "CURRENCY" | "OLD"
+  listingId   String
+  listingType String // "ITEM" | "CURRENCY"
 
   // Note: listingId references different tables based on listingType
-  // OLD -> listings table, ITEM -> item_listings, CURRENCY -> currency_listings
+  // ITEM -> item_listings, CURRENCY -> currency_listings
   // No foreign key constraint to allow flexibility
 
   // Report details
-  reason  String // "Scam" | "Spam" | "Inappropriate" | "Fake Items" | "Impersonation" | etc
+  reason  String // "Scam" | "Spam" | "Inappropriate" | "Fake Items" | etc
+  details String?
+  status  String  @default("PENDING") // "PENDING" | "RESOLVED" | "DISMISSED"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([reporterId])
+  @@index([listingId])
+  @@index([listingType])
+  @@index([status])
+  @@index([createdAt])
+  @@map("report_listings")
+}
+
+model ReportUser {
+  id String @id @default(cuid())
+
+  // Reporter
+  reporterId String
+  reporter   User   @relation("UserReporterUser", fields: [reporterId], references: [id], onDelete: Cascade)
+
+  // Reported user
+  reportedId String
+  reported   User   @relation("ReportedUser", fields: [reportedId], references: [id], onDelete: Cascade)
+
+  // Report details
+  reason  String // "Scam" | "Spam" | "Inappropriate" | "Impersonation" | etc
   details String?
   status  String  @default("PENDING") // "PENDING" | "RESOLVED" | "DISMISSED"
 
@@ -441,11 +465,9 @@ model Report {
 
   @@index([reporterId])
   @@index([reportedId])
-  @@index([listingId])
-  @@index([listingType])
   @@index([status])
   @@index([createdAt])
-  @@map("reports")
+  @@map("report_users")
 }
 
 // Game and Currency master data

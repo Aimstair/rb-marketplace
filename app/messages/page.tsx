@@ -56,6 +56,7 @@ import {
   cancelTransaction,
 } from "@/app/actions/transactions"
 import type { TransactionData } from "@/app/actions/transactions"
+import { createReport } from "@/app/actions/admin"
 import { useToast } from "@/hooks/use-toast"
 
 type Contact = {
@@ -171,6 +172,7 @@ export default function MessagesPage() {
   const [showReportModal, setShowReportModal] = useState(false)
   const [reportReason, setReportReason] = useState("")
   const [reportDetails, setReportDetails] = useState("")
+  const [reportLoading, setReportLoading] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [showCounterOfferInput, setShowCounterOfferInput] = useState(false)
   const [counterOfferAmount, setCounterOfferAmount] = useState("")
@@ -577,6 +579,47 @@ export default function MessagesPage() {
         }
       }
 
+      // Update contacts list after sending message
+      if (selectedConversationId && selectedContact) {
+        const newTimestamp = new Date()
+        const lastMessageText = messageText.trim() || (attachedImages.length > 0 ? "Sent a photo." : "")
+        
+        // Update the current contact in the list with new last message and timestamp
+        setContacts((prev) => {
+          const updated = prev.map((contact) => {
+            if (contact.id === selectedConversationId) {
+              return {
+                ...contact,
+                lastMessage: lastMessageText,
+                timestamp: formatContactTimestamp(newTimestamp),
+                _sortDate: newTimestamp,
+              }
+            }
+            return contact
+          })
+          
+          // Re-sort to move updated conversation to top
+          updated.sort((a, b) => {
+            const dateA = new Date(a._sortDate || a.timestamp).getTime()
+            const dateB = new Date(b._sortDate || b.timestamp).getTime()
+            return dateB - dateA
+          })
+          
+          return updated
+        })
+
+        // Also update selectedContact to reflect new message
+        setSelectedContact((prev) => {
+          if (!prev || prev.id !== selectedConversationId) return prev
+          return {
+            ...prev,
+            lastMessage: lastMessageText,
+            timestamp: formatContactTimestamp(newTimestamp),
+            _sortDate: newTimestamp,
+          }
+        })
+      }
+
       // If new conversation was created, refresh contacts list
       if (messageResult?.conversationId && messageResult.conversationId !== selectedConversationId) {
         console.log("🔄 New conversation created, refreshing contacts...")
@@ -891,11 +934,49 @@ export default function MessagesPage() {
     }
   }
 
-  const handleSubmitReport = () => {
-    if (!selectedContact || !reportReason) return
-    setShowReportModal(false)
-    setReportReason("")
-    setReportDetails("")
+  const handleSubmitReport = async () => {
+    if (!selectedContact || !reportReason) {
+      toast({
+        title: "Error",
+        description: "Please select a reason for reporting",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setReportLoading(true)
+      const result = await createReport({
+        reportedUserId: selectedContact.otherUserId,
+        reason: reportReason,
+        details: reportDetails || undefined,
+      })
+
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: "Report submitted successfully. Our team will review it.",
+        })
+        setShowReportModal(false)
+        setReportReason("")
+        setReportDetails("")
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to submit report",
+          variant: "destructive",
+        })
+      }
+    } catch (err) {
+      console.error("Failed to submit report:", err)
+      toast({
+        title: "Error",
+        description: "An error occurred while submitting the report",
+        variant: "destructive",
+      })
+    } finally {
+      setReportLoading(false)
+    }
   }
 
   const handleDeleteChat = () => {
@@ -1819,11 +1900,18 @@ export default function MessagesPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowReportModal(false)}>
+            <Button variant="outline" onClick={() => setShowReportModal(false)} disabled={reportLoading}>
               Cancel
             </Button>
-            <Button variant="destructive" onClick={handleSubmitReport} disabled={!reportReason}>
-              Submit Report
+            <Button variant="destructive" onClick={handleSubmitReport} disabled={!reportReason || reportLoading}>
+              {reportLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Submitting...
+                </>
+              ) : (
+                "Submit Report"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

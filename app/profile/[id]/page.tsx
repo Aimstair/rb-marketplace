@@ -29,7 +29,7 @@ import {
 } from "lucide-react"
 import Navigation from "@/components/navigation"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Progress } from "@/components/ui/progress"
@@ -47,10 +47,15 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { getProfile, toggleFollow, type UserProfileData } from "@/app/actions/profile"
 import { getSubscriptionBadge as getSubBadge } from "@/lib/subscription-utils"
+import { createReport } from "@/app/actions/admin"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
+import { useToast } from "@/hooks/use-toast"
 
 export default function ProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
   const { id } = use(params)
+  const { toast } = useToast()
   const [profile, setProfile] = useState<UserProfileData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -63,6 +68,10 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
   const [isBlocked, setIsBlocked] = useState(false)
   const [isFollowing, setIsFollowing] = useState(false)
   const [followLoading, setFollowLoading] = useState(false)
+  const [reportReason, setReportReason] = useState("")
+  const [reportDetails, setReportDetails] = useState("")
+  const [reportLoading, setReportLoading] = useState(false)
+  const [reportStatusFilter, setReportStatusFilter] = useState("all")
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -122,6 +131,51 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
     }
   }
 
+  const handleReportUser = async () => {
+    if (!profile || !reportReason) {
+      toast({
+        title: "Error",
+        description: "Please select a reason for reporting",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setReportLoading(true)
+      const result = await createReport({
+        reportedUserId: profile.id,
+        reason: reportReason,
+        details: reportDetails || undefined,
+      })
+
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: "Report submitted successfully. Our team will review it.",
+        })
+        setShowReportDialog(false)
+        setReportReason("")
+        setReportDetails("")
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to submit report",
+          variant: "destructive",
+        })
+      }
+    } catch (err) {
+      console.error("Failed to submit report:", err)
+      toast({
+        title: "Error",
+        description: "An error occurred while submitting the report",
+        variant: "destructive",
+      })
+    } finally {
+      setReportLoading(false)
+    }
+  }
+
   // Loading state
   if (loading) {
     return (
@@ -168,6 +222,18 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
       return 0
     })
 
+  const filteredReports = (profile?.reports || []).filter((report: any) => {
+    if (reportStatusFilter === "all") return true
+    return report.status === reportStatusFilter
+  })
+
+  const reportStats = {
+    total: profile?.reports?.length || 0,
+    pending: profile?.reports?.filter((r: any) => r.status === "PENDING").length || 0,
+    resolved: profile?.reports?.filter((r: any) => r.status === "RESOLVED").length || 0,
+    dismissed: profile?.reports?.filter((r: any) => r.status === "DISMISSED").length || 0,
+  }
+
   const subscriptionBadge = getSubBadge(profile?.subscriptionTier || "FREE")
 
   return (
@@ -185,6 +251,23 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
       </div>
 
       <div className="container mx-auto px-4 -mt-20 relative z-10">
+        {/* Banned Warning Banner */}
+        {profile.isBanned && (
+          <Card className="mb-4 border-red-500 bg-red-50 dark:bg-red-950/20">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3 text-red-700 dark:text-red-400">
+                <Ban className="w-5 h-5 flex-shrink-0" />
+                <div>
+                  <p className="font-semibold">This user has been banned</p>
+                  <p className="text-sm text-red-600 dark:text-red-500">
+                    This account has been suspended due to violations of platform policies.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+        
         {/* Profile Header */}
         <Card className="p-6 mb-6">
           <div className="flex flex-col md:flex-row gap-6 items-start">
@@ -206,6 +289,12 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
             <div className="flex-1">
               <div className="flex flex-wrap items-center gap-3 mb-2">
                 <h1 className="text-2xl md:text-3xl font-bold">{profile.username}</h1>
+                {profile.isBanned && (
+                  <Badge variant="destructive" className="bg-red-500 text-white">
+                    <Ban className="w-3 h-3 mr-1" />
+                    Banned
+                  </Badge>
+                )}
                 {profile.isVerified && (
                   <Badge variant="outline" className="text-primary border-primary">
                     <Shield className="w-3 h-3 mr-1" />
@@ -362,6 +451,7 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
           <TabsList className="mb-6">
             <TabsTrigger value="listings">Listings ({profile.listings?.length || 0})</TabsTrigger>
             <TabsTrigger value="vouches">Vouches ({profile.vouchCount || 0})</TabsTrigger>
+            <TabsTrigger value="reports">Reports ({profile.reports?.length || 0})</TabsTrigger>
           </TabsList>
 
           {/* Listings Tab */}
@@ -522,6 +612,148 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
               </div>
             </div>
           </TabsContent>
+
+          {/* Reports Tab */}
+          <TabsContent value="reports">
+            {/* Report Statistics */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <Card className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Total Reports</p>
+                    <p className="text-2xl font-bold">{reportStats.total}</p>
+                  </div>
+                  <Flag className="w-8 h-8 text-muted-foreground" />
+                </div>
+              </Card>
+              <Card className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Pending</p>
+                    <p className="text-2xl font-bold text-orange-500">{reportStats.pending}</p>
+                  </div>
+                  <Clock className="w-8 h-8 text-orange-500" />
+                </div>
+              </Card>
+              <Card className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Resolved</p>
+                    <p className="text-2xl font-bold text-red-500">{reportStats.resolved}</p>
+                  </div>
+                  <CheckCircle className="w-8 h-8 text-red-500" />
+                </div>
+              </Card>
+              <Card className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Dismissed</p>
+                    <p className="text-2xl font-bold text-green-500">{reportStats.dismissed}</p>
+                  </div>
+                  <Shield className="w-8 h-8 text-green-500" />
+                </div>
+              </Card>
+            </div>
+
+            <Card className="p-6 mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="font-bold">Reports Against This User</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    This shows all reports that have been filed against this user and their current status.
+                  </p>
+                </div>
+                <Select value={reportStatusFilter} onValueChange={setReportStatusFilter}>
+                  <SelectTrigger className="w-[150px]">
+                    <Filter className="w-4 h-4 mr-2" />
+                    <SelectValue placeholder="Filter" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Reports</SelectItem>
+                    <SelectItem value="PENDING">Pending</SelectItem>
+                    <SelectItem value="RESOLVED">Resolved</SelectItem>
+                    <SelectItem value="DISMISSED">Dismissed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              {filteredReports.length > 0 ? (
+                <div className="space-y-4">
+                  {filteredReports.map((report: any) => (
+                    <Card key={report.id} className="p-4 border">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-start gap-3 flex-1">
+                          <Link href={`/profile/${report.reporter?.id}`} className="flex-shrink-0">
+                            <img
+                              src={report.reporter?.profilePicture || "/placeholder.svg"}
+                              alt={report.reporter?.username || "Reporter"}
+                              className="w-10 h-10 rounded-full object-cover hover:ring-2 hover:ring-primary transition-all cursor-pointer"
+                            />
+                          </Link>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <Link href={`/profile/${report.reporter?.id}`} className="hover:underline">
+                                <h4 className="font-semibold">{report.reporter?.username || "Anonymous"}</h4>
+                              </Link>
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(report.createdAt).toLocaleDateString()}
+                              </span>
+                            </div>
+                            <p className="text-sm font-medium text-primary mb-2">{report.reason}</p>
+                            {report.details && (
+                              <p className="text-sm text-muted-foreground">{report.details}</p>
+                            )}
+                          </div>
+                        </div>
+                        <Badge
+                          variant={
+                            report.status === "RESOLVED"
+                              ? "default"
+                              : report.status === "DISMISSED"
+                              ? "secondary"
+                              : "outline"
+                          }
+                          className={
+                            report.status === "RESOLVED"
+                              ? "bg-red-500 text-white"
+                              : report.status === "PENDING"
+                              ? "border-orange-500 text-orange-500"
+                              : ""
+                          }
+                        >
+                          {report.status === "RESOLVED" && <CheckCircle className="w-3 h-3 mr-1" />}
+                          {report.status === "DISMISSED" && <Ban className="w-3 h-3 mr-1" />}
+                          {report.status === "PENDING" && <Clock className="w-3 h-3 mr-1" />}
+                          {report.status}
+                        </Badge>
+                      </div>
+                      
+                      <div className="pt-3 border-t">
+                        <p className="text-xs text-muted-foreground">
+                          <strong>Verdict:</strong>{" "}
+                          {report.status === "RESOLVED" && "The report was reviewed and user was found to have violated the rule."}
+                          {report.status === "DISMISSED" && "The report was reviewed and dismissed as invalid or insufficient evidence."}
+                          {report.status === "PENDING" && "The report is currently under review by moderators."}
+                        </p>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <Shield className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">
+                    {reportStatusFilter === "all" 
+                      ? "No reports have been filed against this user" 
+                      : `No ${reportStatusFilter.toLowerCase()} reports`}
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    {reportStatusFilter === "all" && "This is a good sign! Clean record."}
+                  </p>
+                </div>
+              )}
+            </Card>
+          </TabsContent>
         </Tabs>
 
         {/* Favorite Games */}
@@ -532,24 +764,72 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
       </div>
 
       {/* Report Dialog */}
-      <Dialog open={showReportDialog} onOpenChange={setShowReportDialog}>
+      <Dialog open={showReportDialog} onOpenChange={(open) => {
+        setShowReportDialog(open)
+        if (!open) {
+          setReportReason("")
+          setReportDetails("")
+        }
+      }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Report User</DialogTitle>
             <DialogDescription>Please select a reason for reporting {profile.username}</DialogDescription>
           </DialogHeader>
-          <div className="space-y-2 py-4">
-            {["Scam/Fraud", "Harassment", "Fake Profile", "Inappropriate Content", "Other"].map((reason) => (
-              <Button
-                key={reason}
-                variant="outline"
-                className="w-full justify-start bg-transparent"
-                onClick={() => setShowReportDialog(false)}
-              >
-                {reason}
-              </Button>
-            ))}
+          <div className="space-y-4 py-4">
+            <div>
+              <Label>Reason *</Label>
+              <div className="space-y-2 mt-2">
+                {["Scam/Fraud", "Harassment", "Fake Profile", "Inappropriate Content", "Other"].map((reason) => (
+                  <Button
+                    key={reason}
+                    variant={reportReason === reason ? "default" : "outline"}
+                    className="w-full justify-start"
+                    onClick={() => setReportReason(reason)}
+                  >
+                    {reason}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <Label>Additional Details (Optional)</Label>
+              <Textarea
+                placeholder="Provide any additional information about this report..."
+                value={reportDetails}
+                onChange={(e) => setReportDetails(e.target.value)}
+                className="mt-2"
+                rows={4}
+              />
+            </div>
           </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowReportDialog(false)
+                setReportReason("")
+                setReportDetails("")
+              }}
+              disabled={reportLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleReportUser}
+              disabled={reportLoading || !reportReason}
+            >
+              {reportLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Submitting...
+                </>
+              ) : (
+                "Submit Report"
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

@@ -29,7 +29,9 @@ import {
   Ban,
   Users,
   Loader2,
+  ExternalLink,
 } from "lucide-react"
+import Link from "next/link"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { getUsers, banUser } from "@/app/actions/admin"
@@ -84,9 +86,14 @@ export default function UsersPage() {
         const result = await banUser(selectedUser.id, true)
         if (result.success) {
           toast({ title: "Success", description: `${selectedUser.username} has been banned` })
-          // Reload users
-          const result = await getUsers(currentPage, searchQuery, statusFilter)
-          setUsers(result.users)
+          // Update the specific user in the users array
+          setUsers(prevUsers => 
+            prevUsers.map(u => 
+              u.id === selectedUser.id ? { ...u, isBanned: true } : u
+            )
+          )
+          // Update the selected user to reflect the change in the details panel
+          setSelectedUser(prev => prev ? { ...prev, isBanned: true } : null)
         } else {
           toast({ title: "Error", description: result.error || "Failed to ban user", variant: "destructive" })
         }
@@ -94,9 +101,14 @@ export default function UsersPage() {
         const result = await banUser(selectedUser.id, false)
         if (result.success) {
           toast({ title: "Success", description: `${selectedUser.username} has been unbanned` })
-          // Reload users
-          const result = await getUsers(currentPage, searchQuery, statusFilter)
-          setUsers(result.users)
+          // Update the specific user in the users array
+          setUsers(prevUsers => 
+            prevUsers.map(u => 
+              u.id === selectedUser.id ? { ...u, isBanned: false } : u
+            )
+          )
+          // Update the selected user to reflect the change in the details panel
+          setSelectedUser(prev => prev ? { ...prev, isBanned: false } : null)
         } else {
           toast({ title: "Error", description: result.error || "Failed to unban user", variant: "destructive" })
         }
@@ -199,6 +211,13 @@ export default function UsersPage() {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
+                                  <DropdownMenuItem asChild>
+                                    <Link href={`/profile/${user.id}`} target="_blank" className="cursor-pointer">
+                                      <ExternalLink className="h-4 w-4 mr-2" />
+                                      View Profile
+                                    </Link>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
                                   <DropdownMenuItem
                                     onClick={() => handleAction(user, user.isBanned ? "unban" : "ban")}
                                   >

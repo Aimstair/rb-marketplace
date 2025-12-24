@@ -157,16 +157,17 @@ export default function MarketplacePage() {
   return (
     <main className="min-h-screen bg-background">
       <Navigation />
-
+      {/* Header */}
+      <section className="bg-gradient-to-r from-primary/10 to-primary/5 py-12">
+          <div className="container mx-auto px-4">
+            <h1 className="text-4xl font-bold mb-2">Item Marketplace</h1>
+            <p className="text-muted-foreground">
+              {isLoading ? "Loading..." : `Buy and sell in-game items safely and securely with our trusted community from over ${totalListings} available listing${totalListings !== 1 ? "s" : ""}`}
+            </p>
+          </div>
+        </section>
+        
       <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">Marketplace</h1>
-          <p className="text-muted-foreground">
-            {isLoading ? "Loading..." : `Browse ${totalListings} available listing${totalListings !== 1 ? "s" : ""}`}
-          </p>
-        </div>
-
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           {/* Filters Sidebar - Desktop */}
           <div className="hidden lg:block lg:col-span-1">

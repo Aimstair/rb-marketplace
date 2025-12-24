@@ -19,39 +19,32 @@ import { Area, AreaChart, Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Cart
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { getDashboardStats } from "@/app/actions/admin"
 
-// Mock data for analytics
-const trafficData = [
-  { date: "Mon", users: 1200, listings: 340, trades: 89 },
-  { date: "Tue", users: 1400, listings: 420, trades: 102 },
-  { date: "Wed", users: 1100, listings: 380, trades: 78 },
-  { date: "Thu", users: 1600, listings: 510, trades: 134 },
-  { date: "Fri", users: 1800, listings: 590, trades: 156 },
-  { date: "Sat", users: 2100, listings: 680, trades: 189 },
-  { date: "Sun", users: 1900, listings: 620, trades: 167 },
-]
-
-const revenueData = [
-  { month: "Jan", revenue: 4200, subscriptions: 89 },
-  { month: "Feb", revenue: 5100, subscriptions: 102 },
-  { month: "Mar", revenue: 4800, subscriptions: 95 },
-  { month: "Apr", revenue: 6200, subscriptions: 128 },
-  { month: "May", revenue: 7100, subscriptions: 145 },
-  { month: "Jun", revenue: 8400, subscriptions: 172 },
-]
-
 export default function AdminDashboard() {
   const [stats, setStats] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [recentActivityData, setRecentActivityData] = useState<any[]>([])
+  const [trafficData, setTrafficData] = useState<any[]>([])
+  const [revenueData, setRevenueData] = useState<any[]>([])
 
   useEffect(() => {
     const loadDashboard = async () => {
       try {
         setLoading(true)
         const result = await getDashboardStats()
+        console.log("Dashboard stats result:", result)
         if (result.success && result.data) {
+          console.log("Stats data:", result.data)
+          console.log("Total Users:", result.data.totalUsers)
+          console.log("Active Listings:", result.data.activeListings)
+          console.log("Pending Reports:", result.data.pendingReports)
+          console.log("Weekly Traffic:", result.data.weeklyTraffic)
+          console.log("Recent Activity:", result.data.recentActivity)
           setStats(result.data)
           setRecentActivityData(result.data.recentActivity)
+          setTrafficData(result.data.weeklyTraffic || [])
+          setRevenueData(result.data.monthlyRevenue || [])
+        } else {
+          console.error("Dashboard stats failed:", result.error)
         }
       } catch (err) {
         console.error("Failed to load dashboard:", err)
@@ -63,12 +56,27 @@ export default function AdminDashboard() {
     loadDashboard()
   }, [])
 
+  // Helper function to calculate percentage change
+  const calculateChange = (current: number, previous: number) => {
+    if (previous === 0) return { percent: "N/A", trend: "neutral" as const }
+    const change = ((current - previous) / previous) * 100
+    return {
+      percent: `${change > 0 ? "+" : ""}${change.toFixed(1)}%`,
+      trend: (change > 0 ? "up" : change < 0 ? "down" : "neutral") as const
+    }
+  }
+
+  const usersChange = stats ? calculateChange(stats.totalUsers, stats.previousPeriod?.totalUsers || 0) : { percent: "N/A", trend: "neutral" as const }
+  const listingsChange = stats ? calculateChange(stats.activeListings, stats.previousPeriod?.activeListings || 0) : { percent: "N/A", trend: "neutral" as const }
+  const reportsChange = stats ? calculateChange(stats.pendingReports, stats.previousPeriod?.pendingReports || 0) : { percent: "N/A", trend: "neutral" as const }
+  const revenueChange = stats ? calculateChange(stats.totalRevenue, stats.previousPeriod?.totalRevenue || 0) : { percent: "N/A", trend: "neutral" as const }
+
   const statCards = [
     {
       label: "Total Users",
       value: stats?.totalUsers?.toLocaleString() || "0",
-      change: "+12.5%",
-      trend: "up",
+      change: usersChange.percent,
+      trend: usersChange.trend,
       icon: Users,
       color: "text-blue-500",
       bgColor: "bg-blue-500/10",
@@ -76,26 +84,26 @@ export default function AdminDashboard() {
     {
       label: "Active Listings",
       value: stats?.activeListings?.toLocaleString() || "0",
-      change: "+8.2%",
-      trend: "up",
+      change: listingsChange.percent,
+      trend: listingsChange.trend,
       icon: ShoppingBag,
       color: "text-green-500",
       bgColor: "bg-green-500/10",
     },
     {
       label: "Pending Reports",
-      value: stats?.pendingReports || "0",
-      change: "-5.3%",
-      trend: "down",
+      value: stats?.pendingReports?.toString() || "0",
+      change: reportsChange.percent,
+      trend: reportsChange.trend,
       icon: AlertTriangle,
       color: "text-orange-500",
       bgColor: "bg-orange-500/10",
     },
     {
       label: "Revenue (Total)",
-      value: `$${(stats?.totalRevenue / 100).toLocaleString("en-US", { maximumFractionDigits: 0 }) || "0"}`,
-      change: "+18.7%",
-      trend: "up",
+      value: `₱${(stats?.totalRevenue || 0).toLocaleString("en-PH")}`,
+      change: revenueChange.percent,
+      trend: revenueChange.trend,
       icon: DollarSign,
       color: "text-emerald-500",
       bgColor: "bg-emerald-500/10",
@@ -130,14 +138,14 @@ export default function AdminDashboard() {
                       <div
                         className={cn(
                           "flex items-center gap-1 text-sm font-medium",
-                          stat.trend === "up" ? "text-green-500" : "text-red-500",
+                          stat.trend === "up" ? "text-green-500" : stat.trend === "down" ? "text-red-500" : "text-gray-500",
                         )}
                       >
                         {stat.trend === "up" ? (
                           <ArrowUpRight className="h-4 w-4" />
-                        ) : (
+                        ) : stat.trend === "down" ? (
                           <ArrowDownRight className="h-4 w-4" />
-                        )}
+                        ) : null}
                         {stat.change}
                       </div>
                     </div>
@@ -157,12 +165,12 @@ export default function AdminDashboard() {
             <Card>
               <CardHeader>
                 <CardTitle>Weekly Traffic</CardTitle>
-                <CardDescription>User activity and engagement this week</CardDescription>
+                <CardDescription>Active users visiting and using the platform this week</CardDescription>
               </CardHeader>
               <CardContent className="overflow-hidden">
                 <ChartContainer
                   config={{
-                    users: { label: "Active Users", color: "hsl(var(--chart-1))" },
+                    users: { label: "Active Visitors", color: "hsl(var(--chart-1))" },
                     listings: { label: "New Listings", color: "hsl(var(--chart-2))" },
                     trades: { label: "Trades", color: "hsl(var(--chart-3))" },
                   }}
@@ -197,12 +205,12 @@ export default function AdminDashboard() {
             <Card>
               <CardHeader>
                 <CardTitle>Revenue Overview</CardTitle>
-                <CardDescription>Monthly revenue and subscription growth</CardDescription>
+                <CardDescription>Platform monetization revenue (5% fee on transactions)</CardDescription>
               </CardHeader>
               <CardContent className="overflow-hidden">
                 <ChartContainer
                   config={{
-                    revenue: { label: "Revenue", color: "hsl(var(--chart-2))" },
+                    revenue: { label: "Platform Revenue (₱)", color: "hsl(var(--chart-2))" },
                   }}
                   className="h-[300px] w-full min-w-0"
                 >
@@ -252,32 +260,38 @@ export default function AdminDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {recentActivityData.map((activity) => (
-                    <div key={activity.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                      <div className="flex items-center gap-3">
-                        {activity.type === "user_joined" ? (
-                          <>
-                            <Badge className="bg-blue-500">New User</Badge>
-                            <span className="font-medium">{activity.user?.username}</span>
-                          </>
-                        ) : (
-                          <>
-                            <Badge className="bg-green-500">Transaction</Badge>
-                            <span className="text-sm">
-                              <span className="font-medium">{activity.transaction?.buyer?.username}</span> bought{" "}
-                              <span className="font-medium">{activity.transaction?.listing?.title}</span> from{" "}
-                              <span className="font-medium">{activity.transaction?.seller?.username}</span>
-                            </span>
-                          </>
-                        )}
-                      </div>
-                      <span className="text-sm text-muted-foreground">
-                        {activity.type === "transaction_completed"
-                          ? `$${activity.transaction?.price ? (activity.transaction.price / 100).toFixed(2) : "0"}`
-                          : ""}
-                      </span>
+                  {recentActivityData.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <p>No recent activity to display</p>
                     </div>
-                  ))}
+                  ) : (
+                    recentActivityData.map((activity) => (
+                      <div key={activity.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                        <div className="flex items-center gap-3">
+                          {activity.type === "user_joined" ? (
+                            <>
+                              <Badge className="bg-blue-500">New User</Badge>
+                              <span className="font-medium">{activity.user?.username}</span>
+                            </>
+                          ) : (
+                            <>
+                              <Badge className="bg-green-500">Transaction</Badge>
+                              <span className="text-sm">
+                                <span className="font-medium">{activity.transaction?.buyer?.username}</span> bought{" "}
+                                <span className="font-medium">{activity.transaction?.listing?.title}</span> from{" "}
+                                <span className="font-medium">{activity.transaction?.seller?.username}</span>
+                              </span>
+                            </>
+                          )}
+                        </div>
+                        <span className="text-sm text-muted-foreground">
+                          {activity.type === "transaction_completed"
+                            ? `₱${(activity.transaction?.price || 0).toLocaleString("en-PH")}`
+                            : ""}
+                        </span>
+                      </div>
+                    ))
+                  )}
                 </div>
               </CardContent>
             </Card>

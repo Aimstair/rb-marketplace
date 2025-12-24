@@ -36,6 +36,7 @@ export default function CurrencyMarketplace() {
   const [searchQuery, setSearchQuery] = useState("")
   const [sortBy, setSortBy] = useState("rate-high")
   const [rateRange, setRateRange] = useState({ min: 0, max: 1000 })
+  const [totalListings, setTotalListings] = useState(0)
 
   // Fetch games for filtering
   useEffect(() => {
@@ -81,6 +82,7 @@ export default function CurrencyMarketplace() {
           }))
           
           setListings(mapped)
+          setTotalListings(mapped.filter(l => l.status === "Available").length)
         } catch (newModelError) {
           console.log("[Currency Page] New model not ready, using old model...")
           // Fallback to old model
@@ -114,6 +116,7 @@ export default function CurrencyMarketplace() {
           })
           
           setListings(mapped)
+          setTotalListings(mapped.filter(l => l.status === "Available").length)
         }
       } catch (error) {
         console.error("[Currency Page] Error fetching listings:", error)
@@ -168,7 +171,7 @@ export default function CurrencyMarketplace() {
           <div className="container mx-auto px-4">
             <h1 className="text-4xl font-bold mb-2">Currency Marketplace</h1>
             <p className="text-muted-foreground">
-              Buy and sell in-game currencies safely and securely with our trusted community
+              {isLoading ? "Loading..." : `Buy and sell in-game currencies safely and securely with our trusted community from over ${totalListings} available listing${totalListings !== 1 ? "s" : ""}`}
             </p>
           </div>
         </section>

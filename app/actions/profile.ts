@@ -12,6 +12,7 @@ export interface UserProfileData {
   bio?: string
   socialLinks?: Record<string, any>
   isVerified: boolean
+  isBanned: boolean
   joinDate: Date
   vouchCount: number
   averageRating: number
@@ -21,6 +22,7 @@ export interface UserProfileData {
   following: number
   listings: any[]
   vouches: any[]
+  reports: any[]
   soldItems: number
   isFollowing: boolean
   robloxProfile?: string
@@ -86,6 +88,14 @@ export async function getProfile(usernameOrId: string): Promise<GetProfileResult
           },
           orderBy: { createdAt: "desc" },
           take: 10,
+        },
+        userReportsReceived: {
+          include: {
+            reporter: {
+              select: { id: true, username: true, profilePicture: true },
+            },
+          },
+          orderBy: { createdAt: "desc" },
         },
       } as any,
     }) as any
@@ -162,6 +172,7 @@ export async function getProfile(usernameOrId: string): Promise<GetProfileResult
       bio: user.bio || undefined,
       socialLinks,
       isVerified: user.isVerified || false,
+      isBanned: user.isBanned || false,
       joinDate: user.joinDate,
       vouchCount: vouches.length,
       averageRating,
@@ -176,6 +187,14 @@ export async function getProfile(usernameOrId: string): Promise<GetProfileResult
         comment: v.message,
         fromUser: v.fromUser,
         createdAt: v.createdAt,
+      })),
+      reports: (user.userReportsReceived || []).map((report: any) => ({
+        id: report.id,
+        reason: report.reason,
+        details: report.details,
+        status: report.status,
+        createdAt: report.createdAt,
+        reporter: report.reporter,
       })),
       soldItems: 0, // TODO: Query sellerTransactions when available
       isFollowing: false, // TODO: Check current user follow status when auth is implemented

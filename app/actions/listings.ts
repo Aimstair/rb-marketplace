@@ -1079,13 +1079,12 @@ export async function reportListing(
       return { success: false, error: "Listing not found" }
     }
 
-    // Create report
-    const report = await prisma.report.create({
+    // Create report in the ReportListing table
+    const report = await prisma.reportListing.create({
       data: {
         listingId,
         listingType,
         reporterId: reporter.id,
-        reportedId: listing.sellerId,
         reason,
         details: details || null,
         status: "PENDING",

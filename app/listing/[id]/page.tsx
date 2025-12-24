@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use } from "react"
 import { useRouter } from "next/navigation"
-import { Star, Share2, Flag, MessageCircle, Check, Calendar, Shield, ThumbsUp, ThumbsDown, X } from "lucide-react"
+import { Star, Share2, Flag, MessageCircle, Check, Calendar, Shield, ThumbsUp, ThumbsDown, X, Loader2 } from "lucide-react"
 import Navigation from "@/components/navigation"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
+import { useToast } from "@/hooks/use-toast"
 
 interface ListingDetailPageProps {
   params: Promise<{ id: string }>
@@ -32,6 +33,7 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
   // ALL hooks declared before any conditional logic
   const { user } = useAuth()
   const router = useRouter()
+  const { toast } = useToast()
   const [listing, setListing] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -212,16 +214,27 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
     try {
       const result = await reportListing(id, reportReason, reportDetails, "ITEM")
       if (result.success) {
-        alert("Report submitted successfully. Thank you for helping keep our community safe!")
+        toast({
+          title: "Success",
+          description: "Report submitted successfully. Thank you for helping keep our community safe!",
+        })
         setShowReportModal(false)
         setReportReason("")
         setReportDetails("")
       } else {
-        alert(result.error || "Failed to submit report")
+        toast({
+          title: "Error",
+          description: result.error || "Failed to submit report",
+          variant: "destructive",
+        })
       }
     } catch (error) {
       console.error("Error submitting report:", error)
-      alert("Failed to submit report")
+      toast({
+        title: "Error",
+        description: "Failed to submit report",
+        variant: "destructive",
+      })
     } finally {
       setReportLoading(false)
     }
@@ -249,6 +262,27 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
 
         {listing && (
         <>
+        {/* Banned Warning Banner */}
+        {listing.status === "banned" && (
+          <Card className="mb-6 border-red-500 bg-red-50 dark:bg-red-950/20">
+            <div className="p-6">
+              <div className="flex items-start gap-4">
+                <div className="p-3 bg-red-500 rounded-full">
+                  <X className="w-8 h-8 text-white" />
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-2xl font-bold text-red-700 dark:text-red-400 mb-2">
+                    This listing has been banned
+                  </h2>
+                  <p className="text-red-600 dark:text-red-500 text-lg">
+                    This listing has been removed from the marketplace due to violations of our policies and is no longer available for purchase.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </Card>
+        )}
+        
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2">
             {/* Main Image */}
@@ -309,28 +343,30 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
               </Card>
             </div>
 
-            <Card className="p-6 mb-6">
-              <h2 className="text-xl font-bold mb-4">Rate this Listing</h2>
-              <div className="flex items-center gap-6">
-                <Button
-                  variant={userVote === "up" ? "default" : "outline"}
-                  className={`flex items-center gap-2 ${userVote === "up" ? "bg-green-600 hover:bg-green-700" : ""}`}
-                  onClick={() => handleVote("up")}
-                >
-                  <ThumbsUp className="w-5 h-5" />
-                  <span className="font-bold">{votes.upvotes}</span>
-                </Button>
-                <Button
-                  variant={userVote === "down" ? "default" : "outline"}
-                  className={`flex items-center gap-2 ${userVote === "down" ? "bg-red-600 hover:bg-red-700" : ""}`}
-                  onClick={() => handleVote("down")}
-                >
-                  <ThumbsDown className="w-5 h-5" />
-                  <span className="font-bold">{votes.downvotes}</span>
-                </Button>
-                <span className="text-sm text-muted-foreground">{votes.upvotes + votes.downvotes} total votes</span>
-              </div>
-            </Card>
+            {listing.status !== "banned" && (
+              <Card className="p-6 mb-6">
+                <h2 className="text-xl font-bold mb-4">Rate this Listing</h2>
+                <div className="flex items-center gap-6">
+                  <Button
+                    variant={userVote === "up" ? "default" : "outline"}
+                    className={`flex items-center gap-2 ${userVote === "up" ? "bg-green-600 hover:bg-green-700" : ""}`}
+                    onClick={() => handleVote("up")}
+                  >
+                    <ThumbsUp className="w-5 h-5" />
+                    <span className="font-bold">{votes.upvotes}</span>
+                  </Button>
+                  <Button
+                    variant={userVote === "down" ? "default" : "outline"}
+                    className={`flex items-center gap-2 ${userVote === "down" ? "bg-red-600 hover:bg-red-700" : ""}`}
+                    onClick={() => handleVote("down")}
+                  >
+                    <ThumbsDown className="w-5 h-5" />
+                    <span className="font-bold">{votes.downvotes}</span>
+                  </Button>
+                  <span className="text-sm text-muted-foreground">{votes.upvotes + votes.downvotes} total votes</span>
+                </div>
+              </Card>
+            )}
 
             {/* Description */}
             <Card className="p-6 mb-6">
@@ -349,42 +385,44 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
             </div>
 
             {/* Action Buttons */}
-            <div className="space-y-3 mb-6">
-              <Button 
-                size="lg" 
-                className={user?.id === listing.seller.id ? "w-full pointer-events-none opacity-50" : "w-full"}
-                disabled={user?.id === listing.seller.id}
-                onClick={handleBuyNow}
-              >
-                <MessageCircle className="w-5 h-5 mr-2" />
-                {user?.id === listing.seller.id ? "Your Listing" : "Buy Now"}
-              </Button>
-              <div className="grid grid-cols-2 gap-2">
+            {listing.status !== "banned" && (
+              <div className="space-y-3 mb-6">
                 <Button 
-                  disabled={user?.id === listing.seller.id}
                   size="lg" 
-                  variant="outline" 
-                  className={user?.id === listing.seller.id ? "w-full bg-transparent pointer-events-none opacity-50" : "w-full bg-transparent"}
-                  onClick={() => {
-                    const url = typeof window !== "undefined" ? window.location.href : ""
-                    navigator.clipboard.writeText(url)
-                  }}
-                >
-                  <Share2 className="w-5 h-5 mr-2" />
-                  Share
-                </Button>
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className={user?.id === listing.seller.id ? "w-full text-destructive bg-transparent pointer-events-none opacity-50" : "w-full text-destructive bg-transparent"}
+                  className={user?.id === listing.seller.id ? "w-full pointer-events-none opacity-50" : "w-full"}
                   disabled={user?.id === listing.seller.id}
-                  onClick={handleReport}
+                  onClick={handleBuyNow}
                 >
-                  <Flag className="w-5 h-5 mr-2" />
-                  Report
+                  <MessageCircle className="w-5 h-5 mr-2" />
+                  {user?.id === listing.seller.id ? "Your Listing" : "Buy Now"}
                 </Button>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button 
+                    disabled={user?.id === listing.seller.id}
+                    size="lg" 
+                    variant="outline" 
+                    className={user?.id === listing.seller.id ? "w-full bg-transparent pointer-events-none opacity-50" : "w-full bg-transparent"}
+                    onClick={() => {
+                      const url = typeof window !== "undefined" ? window.location.href : ""
+                      navigator.clipboard.writeText(url)
+                    }}
+                  >
+                    <Share2 className="w-5 h-5 mr-2" />
+                    Share
+                  </Button>
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className={user?.id === listing.seller.id ? "w-full text-destructive bg-transparent pointer-events-none opacity-50" : "w-full text-destructive bg-transparent"}
+                    disabled={user?.id === listing.seller.id}
+                    onClick={handleReport}
+                  >
+                    <Flag className="w-5 h-5 mr-2" />
+                    Report
+                  </Button>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Seller Card */}
             <Card className="p-6">
@@ -541,6 +579,78 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
               </Button>
               <Button onClick={handleConfirmQuantity}>
                 Continue to Chat
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Report Modal */}
+        <Dialog open={showReportModal} onOpenChange={setShowReportModal}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Report Listing</DialogTitle>
+              <DialogDescription>
+                Help us keep the marketplace safe by reporting suspicious or inappropriate content.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <label htmlFor="reportReason" className="text-sm font-medium">
+                  Reason for Report *
+                </label>
+                <select
+                  id="reportReason"
+                  value={reportReason}
+                  onChange={(e) => setReportReason(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-md bg-background"
+                >
+                  <option value="">Select a reason...</option>
+                  <option value="Scam">Scam or Fraud</option>
+                  <option value="Fake Items">Fake or Counterfeit Items</option>
+                  <option value="Inappropriate">Inappropriate Content</option>
+                  <option value="Spam">Spam</option>
+                  <option value="Overpriced">Overpriced</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              
+              <div className="space-y-2">
+                <label htmlFor="reportDetails" className="text-sm font-medium">
+                  Additional Details (Optional)
+                </label>
+                <Textarea
+                  id="reportDetails"
+                  placeholder="Provide any additional information that might help us review this report..."
+                  value={reportDetails}
+                  onChange={(e) => setReportDetails(e.target.value)}
+                  rows={4}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setShowReportModal(false)
+                  setReportReason("")
+                  setReportDetails("")
+                }}
+                disabled={reportLoading}
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleSubmitReport}
+                disabled={!reportReason || reportLoading}
+              >
+                {reportLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  "Submit Report"
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>

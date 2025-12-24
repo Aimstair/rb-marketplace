@@ -379,6 +379,27 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
       <Navigation />
 
       <div className="container mx-auto px-4 py-8">
+        {/* Banned Warning Banner */}
+        {listing.status === "banned" && (
+          <Card className="mb-6 border-red-500 bg-red-50 dark:bg-red-950/20">
+            <div className="p-6">
+              <div className="flex items-start gap-4">
+                <div className="p-3 bg-red-500 rounded-full">
+                  <X className="w-8 h-8 text-white" />
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-2xl font-bold text-red-700 dark:text-red-400 mb-2">
+                    This listing has been banned
+                  </h2>
+                  <p className="text-red-600 dark:text-red-500 text-lg">
+                    This listing has been removed from the marketplace due to violations of our policies and is no longer available for purchase.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </Card>
+        )}
+        
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column - Images & Details */}
           <div className="lg:col-span-2">
@@ -439,30 +460,32 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
             </div>
 
             {/* Rate Listing */}
-            <Card className="p-6 mb-6">
-              <h2 className="text-xl font-bold mb-4">Rate this Listing</h2>
-              <div className="flex items-center gap-6">
-                <Button
-                  variant={userVote === "up" ? "default" : "outline"}
-                  className={`flex items-center gap-2 ${userVote === "up" ? "bg-green-600 hover:bg-green-700" : ""}`}
-                  onClick={() => handleVote("up")}
-                  disabled={isVoting}
-                >
-                  {isVoting ? <Loader2 className="w-5 h-5 animate-spin" /> : <ThumbsUp className="w-5 h-5" />}
-                  <span className="font-bold">{votes.upvotes}</span>
-                </Button>
-                <Button
-                  variant={userVote === "down" ? "default" : "outline"}
-                  className={`flex items-center gap-2 ${userVote === "down" ? "bg-red-600 hover:bg-red-700" : ""}`}
-                  onClick={() => handleVote("down")}
-                  disabled={isVoting}
-                >
-                  {isVoting ? <Loader2 className="w-5 h-5 animate-spin" /> : <ThumbsDown className="w-5 h-5" />}
-                  <span className="font-bold">{votes.downvotes}</span>
-                </Button>
-                <span className="text-sm text-muted-foreground">{votes.upvotes + votes.downvotes} total votes</span>
-              </div>
-            </Card>
+            {listing.status !== "banned" && (
+              <Card className="p-6 mb-6">
+                <h2 className="text-xl font-bold mb-4">Rate this Listing</h2>
+                <div className="flex items-center gap-6">
+                  <Button
+                    variant={userVote === "up" ? "default" : "outline"}
+                    className={`flex items-center gap-2 ${userVote === "up" ? "bg-green-600 hover:bg-green-700" : ""}`}
+                    onClick={() => handleVote("up")}
+                    disabled={isVoting}
+                  >
+                    {isVoting ? <Loader2 className="w-5 h-5 animate-spin" /> : <ThumbsUp className="w-5 h-5" />}
+                    <span className="font-bold">{votes.upvotes}</span>
+                  </Button>
+                  <Button
+                    variant={userVote === "down" ? "default" : "outline"}
+                    className={`flex items-center gap-2 ${userVote === "down" ? "bg-red-600 hover:bg-red-700" : ""}`}
+                    onClick={() => handleVote("down")}
+                    disabled={isVoting}
+                  >
+                    {isVoting ? <Loader2 className="w-5 h-5 animate-spin" /> : <ThumbsDown className="w-5 h-5" />}
+                    <span className="font-bold">{votes.downvotes}</span>
+                  </Button>
+                  <span className="text-sm text-muted-foreground">{votes.upvotes + votes.downvotes} total votes</span>
+                </div>
+              </Card>
+            )}
 
             {/* Description */}
             <Card className="p-6 mb-6">
@@ -486,37 +509,39 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
               <p className="text-sm mt-3 opacity-75">Stock: {currencyData.stock.toLocaleString()}</p>
             </div>
 
-            <div className="space-y-3 mb-6">
-              <Button 
-                size="lg" 
-                className={user?.id === listing.seller.id ? "w-full pointer-events-none opacity-50" : "w-full"}
-                onClick={handleContactSeller} 
-                disabled={!user || listing.seller.id === listing?.sellerId}
-              >
-                <MessageCircle className="w-5 h-5 mr-2" />
-                {user?.id === listing.seller.id ? "Your Listing" : "Buy Now"}
-              </Button>
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  variant="outline"
-                  onClick={handleShare}
-                  disabled={copied || user?.id === listing.seller.id}
-                  className={copied || user?.id === listing.seller.id ? "pointer-events-none opacity-50" : ""}
+            {listing.status !== "banned" && (
+              <div className="space-y-3 mb-6">
+                <Button 
+                  size="lg" 
+                  className={user?.id === listing.seller.id ? "w-full pointer-events-none opacity-50" : "w-full"}
+                  onClick={handleContactSeller} 
+                  disabled={!user || listing.seller.id === listing?.sellerId}
                 >
-                  {copied ? <Check className="w-4 h-4 mr-1" /> : <Share2 className="w-4 h-4 mr-1" />}
-                  {copied ? "Copied" : "Share"}
+                  <MessageCircle className="w-5 h-5 mr-2" />
+                  {user?.id === listing.seller.id ? "Your Listing" : "Buy Now"}
                 </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowReportDialog(true)}
-                  className={user?.id === listing.seller.id ? "text-red-600 hover:text-red-700 pointer-events-none opacity-50" : "text-red-600 hover:text-red-700"}
-                  disabled={user?.id === listing.seller.id}
-                >
-                  <Flag className="w-4 h-4 mr-1" />
-                  Report
-                </Button>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={handleShare}
+                    disabled={copied || user?.id === listing.seller.id}
+                    className={copied || user?.id === listing.seller.id ? "pointer-events-none opacity-50" : ""}
+                  >
+                    {copied ? <Check className="w-4 h-4 mr-1" /> : <Share2 className="w-4 h-4 mr-1" />}
+                    {copied ? "Copied" : "Share"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowReportDialog(true)}
+                    className={user?.id === listing.seller.id ? "text-red-600 hover:text-red-700 pointer-events-none opacity-50" : "text-red-600 hover:text-red-700"}
+                    disabled={user?.id === listing.seller.id}
+                  >
+                    <Flag className="w-4 h-4 mr-1" />
+                    Report
+                  </Button>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Seller Card */}
             <Card className="p-6">

@@ -26,6 +26,7 @@ import {
   XCircle,
   Loader2,
   ChevronRight,
+  RefreshCw,
 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -38,23 +39,45 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { MoreHorizontal } from "lucide-react"
-import { getReports, resolveReport } from "@/app/actions/admin"
+import { MoreHorizontal, Ban, Trash2 } from "lucide-react"
+import { getReports, resolveReport, banUser, adminUpdateListingStatus } from "@/app/actions/admin"
 import { useToast } from "@/components/ui/use-toast"
 
 export default function ReportsPage() {
   const { toast } = useToast()
   const [reports, setReports] = useState<any[]>([])
+  const [allReports, setAllReports] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("PENDING")
+  const [reportTypeFilter, setReportTypeFilter] = useState("all")
   const [selectedReport, setSelectedReport] = useState<any>(null)
   const [actionDialogOpen, setActionDialogOpen] = useState(false)
   const [actionType, setActionType] = useState<string>("")
   const [actionNotes, setActionNotes] = useState("")
   const [actionLoading, setActionLoading] = useState(false)
+  const [banDialogOpen, setBanDialogOpen] = useState(false)
+  const [banType, setBanType] = useState<"user" | "listing" | null>(null)
+  const [banReason, setBanReason] = useState("")
+  const [refreshKey, setRefreshKey] = useState(0)
 
-  // Load reports
+  // Load all reports for stats
+  useEffect(() => {
+    const loadAllReports = async () => {
+      try {
+        const result = await getReports("all")
+        if (result.success && result.reports) {
+          setAllReports(result.reports)
+        }
+      } catch (err) {
+        console.error("Failed to load all reports for stats:", err)
+      }
+    }
+
+    loadAllReports()
+  }, [refreshKey])
+
+  // Load filtered reports
   useEffect(() => {
     const loadReports = async () => {
       try {
@@ -62,6 +85,10 @@ export default function ReportsPage() {
         const result = await getReports(statusFilter === "all" ? "all" : statusFilter)
         if (result.success && result.reports) {
           setReports(result.reports)
+          // Also update allReports if we're fetching "all"
+          if (statusFilter === "all") {
+            setAllReports(result.reports)
+          }
         }
       } catch (err) {
         console.error("Failed to load reports:", err)
@@ -72,7 +99,23 @@ export default function ReportsPage() {
     }
 
     loadReports()
-  }, [statusFilter, toast])
+  }, [statusFilter, toast, refreshKey])
+
+  // Auto-refresh on window focus
+  useEffect(() => {
+    const handleFocus = () => {
+      setRefreshKey(prev => prev + 1)
+    }
+
+    window.addEventListener('focus', handleFocus)
+    return () => window.removeEventListener('focus', handleFocus)
+  }, [])
+
+  const getReportType = (report: any) => {
+    if (report.reported && report.reported.username) return "user"
+    if (report.listing) return "listing"
+    return "unknown"
+  }
 
   const filteredReports = reports.filter((report) => {
     const matchesSearch =
@@ -80,20 +123,17 @@ export default function ReportsPage() {
       (report.reported?.username?.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (report.listing?.title?.toLowerCase().includes(searchQuery.toLowerCase()))
 
-    return matchesSearch
+    const reportType = getReportType(report)
+    const matchesType = reportTypeFilter === "all" || reportType === reportTypeFilter
+
+    return matchesSearch && matchesType
   })
 
   const stats = {
-    total: reports.length,
-    pending: reports.filter((r) => r.status === "PENDING").length,
-    resolved: reports.filter((r) => r.status === "RESOLVED").length,
-    dismissed: reports.filter((r) => r.status === "DISMISSED").length,
-  }
-
-  const getReportType = (report: any) => {
-    if (report.reported && report.reported.username) return "user"
-    if (report.listing) return "listing"
-    return "unknown"
+    total: allReports.length,
+    pending: allReports.filter((r) => r.status === "PENDING").length,
+    resolved: allReports.filter((r) => r.status === "RESOLVED").length,
+    dismissed: allReports.filter((r) => r.status === "DISMISSED").length,
   }
 
   const getTypeIcon = (type: string) => {
@@ -147,15 +187,56 @@ export default function ReportsPage() {
     try {
       setActionLoading(true)
 
+      // If resolving a user report, ban the user first
+      if (actionType === "RESOLVED" && selectedReport.reportedId) {
+        const banResult = await banUser(selectedReport.reportedId, true)
+        if (!banResult.success) {
+          toast({ 
+            title: "Error", 
+            description: banResult.error || "Failed to ban user", 
+            variant: "destructive" 
+          })
+          setActionLoading(false)
+          return
+        }
+      }
+
+      // If resolving a listing report, ban the listing first
+      if (actionType === "RESOLVED" && selectedReport.listingId) {
+        const banResult = await adminUpdateListingStatus(selectedReport.listingId, "banned")
+        if (!banResult.success) {
+          toast({ 
+            title: "Error", 
+            description: banResult.error || "Failed to ban listing", 
+            variant: "destructive" 
+          })
+          setActionLoading(false)
+          return
+        }
+      }
+
       const result = await resolveReport(selectedReport.id, actionType as "RESOLVED" | "DISMISSED")
 
       if (result.success) {
         toast({
           title: "Success",
-          description: `Report ${actionType === "RESOLVED" ? "resolved" : "dismissed"}`,
+          description: actionType === "RESOLVED" && selectedReport.reportedId
+            ? "User banned and report resolved"
+            : actionType === "RESOLVED" && selectedReport.listingId 
+            ? "Listing banned and report resolved"
+            : `Report ${actionType === "RESOLVED" ? "resolved" : "dismissed"}`,
         })
-        // Update local state
-        setReports(reports.map((r) => (r.id === selectedReport.id ? { ...r, status: actionType } : r)))
+        
+        // Trigger refresh to reload reports from server
+        setRefreshKey(prev => prev + 1)
+        
+        // Clear selected report if it no longer matches the filter
+        if (statusFilter !== "all" && statusFilter !== actionType) {
+          setSelectedReport(null)
+        } else {
+          setSelectedReport({ ...selectedReport, status: actionType })
+        }
+        
         setActionDialogOpen(false)
         setActionNotes("")
       } else {
@@ -169,9 +250,20 @@ export default function ReportsPage() {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold">Reports & Flagged Content</h1>
-        <p className="text-muted-foreground">Review and handle user reports</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Reports & Flagged Content</h1>
+          <p className="text-muted-foreground">Review and handle user reports</p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setRefreshKey(prev => prev + 1)}
+          disabled={loading}
+        >
+          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+          Refresh
+        </Button>
       </div>
 
       {/* Stats */}
@@ -224,6 +316,16 @@ export default function ReportsPage() {
                 <SelectItem value="RESOLVED">Resolved</SelectItem>
                 <SelectItem value="DISMISSED">Dismissed</SelectItem>
                 <SelectItem value="all">All Status</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={reportTypeFilter} onValueChange={setReportTypeFilter}>
+              <SelectTrigger className="w-full md:w-[180px]">
+                <SelectValue placeholder="Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Reports</SelectItem>
+                <SelectItem value="user">User Reports</SelectItem>
+                <SelectItem value="listing">Listing Reports</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -347,7 +449,14 @@ export default function ReportsPage() {
                         <p className="font-semibold">{selectedReport.listing.title}</p>
                         <p className="text-sm text-muted-foreground">ID: {selectedReport.listingId}</p>
                       </div>
-                      <Link href={`/listing/${selectedReport.listingId}`} target="_blank">
+                      <Link 
+                        href={
+                          selectedReport.listingType === "CURRENCY" 
+                            ? `/currency/${selectedReport.listingId}` 
+                            : `/listing/${selectedReport.listingId}`
+                        } 
+                        target="_blank"
+                      >
                         <Button variant="outline" size="sm">
                           View Listing
                           <ChevronRight className="h-3 w-3 ml-1" />
@@ -382,37 +491,50 @@ export default function ReportsPage() {
 
                 {/* Actions */}
                 {selectedReport.status === "PENDING" && (
-                  <div className="flex gap-2">
-                    <Button
-                      variant="default"
-                      onClick={() => handleAction(selectedReport, "RESOLVED")}
-                      disabled={actionLoading}
-                      className="flex-1"
-                    >
-                      {actionLoading ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Processing...
-                        </>
-                      ) : (
-                        "Mark Resolved"
-                      )}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => handleAction(selectedReport, "DISMISSED")}
-                      disabled={actionLoading}
-                      className="flex-1"
-                    >
-                      {actionLoading ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Processing...
-                        </>
-                      ) : (
-                        "Dismiss"
-                      )}
-                    </Button>
+                  <div className="space-y-4">
+                    <div className="flex gap-2">
+                      <Button
+                        variant="default"
+                        onClick={() => handleAction(selectedReport, "RESOLVED")}
+                        disabled={actionLoading}
+                        className="flex-1"
+                      >
+                        {actionLoading ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Processing...
+                          </>
+                        ) : (
+                          "Mark Resolved"
+                        )}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => handleAction(selectedReport, "DISMISSED")}
+                        disabled={actionLoading}
+                        className="flex-1"
+                      >
+                        {actionLoading ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Processing...
+                          </>
+                        ) : (
+                          "Dismiss"
+                        )}
+                      </Button>
+                    </div>
+                    
+                    <Separator className="my-2" />
+                    
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold text-muted-foreground">ENFORCEMENT ACTIONS</p>
+                      <p className="text-xs text-muted-foreground">
+                        {selectedReport.reportedId 
+                          ? "Marking this report as resolved will ban the reported user."
+                          : "Marking this report as resolved will ban the reported listing."}
+                      </p>
+                    </div>
                   </div>
                 )}
               </CardContent>
@@ -435,7 +557,11 @@ export default function ReportsPage() {
             <DialogTitle>{actionType === "RESOLVED" ? "Resolve Report" : "Dismiss Report"}</DialogTitle>
             <DialogDescription>
               {actionType === "RESOLVED"
-                ? "Mark this report as resolved. This will close the case."
+                ? selectedReport?.reportedId
+                  ? "Mark this report as resolved. This will ban the reported user."
+                  : selectedReport?.listingId
+                  ? "Mark this report as resolved. This will ban the reported listing."
+                  : "Mark this report as resolved. This will close the case."
                 : "Dismiss this report. This indicates insufficient evidence or invalid claim."}
             </DialogDescription>
           </DialogHeader>
@@ -459,6 +585,136 @@ export default function ReportsPage() {
             >
               {actionLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
               Confirm
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Ban/Remove Dialog */}
+      <Dialog open={banDialogOpen} onOpenChange={setBanDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-destructive">Ban User</DialogTitle>
+            <DialogDescription>
+              This will ban the user from the platform. They will not be able to create listings or make transactions.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Reason *</Label>
+              <Textarea
+                placeholder="Provide a reason for this action..."
+                value={banReason}
+                onChange={(e) => setBanReason(e.target.value)}
+                className="mt-2"
+                rows={4}
+              />
+            </div>
+            {selectedReport && (
+              <div className="p-3 bg-destructive/10 rounded-lg">
+                <p className="text-sm font-semibold mb-1">
+                  {selectedReport.reported?.username || selectedReport.listing?.seller?.username}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  User ID: {selectedReport.reportedId || selectedReport.listing?.sellerId}
+                </p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setBanDialogOpen(false)
+                setBanReason("")
+                setBanType(null)
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                if (!banReason.trim()) {
+                  toast({
+                    title: "Error",
+                    description: "Please provide a reason",
+                    variant: "destructive",
+                  })
+                  return
+                }
+
+                try {
+                  setActionLoading(true)
+                  
+                  if (banType === "user") {
+                    const userId = selectedReport.reportedId || selectedReport.listing?.sellerId
+                    
+                    if (!userId) {
+                      toast({
+                        title: "Error",
+                        description: "Unable to identify user to ban. The listing may have been deleted.",
+                        variant: "destructive",
+                      })
+                      setActionLoading(false)
+                      return
+                    }
+                    
+                    const result = await banUser(userId, true)
+                    
+                    if (result.success) {
+                      // Also mark report as resolved
+                      const resolveResult = await resolveReport(selectedReport.id, "RESOLVED")
+                      
+                      if (resolveResult.success) {
+                        toast({
+                          title: "Success",
+                          description: "User has been banned successfully",
+                        })
+                        
+                        // Trigger refresh to reload reports from server
+                        setRefreshKey(prev => prev + 1)
+                        
+                        // Clear selected report if viewing pending only
+                        if (statusFilter === "PENDING") {
+                          setSelectedReport(null)
+                        } else {
+                          setSelectedReport({ ...selectedReport, status: "RESOLVED" })
+                        }
+                        
+                        setBanDialogOpen(false)
+                        setBanReason("")
+                        setBanType(null)
+                      } else {
+                        toast({
+                          title: "Warning",
+                          description: "User banned but failed to update report status",
+                          variant: "destructive",
+                        })
+                      }
+                    } else {
+                      toast({
+                        title: "Error",
+                        description: result.error || "Failed to ban user",
+                        variant: "destructive",
+                      })
+                    }
+                  }
+                } catch (error) {
+                  console.error("Ban action failed:", error)
+                  toast({
+                    title: "Error",
+                    description: "An error occurred",
+                    variant: "destructive",
+                  })
+                } finally {
+                  setActionLoading(false)
+                }
+              }}
+              disabled={actionLoading || !banReason.trim()}
+            >
+              {actionLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              Confirm Ban
             </Button>
           </DialogFooter>
         </DialogContent>

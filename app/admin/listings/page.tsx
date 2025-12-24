@@ -34,7 +34,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
-import { getAdminListings, adminUpdateListingStatus } from "@/app/actions/admin"
+import { getAdminListings, adminUpdateListingStatus, getAdminListingStats } from "@/app/actions/admin"
 import { useToast } from "@/components/ui/use-toast"
 
 const validStatuses = [
@@ -48,9 +48,11 @@ const validStatuses = [
 export default function ListingsPage() {
   const { toast } = useToast()
   const [listings, setListings] = useState<any[]>([])
+  const [stats, setStats] = useState({ total: 0, available: 0, pending: 0, hidden: 0, banned: 0, sold: 0 })
   const [loading, setLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
+  const [listingTypeFilter, setListingTypeFilter] = useState("all")
   const [selectedListing, setSelectedListing] = useState<any>(null)
   const [actionDialogOpen, setActionDialogOpen] = useState(false)
   const [newStatus, setNewStatus] = useState("")
@@ -59,12 +61,28 @@ export default function ListingsPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(0)
 
-  // Load listings
+  // Load stats
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        const result = await getAdminListingStats()
+        if (result.success && result.stats) {
+          setStats(result.stats)
+        }
+      } catch (err) {
+        console.error("Failed to load stats:", err)
+      }
+    }
+
+    loadStats()
+  }, [])
+
+  // Load filtered listings for display
   useEffect(() => {
     const loadListings = async () => {
       try {
         setLoading(true)
-        const result = await getAdminListings(currentPage, searchQuery, statusFilter === "all" ? "all" : statusFilter)
+        const result = await getAdminListings(currentPage, searchQuery, statusFilter === "all" ? "all" : statusFilter, listingTypeFilter)
         if (result.success && result.listings) {
           setListings(result.listings)
           setTotalPages(result.pages || 0)
@@ -78,15 +96,7 @@ export default function ListingsPage() {
     }
 
     loadListings()
-  }, [searchQuery, statusFilter, currentPage, toast])
-
-  const stats = {
-    total: listings.length,
-    available: listings.filter((l) => l.status === "available").length,
-    pending: listings.filter((l) => l.status === "pending").length,
-    hidden: listings.filter((l) => l.status === "hidden").length,
-    banned: listings.filter((l) => l.status === "banned").length,
-  }
+  }, [searchQuery, statusFilter, listingTypeFilter, currentPage, toast])
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -124,10 +134,19 @@ export default function ListingsPage() {
           title: "Success",
           description: `Listing status updated to ${newStatus}`,
         })
-        // Update local state
+        // Update local state for filtered listings
         setListings(
           listings.map((l) => (l.id === selectedListing.id ? { ...l, status: newStatus } : l))
         )
+        // Update selected listing if it's displayed in details panel
+        if (selectedListing) {
+          setSelectedListing({ ...selectedListing, status: newStatus })
+        }
+        // Reload stats
+        const statsResult = await getAdminListingStats()
+        if (statsResult.success && statsResult.stats) {
+          setStats(statsResult.stats)
+        }
         setActionDialogOpen(false)
         setActionReason("")
       } else {
@@ -147,7 +166,7 @@ export default function ListingsPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
         <Card>
           <CardContent className="p-4 text-center">
             <p className="text-2xl font-bold">{stats.total}</p>
@@ -158,6 +177,12 @@ export default function ListingsPage() {
           <CardContent className="p-4 text-center">
             <p className="text-2xl font-bold text-green-500">{stats.available}</p>
             <p className="text-sm text-muted-foreground">Available</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 text-center">
+            <p className="text-2xl font-bold text-blue-500">{stats.sold}</p>
+            <p className="text-sm text-muted-foreground">Sold</p>
           </CardContent>
         </Card>
         <Card>
@@ -206,16 +231,29 @@ export default function ListingsPage() {
                 <SelectItem value="sold">Sold</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={listingTypeFilter} onValueChange={setListingTypeFilter}>
+              <SelectTrigger className="w-full md:w-[180px]">
+                <SelectValue placeholder="Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="item">Item Listings</SelectItem>
+                <SelectItem value="currency">Currency Listings</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>
 
-      {/* Listings Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Listings</CardTitle>
-          <CardDescription>{listings.length} listings</CardDescription>
-        </CardHeader>
+      {/* Listings and Details Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Listings Table */}
+        <div className="lg:col-span-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Listings</CardTitle>
+              <CardDescription>{listings.length} listings</CardDescription>
+            </CardHeader>
         <CardContent>
           {loading ? (
             <div className="flex items-center justify-center h-[400px]">
@@ -268,7 +306,7 @@ export default function ListingsPage() {
 
                       {/* Price & Status */}
                       <div className="text-right flex-shrink-0">
-                        <p className="font-semibold">{listing.price} Robux</p>
+                        <p className="font-semibold">₱{listing.price}</p>
                         {getStatusBadge(listing.status)}
                       </div>
 
@@ -294,7 +332,10 @@ export default function ListingsPage() {
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem asChild>
-                            <Link href={`/listing/${listing.id}`} target="_blank">
+                            <Link 
+                              href={listing.listingType === "CURRENCY" ? `/currency/${listing.id}` : `/listing/${listing.id}`} 
+                              target="_blank"
+                            >
                               View Listing
                               <ChevronRight className="h-3 w-3 ml-auto" />
                             </Link>
@@ -335,17 +376,19 @@ export default function ListingsPage() {
                 Next
               </Button>
             </div>
-          )}
-        </CardContent>
-      </Card>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Listing Details Panel */}
-      {selectedListing && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Listing Details</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
+      <div className="lg:col-span-1">
+        {selectedListing ? (
+          <Card className="sticky top-6">
+            <CardHeader>
+              <CardTitle>Listing Details</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
             {/* Image */}
             <div className="relative w-full h-48">
               <Image
@@ -369,7 +412,7 @@ export default function ListingsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm font-semibold text-muted-foreground">Price</p>
-                  <p className="font-semibold">{selectedListing.price} Robux</p>
+                  <p className="font-semibold">₱{selectedListing.price}</p>
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-muted-foreground">Status</p>
@@ -425,17 +468,24 @@ export default function ListingsPage() {
                 Hide
               </Button>
               <Button
-                variant="destructive"
-                onClick={() => handleAction(selectedListing, "banned")}
-                disabled={selectedListing.status === "banned"}
+                variant={selectedListing.status === "banned" ? "outline" : "destructive"}
+                onClick={() => handleAction(selectedListing, selectedListing.status === "banned" ? "available" : "banned")}
                 className="flex-1"
               >
-                Ban Item
+                {selectedListing.status === "banned" ? "Unban Item" : "Ban Item"}
               </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardContent className="p-12 text-center">
+              <p className="text-muted-foreground">Select a listing to view details</p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
 
       {/* Status Change Dialog */}
       <Dialog open={actionDialogOpen} onOpenChange={setActionDialogOpen}>
