@@ -266,10 +266,11 @@ export async function sendPasswordResetLink(email: string): Promise<{ success: b
       where: { email },
     })
 
-    // Always return success to prevent email enumeration
+    // Return error if user doesn't exist
     if (!user) {
       return {
-        success: true,
+        success: false,
+        error: "No account found with this email address.",
       }
     }
 
@@ -368,10 +369,13 @@ export async function resetPassword(token: string, newPassword: string): Promise
     // Hash new password
     const hashedPassword = await bcrypt.hash(newPassword, 12)
 
-    // Update user's password
+    // Update user's password and verify email (since they proved ownership via email link)
     await prisma.user.update({
       where: { email: resetToken.email },
-      data: { password: hashedPassword },
+      data: { 
+        password: hashedPassword,
+        emailVerified: new Date(), // Mark email as verified
+      },
     })
 
     // Delete used reset token

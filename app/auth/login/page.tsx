@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { AlertCircle, Eye, EyeOff } from "lucide-react"
 import { signIn } from "next-auth/react"
-import { checkEmailVerification } from "@/app/actions/auth"
+import { resendVerificationCode, checkEmailVerification } from "@/app/actions/auth"
 import { useToast } from "@/hooks/use-toast"
 
 export default function LoginPage() {
@@ -31,6 +31,25 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
+      // First, check if email is verified
+      const verificationStatus = await checkEmailVerification(email)
+      
+      if (!verificationStatus.verified) {
+        // Email not verified - resend code and redirect
+        toast({
+          title: "Email Not Verified",
+          description: "Please verify your email. We're sending you a new verification code.",
+        })
+        
+        // Resend verification code
+        await resendVerificationCode(email)
+        
+        // Redirect to verification page
+        router.push(`/auth/verify?email=${encodeURIComponent(email)}`)
+        setLoading(false)
+        return
+      }
+
       // Use NextAuth signIn with credentials provider
       const result = await signIn("credentials", {
         email,
@@ -42,21 +61,18 @@ export default function LoginPage() {
         // Map common NextAuth errors to user-friendly messages
         let errorMessage = result.error
         
-        if (result.error === "CredentialsSignin" || result.error === "Invalid credentials") {
+        // Check for specific error messages from our authorize function
+        if (result.error.includes("locked") || result.error.includes("Too many failed attempts")) {
+          errorMessage = result.error
+        } else if (result.error.includes("Invalid password")) {
+          errorMessage = result.error
+        } else if (result.error.includes("Invalid credentials")) {
           errorMessage = "Invalid email or password. Please try again."
-        } else if (result.error.includes("locked")) {
-          errorMessage = "Your account has been temporarily locked due to multiple failed login attempts. Please try again later."
-        } else if (result.error.includes("email not verified")) {
-          // Check if email verification is pending
-          const verification = await checkEmailVerification(email)
-          if (!verification.verified) {
-            toast({
-              title: "Email Not Verified",
-              description: "Please verify your email before logging in. We'll resend the verification code.",
-            })
-            router.push(`/auth/verify?email=${encodeURIComponent(email)}`)
-            return
-          }
+        } else if (result.error.includes("banned")) {
+          errorMessage = "Your account has been banned. Please contact support."
+        } else if (result.error === "CredentialsSignin" || result.error === "Configuration") {
+          // Generic NextAuth errors - show friendly message
+          errorMessage = "Invalid email or password. Please try again."
         }
         
         setError(errorMessage)

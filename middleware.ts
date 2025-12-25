@@ -5,9 +5,10 @@ import { getToken } from "next-auth/jwt"
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Skip middleware for static files, API routes, and auth routes
+  // Skip middleware for static files, API routes (including NextAuth), and auth routes
   if (
     pathname.startsWith("/_next") ||
+    pathname.startsWith("/api/auth") || // Explicitly allow NextAuth API routes
     pathname.startsWith("/api") ||
     pathname.startsWith("/auth") ||
     pathname.match(/\.(ico|png|jpg|jpeg|svg|gif|webp|css|js)$/)
