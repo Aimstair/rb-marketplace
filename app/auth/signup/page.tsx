@@ -81,7 +81,8 @@ export default function SignupPage() {
           })
 
           if (result.success) {
-            setStep("email-verify")
+            // Redirect to verification page
+            router.push(`/auth/verify?email=${encodeURIComponent(formData.email)}`)
           } else {
             setError(result.error || "Failed to create account")
           }

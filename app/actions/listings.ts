@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import { z } from "zod"
 import { headers } from "next/headers"
+import { moderateContent, logModerationAction } from "@/lib/moderation"
 import {
   createItemListingSchema,
   createCurrencyListingSchema,
@@ -843,7 +844,17 @@ export async function createListing(input: CreateItemListingInput): Promise<Crea
 
     // Find the seller by email from session
     const seller = await prisma.user.findUnique({
-      where: { email: session.user.email },
+      where: { 
+        email: session.user.email 
+      },
+      include: {
+        subscription: true,
+        itemListings: {
+          where: {
+            status: { not: "banned" }
+          }
+        }
+      }
     })
 
     if (!seller) {
@@ -853,8 +864,56 @@ export async function createListing(input: CreateItemListingInput): Promise<Crea
       }
     }
 
+    // Check max listings based on subscription tier and system settings
+    const [maxListingsFreeSetting, maxListingsProSetting, maxListingsEliteSetting] = await Promise.all([
+      prisma.systemSettings.findUnique({ where: { key: "max_listings_free" } }),
+      prisma.systemSettings.findUnique({ where: { key: "max_listings_pro" } }),
+      prisma.systemSettings.findUnique({ where: { key: "max_listings_elite" } })
+    ])
+
+    const maxListingsFree = maxListingsFreeSetting ? parseInt(maxListingsFreeSetting.value) : 10
+    const maxListingsPro = maxListingsProSetting ? parseInt(maxListingsProSetting.value) : 50
+    const maxListingsElite = maxListingsEliteSetting ? parseInt(maxListingsEliteSetting.value) : 100
+
+    const userTier = seller.subscription?.tier || "FREE"
+    const currentListingsCount = seller.itemListings.length
+    let maxAllowed = maxListingsFree
+
+    if (userTier === "ELITE") {
+      maxAllowed = maxListingsElite
+    } else if (userTier === "PRO") {
+      maxAllowed = maxListingsPro
+    }
+
+    if (currentListingsCount >= maxAllowed) {
+      return {
+        success: false,
+        error: `You have reached the maximum of ${maxAllowed} listings for your ${userTier.toLowerCase()} plan. ${userTier === "FREE" ? "Upgrade to Pro for more listings!" : ""}`
+      }
+    }
+
     // Validate input
     const validatedData = createItemListingSchema.parse(input)
+
+    // Check for prohibited content using comprehensive moderation
+    const moderationCheck = await moderateContent(
+      `${validatedData.title} ${validatedData.description}`,
+      "listing"
+    )
+
+    if (!moderationCheck.isAllowed) {
+      // Log the moderation action
+      await logModerationAction(
+        seller.id,
+        "LISTING_BLOCKED",
+        `Listing creation blocked: ${moderationCheck.reason}`
+      )
+
+      return {
+        success: false,
+        error: `Your listing contains prohibited content: ${moderationCheck.reason}. Please review our community guidelines.`
+      }
+    }
 
     // Find game by name
     const game = await prisma.game.findFirst({

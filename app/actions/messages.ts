@@ -353,6 +353,17 @@ export async function sendMessage(
       }
     }
 
+    // Check for prohibited content
+    const { moderateContent, logModerationAction } = await import("@/lib/moderation")
+    const moderationCheck = await moderateContent(content, "message")
+
+    if (!moderationCheck.isAllowed) {
+      return {
+        success: false,
+        error: `Your message contains prohibited content: ${moderationCheck.reason}`,
+      }
+    }
+
     // Get the current authenticated user
     const session = await auth()
     if (!session?.user?.email) {

@@ -2,17 +2,32 @@
  * Utility functions for subscription management
  */
 
-export const SUBSCRIPTION_LIMITS = {
-  FREE: { maxListings: 3, featuredListings: 0 },
-  PRO: { maxListings: 10, featuredListings: 1 },
-  ELITE: { maxListings: 30, featuredListings: 3 },
+// Default limits (fallback if system settings not available)
+export const DEFAULT_SUBSCRIPTION_LIMITS = {
+  FREE: { maxListings: 10, featuredListings: 0 },
+  PRO: { maxListings: 50, featuredListings: 1 },
+  ELITE: { maxListings: 100, featuredListings: 3 },
 } as const
 
-export type SubscriptionTier = keyof typeof SUBSCRIPTION_LIMITS
+export type SubscriptionTier = keyof typeof DEFAULT_SUBSCRIPTION_LIMITS
 
-export function getSubscriptionLimits(tier: string) {
+export function getSubscriptionLimits(tier: string, customLimits?: { free?: number; pro?: number; elite?: number }) {
   const normalizedTier = tier.toUpperCase() as SubscriptionTier
-  return SUBSCRIPTION_LIMITS[normalizedTier] || SUBSCRIPTION_LIMITS.FREE
+  
+  // If custom limits provided (from system settings), use those
+  if (customLimits) {
+    const maxListings = 
+      normalizedTier === "ELITE" ? (customLimits.elite ?? DEFAULT_SUBSCRIPTION_LIMITS.ELITE.maxListings) :
+      normalizedTier === "PRO" ? (customLimits.pro ?? DEFAULT_SUBSCRIPTION_LIMITS.PRO.maxListings) :
+      (customLimits.free ?? DEFAULT_SUBSCRIPTION_LIMITS.FREE.maxListings)
+    
+    const featuredListings = DEFAULT_SUBSCRIPTION_LIMITS[normalizedTier]?.featuredListings ?? 0
+    
+    return { maxListings, featuredListings }
+  }
+  
+  // Otherwise use defaults
+  return DEFAULT_SUBSCRIPTION_LIMITS[normalizedTier] || DEFAULT_SUBSCRIPTION_LIMITS.FREE
 }
 
 export function getSubscriptionBadge(tier: string) {

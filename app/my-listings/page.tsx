@@ -22,7 +22,7 @@ import {
 import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { getUserListings } from "@/app/actions/listings"
-import { getMySubscription } from "@/app/actions/subscriptions"
+import { getMySubscription, getSubscriptionLimitsFromSettings, checkAndExpireSubscriptions } from "@/app/actions/subscriptions"
 import { getSubscriptionLimits } from "@/lib/subscription-utils"
 import type { ListingResponse } from "@/lib/schemas"
 
@@ -38,8 +38,9 @@ export default function MyListingsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [totalListings, setTotalListings] = useState(0)
   const [subscriptionTier, setSubscriptionTier] = useState("FREE")
+  const [customLimits, setCustomLimits] = useState<{ free?: number; pro?: number; elite?: number }>()
   
-  const subscriptionLimit = getSubscriptionLimits(subscriptionTier)
+  const subscriptionLimit = getSubscriptionLimits(subscriptionTier, customLimits)
   const activeListingsCount = listings.filter((l) => l.status === "available").length
   const canCreateMore = activeListingsCount < subscriptionLimit.maxListings
   const listingsRemaining = subscriptionLimit.maxListings - activeListingsCount
@@ -57,10 +58,15 @@ export default function MyListingsPage() {
       const fetchData = async () => {
         try {
           setIsLoading(true)
-          // Fetch listings and subscription in parallel
-          const [listingsResult, subscriptionResult] = await Promise.all([
+          
+          // Check for expired subscriptions first (will hide excess listings if needed)
+          await checkAndExpireSubscriptions(session.user.id)
+          
+          // Fetch listings, subscription, and system limits in parallel
+          const [listingsResult, subscriptionResult, limitsResult] = await Promise.all([
             getUserListings(session.user.id, currentPage, ITEMS_PER_PAGE),
-            getMySubscription(session.user.id)
+            getMySubscription(session.user.id),
+            getSubscriptionLimitsFromSettings()
           ])
           
           setListings(listingsResult.listings)
@@ -68,6 +74,10 @@ export default function MyListingsPage() {
           
           if (subscriptionResult.success && subscriptionResult.data) {
             setSubscriptionTier(subscriptionResult.data.tier)
+          }
+
+          if (limitsResult.success && limitsResult.limits) {
+            setCustomLimits(limitsResult.limits)
           }
         } catch (error) {
           console.error("Error fetching data:", error)

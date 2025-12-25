@@ -8,19 +8,19 @@ import { useRouter } from "next/navigation"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { AlertCircle, ArrowLeft, Mail, KeyRound, CheckCircle } from "lucide-react"
+import { AlertCircle, ArrowLeft, Mail, CheckCircle } from "lucide-react"
+import { sendPasswordResetLink } from "@/app/actions/auth"
+import { useToast } from "@/hooks/use-toast"
 
-type Step = "email" | "code" | "newPassword" | "success"
+type Step = "email" | "success"
 
 export default function ForgotPasswordPage() {
   const [step, setStep] = useState<Step>("email")
   const [email, setEmail] = useState("")
-  const [code, setCode] = useState(["", "", "", "", "", ""])
-  const [newPassword, setNewPassword] = useState("")
-  const [confirmPassword, setConfirmPassword] = useState("")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
+  const { toast } = useToast()
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -32,68 +32,24 @@ export default function ForgotPasswordPage() {
     }
 
     setIsLoading(true)
-    // Simulate sending email
-    await new Promise((resolve) => setTimeout(resolve, 1500))
-    setIsLoading(false)
-    setStep("code")
-  }
-
-  const handleCodeChange = (index: number, value: string) => {
-    if (value.length > 1) return
-    const newCode = [...code]
-    newCode[index] = value
-    setCode(newCode)
-
-    // Auto-focus next input
-    if (value && index < 5) {
-      const nextInput = document.getElementById(`code-${index + 1}`)
-      nextInput?.focus()
+    
+    try {
+      const result = await sendPasswordResetLink(email)
+      
+      if (result.success) {
+        toast({
+          title: "Reset Link Sent!",
+          description: "Check your email for the password reset link.",
+        })
+        setStep("success")
+      } else {
+        setError(result.error || "Failed to send reset link. Please try again.")
+      }
+    } catch (err) {
+      setError("An unexpected error occurred. Please try again.")
+    } finally {
+      setIsLoading(false)
     }
-  }
-
-  const handleCodeKeyDown = (index: number, e: React.KeyboardEvent) => {
-    if (e.key === "Backspace" && !code[index] && index > 0) {
-      const prevInput = document.getElementById(`code-${index - 1}`)
-      prevInput?.focus()
-    }
-  }
-
-  const handleCodeSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError("")
-
-    const fullCode = code.join("")
-    if (fullCode.length !== 6) {
-      setError("Please enter the complete 6-digit code")
-      return
-    }
-
-    setIsLoading(true)
-    // Simulate verifying code (accept any 6-digit code for demo)
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-    setIsLoading(false)
-    setStep("newPassword")
-  }
-
-  const handlePasswordSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError("")
-
-    if (newPassword.length < 8) {
-      setError("Password must be at least 8 characters")
-      return
-    }
-
-    if (newPassword !== confirmPassword) {
-      setError("Passwords do not match")
-      return
-    }
-
-    setIsLoading(true)
-    // Simulate password reset
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-    setIsLoading(false)
-    setStep("success")
   }
 
   return (
@@ -121,7 +77,7 @@ export default function ForgotPasswordPage() {
                 </div>
                 <h1 className="text-2xl font-bold mb-2">Forgot Password?</h1>
                 <p className="text-muted-foreground text-sm">
-                  Enter your email address and we'll send you a 6-digit code to reset your password.
+                  Enter your email address and we'll send you a link to reset your password.
                 </p>
               </div>
 
@@ -141,29 +97,41 @@ export default function ForgotPasswordPage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full"
+                    disabled={isLoading}
                   />
                 </div>
 
                 <Button type="submit" size="lg" className="w-full" disabled={isLoading}>
-                  {isLoading ? "Sending..." : "Send Reset Code"}
+                  {isLoading ? "Sending..." : "Send Reset Link"}
                 </Button>
               </form>
             </>
           )}
 
-          {step === "code" && (
-            <>
-              <button
-                onClick={() => setStep("email")}
-                className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6"
-              >
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Change email
-              </button>
-
-              <div className="text-center mb-6">
-                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <KeyRound className="w-8 h-8 text-primary" />
+          {step === "success" && (
+            <div className="text-center">
+              <div className="w-16 h-16 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center mx-auto mb-4">
+                <CheckCircle className="w-8 h-8 text-green-600 dark:text-green-400" />
+              </div>
+              <h1 className="text-2xl font-bold mb-2">Check Your Email</h1>
+              <p className="text-muted-foreground mb-6">
+                We've sent a password reset link to <span className="font-medium text-foreground">{email}</span>. Click
+                the link in the email to reset your password.
+              </p>
+              <div className="space-y-2 text-sm text-muted-foreground mb-6">
+                <p>The link will expire in 1 hour for security reasons.</p>
+                <p>If you don't see the email, check your spam folder.</p>
+              </div>
+              <Button size="lg" className="w-full" onClick={() => router.push("/auth/login")}>
+                Return to Login
+              </Button>
+            </div>
+          )}
+        </Card>
+      </div>
+    </div>
+  )
+}
                 </div>
                 <h1 className="text-2xl font-bold mb-2">Enter Code</h1>
                 <p className="text-muted-foreground text-sm">

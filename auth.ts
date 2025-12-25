@@ -25,12 +25,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         })
 
         if (!user) {
-          throw new Error("User not found")
+          throw new Error("Invalid credentials")
         }
 
         // Check if user is banned
         if (user.isBanned) {
           throw new Error("Your account has been banned")
+        }
+
+        // Check if email is verified
+        if (!user.emailVerified) {
+          throw new Error("Please verify your email before logging in")
+        }
+
+        // Check if account is locked
+        if (user.lockedUntil && user.lockedUntil > new Date()) {
+          const remainingMinutes = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 1000 / 60)
+          throw new Error(`Account locked due to failed login attempts. Try again in ${remainingMinutes} minute(s)`)
         }
 
         // Verify password
@@ -40,7 +51,44 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         )
 
         if (!passwordMatch) {
-          throw new Error("Invalid password")
+          // Get failed login lockout setting
+          const lockoutSetting = await prisma.systemSettings.findUnique({
+            where: { key: "failed_login_lockout" },
+          })
+          const maxAttempts = lockoutSetting ? parseInt(lockoutSetting.value) : 5
+
+          // Increment failed login attempts
+          const failedAttempts = (user.failedLoginAttempts || 0) + 1
+          
+          // Lock account if max attempts reached
+          if (failedAttempts >= maxAttempts) {
+            await prisma.user.update({
+              where: { id: user.id },
+              data: {
+                failedLoginAttempts: failedAttempts,
+                lockedUntil: new Date(Date.now() + 15 * 60 * 1000), // Lock for 15 minutes
+              },
+            })
+            throw new Error("Too many failed attempts. Account locked for 15 minutes")
+          } else {
+            // Just increment the counter
+            await prisma.user.update({
+              where: { id: user.id },
+              data: { failedLoginAttempts: failedAttempts },
+            })
+            throw new Error(`Invalid password. ${maxAttempts - failedAttempts} attempt(s) remaining`)
+          }
+        }
+
+        // Reset failed login attempts on successful login
+        if (user.failedLoginAttempts > 0 || user.lockedUntil) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: {
+              failedLoginAttempts: 0,
+              lockedUntil: null,
+            },
+          })
         }
 
         // Return user object for session

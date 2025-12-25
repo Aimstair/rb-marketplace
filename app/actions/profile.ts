@@ -394,6 +394,19 @@ export async function updateProfile(data: Partial<UserProfileData>): Promise<Upd
       }
     }
 
+    // Check bio for prohibited content
+    if (data.bio) {
+      const { moderateContent } = await import("@/lib/moderation")
+      const moderationCheck = await moderateContent(data.bio, "profile")
+
+      if (!moderationCheck.isAllowed) {
+        return {
+          success: false,
+          error: `Your bio contains prohibited content: ${moderationCheck.reason}`,
+        }
+      }
+    }
+
     const updateData: any = {}
 
     if (data.bio !== undefined) updateData.bio = data.bio
@@ -612,5 +625,101 @@ export async function changePassword(data: {
       success: false,
       error: "Failed to change password. Please try again.",
     }
+  }
+}
+
+/**
+ * Get user preferences
+ */
+export async function getUserPreferences(): Promise<{
+  success: boolean
+  preferences?: any
+  error?: string
+}> {
+  try {
+    const session = await auth()
+    if (!session?.user?.email) {
+      return { success: false, error: "Not authenticated" }
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+      include: { preferences: true },
+    })
+
+    if (!user) {
+      return { success: false, error: "User not found" }
+    }
+
+    // Return preferences or defaults if not set
+    const preferences = user.preferences || {
+      profileVisibility: true,
+      showEmail: false,
+      showRobloxProfile: true,
+      showActivityStatus: true,
+      allowMessageRequests: true,
+      notifyNewMessages: true,
+      notifyListingViews: true,
+      notifyPriceAlerts: false,
+      notifyVouches: true,
+      notifyTradeUpdates: true,
+      notifyMarketingEmails: false,
+    }
+
+    return { success: true, preferences }
+  } catch (err) {
+    console.error("Failed to get user preferences:", err)
+    return { success: false, error: "Failed to load preferences" }
+  }
+}
+
+/**
+ * Update user preferences (privacy and notifications)
+ */
+export async function updateUserPreferences(preferences: {
+  profileVisibility?: boolean
+  showEmail?: boolean
+  showRobloxProfile?: boolean
+  showActivityStatus?: boolean
+  allowMessageRequests?: boolean
+  notifyNewMessages?: boolean
+  notifyListingViews?: boolean
+  notifyPriceAlerts?: boolean
+  notifyVouches?: boolean
+  notifyTradeUpdates?: boolean
+  notifyMarketingEmails?: boolean
+}): Promise<{
+  success: boolean
+  error?: string
+}> {
+  try {
+    const session = await auth()
+    if (!session?.user?.email) {
+      return { success: false, error: "Not authenticated" }
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+      select: { id: true },
+    })
+
+    if (!user) {
+      return { success: false, error: "User not found" }
+    }
+
+    // Upsert preferences
+    await prisma.userPreferences.upsert({
+      where: { userId: user.id },
+      update: preferences,
+      create: {
+        userId: user.id,
+        ...preferences,
+      },
+    })
+
+    return { success: true }
+  } catch (err) {
+    console.error("Failed to update user preferences:", err)
+    return { success: false, error: "Failed to update preferences" }
   }
 }

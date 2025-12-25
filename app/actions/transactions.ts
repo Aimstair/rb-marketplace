@@ -666,6 +666,89 @@ export async function toggleTransactionConfirmation(
 
     // Check if both have confirmed
     if (updatedTransaction.buyerConfirmed && updatedTransaction.sellerConfirmed) {
+      // Check new user selling limits
+      const seller = await prisma.user.findUnique({
+        where: { id: transaction.sellerId },
+        select: {
+          joinDate: true,
+          totalSalesThisWeek: true,
+          totalSalesThisMonth: true,
+          salesResetWeek: true,
+          salesResetMonth: true,
+        },
+      })
+
+      if (seller) {
+        const now = new Date()
+        const accountAgeInDays = Math.floor(
+          (now.getTime() - seller.joinDate.getTime()) / (1000 * 60 * 60 * 24)
+        )
+
+        // Check if user is new (less than 30 days old)
+        if (accountAgeInDays < 30) {
+          // Get selling limits from settings
+          const limitSettings = await prisma.systemSettings.findMany({
+            where: {
+              key: {
+                in: ["new_user_limit_week", "new_user_limit_month"],
+              },
+            },
+          })
+
+          const weekLimit = parseFloat(
+            limitSettings.find((s) => s.key === "new_user_limit_week")?.value || "1000"
+          )
+          const monthLimit = parseFloat(
+            limitSettings.find((s) => s.key === "new_user_limit_month")?.value || "5000"
+          )
+
+          // Reset counters if needed
+          let totalSalesThisWeek = seller.totalSalesThisWeek
+          let totalSalesThisMonth = seller.totalSalesThisMonth
+          let salesResetWeek = seller.salesResetWeek
+          let salesResetMonth = seller.salesResetMonth
+
+          // Reset weekly counter (7 days)
+          if (now.getTime() - salesResetWeek.getTime() > 7 * 24 * 60 * 60 * 1000) {
+            totalSalesThisWeek = 0
+            salesResetWeek = now
+          }
+
+          // Reset monthly counter (30 days)
+          if (now.getTime() - salesResetMonth.getTime() > 30 * 24 * 60 * 60 * 1000) {
+            totalSalesThisMonth = 0
+            salesResetMonth = now
+          }
+
+          // Check if this sale would exceed limits
+          const saleAmount = transaction.price || 0
+          if (totalSalesThisWeek + saleAmount > weekLimit) {
+            return {
+              success: false,
+              error: `New user weekly selling limit exceeded. Limit: ${weekLimit} Robux`,
+            }
+          }
+
+          if (totalSalesThisMonth + saleAmount > monthLimit) {
+            return {
+              success: false,
+              error: `New user monthly selling limit exceeded. Limit: ${monthLimit} Robux`,
+            }
+          }
+
+          // Update seller's sales totals
+          await prisma.user.update({
+            where: { id: transaction.sellerId },
+            data: {
+              totalSalesThisWeek: totalSalesThisWeek + saleAmount,
+              totalSalesThisMonth: totalSalesThisMonth + saleAmount,
+              salesResetWeek,
+              salesResetMonth,
+            },
+          })
+        }
+      }
+
       // Update transaction status to COMPLETED
       const completedTransaction = await (prisma.transaction as any).update({
         where: { id: transactionId },

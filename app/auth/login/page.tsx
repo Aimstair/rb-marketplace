@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { AlertCircle, Eye, EyeOff } from "lucide-react"
 import { signIn } from "next-auth/react"
+import { checkEmailVerification } from "@/app/actions/auth"
+import { useToast } from "@/hooks/use-toast"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -19,6 +21,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { toast } = useToast()
 
   const redirectUrl = searchParams.get("redirect") || "/marketplace"
 
@@ -36,9 +39,33 @@ export default function LoginPage() {
       })
 
       if (result?.error) {
-        setError(result.error)
+        // Map common NextAuth errors to user-friendly messages
+        let errorMessage = result.error
+        
+        if (result.error === "CredentialsSignin" || result.error === "Invalid credentials") {
+          errorMessage = "Invalid email or password. Please try again."
+        } else if (result.error.includes("locked")) {
+          errorMessage = "Your account has been temporarily locked due to multiple failed login attempts. Please try again later."
+        } else if (result.error.includes("email not verified")) {
+          // Check if email verification is pending
+          const verification = await checkEmailVerification(email)
+          if (!verification.verified) {
+            toast({
+              title: "Email Not Verified",
+              description: "Please verify your email before logging in. We'll resend the verification code.",
+            })
+            router.push(`/auth/verify?email=${encodeURIComponent(email)}`)
+            return
+          }
+        }
+        
+        setError(errorMessage)
       } else if (result?.ok) {
-        // Redirect to the desired page
+        // Successful login
+        toast({
+          title: "Welcome Back!",
+          description: "You've successfully logged in.",
+        })
         router.push(redirectUrl)
       }
     } catch (err: any) {

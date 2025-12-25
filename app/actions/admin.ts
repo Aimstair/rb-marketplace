@@ -3303,3 +3303,191 @@ export async function invalidatePattern(
     return { success: false, error: "Failed to invalidate pattern" }
   }
 }
+
+/**
+ * Get system settings
+ * Admin only
+ */
+export async function getSystemSettings(): Promise<{
+  success: boolean
+  settings?: Record<string, any>
+  error?: string
+}> {
+  try {
+    const session = await auth()
+    if (!session?.user || session.user.role !== "admin") {
+      return { success: false, error: "Unauthorized" }
+    }
+
+    const settingsData = await prisma.systemSettings.findMany()
+    
+    // Convert to key-value object
+    const settings: Record<string, any> = {}
+    settingsData.forEach((setting) => {
+      try {
+        // Try to parse as JSON, if fails use raw value
+        settings[setting.key] = JSON.parse(setting.value)
+      } catch {
+        settings[setting.key] = setting.value
+      }
+    })
+
+    // Set defaults if not in database
+    const defaults = {
+      site_name: "RobloxTrade",
+      site_description: "Peer-to-peer marketplace for trading Roblox items safely.",
+      support_email: "support@robloxtrade.com",
+      maintenance_mode: false,
+      registration_enabled: true,
+      new_user_limit_week: 5000,
+      new_user_limit_month: 25000,
+      ip_rate_limit: 60,
+      failed_login_lockout: 5,
+      max_listings_free: 10,
+      max_listings_pro: 50,
+      max_listings_elite: 100,
+      listing_expiry_days: 30,
+      featured_duration_hours: 24,
+      default_sort: "newest",
+      email_notifications: true,
+      admin_alert_email: "admin@robloxtrade.com",
+      alert_high_value_trades: true,
+      alert_new_reports: true,
+      alert_system_errors: true,
+      alert_daily_summary: false,
+      blacklisted_words: ["free robux", "scam", "hack", "exploit", "paypal", "discord", "outside of platform"],
+    }
+
+    return { success: true, settings: { ...defaults, ...settings } }
+  } catch (err) {
+    console.error("Failed to get system settings:", err)
+    return { success: false, error: "Failed to get system settings" }
+  }
+}
+
+/**
+ * Update system settings
+ * Admin only
+ */
+export async function updateSystemSettings(
+  settings: Record<string, any>
+): Promise<AdminResult> {
+  try {
+    const session = await auth()
+    if (!session?.user || session.user.role !== "admin") {
+      return { success: false, error: "Unauthorized" }
+    }
+
+    // Get admin user from database
+    const adminUser = await prisma.user.findUnique({
+      where: { email: session.user.email! },
+      select: { id: true },
+    })
+
+    if (!adminUser) {
+      return { success: false, error: "Admin user not found" }
+    }
+
+    // Define setting categories
+    const categoryMap: Record<string, string> = {
+      site_name: "general",
+      site_description: "general",
+      support_email: "general",
+      maintenance_mode: "general",
+      registration_enabled: "security",
+      new_user_limit_week: "security",
+      new_user_limit_month: "security",
+      ip_rate_limit: "security",
+      failed_login_lockout: "security",
+      max_listings_free: "listings",
+      max_listings_pro: "listings",
+      max_listings_elite: "listings",
+      listing_expiry_days: "listings",
+      featured_duration_hours: "listings",
+      default_sort: "listings",
+      email_notifications: "notifications",
+      admin_alert_email: "notifications",
+      alert_high_value_trades: "notifications",
+      alert_new_reports: "notifications",
+      alert_system_errors: "notifications",
+      alert_daily_summary: "notifications",
+      blacklisted_words: "moderation",
+    }
+
+    // Update or create settings
+    await Promise.all(
+      Object.entries(settings).map(async ([key, value]) => {
+        const category = categoryMap[key] || "general"
+        const stringValue = typeof value === "string" ? value : JSON.stringify(value)
+
+        await prisma.systemSettings.upsert({
+          where: { key },
+          update: {
+            value: stringValue,
+            category,
+            updatedAt: new Date(),
+          },
+          create: {
+            key,
+            value: stringValue,
+            category,
+          },
+        })
+      })
+    )
+
+    // Create audit log
+    await prisma.auditLog.create({
+      data: {
+        adminId: adminUser.id,
+        action: "SETTINGS_CHANGED",
+        details: `Updated ${Object.keys(settings).length} system settings`,
+      },
+    })
+
+    return { success: true }
+  } catch (err) {
+    console.error("Failed to update system settings:", err)
+    return { success: false, error: "Failed to update system settings" }
+  }
+}
+
+/**
+ * Reset system settings to defaults
+ * Admin only
+ */
+export async function resetSystemSettings(): Promise<AdminResult> {
+  try {
+    const session = await auth()
+    if (!session?.user || session.user.role !== "admin") {
+      return { success: false, error: "Unauthorized" }
+    }
+
+    // Get admin user from database
+    const adminUser = await prisma.user.findUnique({
+      where: { email: session.user.email! },
+      select: { id: true },
+    })
+
+    if (!adminUser) {
+      return { success: false, error: "Admin user not found" }
+    }
+
+    // Delete all settings (will use defaults)
+    await prisma.systemSettings.deleteMany({})
+
+    // Create audit log
+    await prisma.auditLog.create({
+      data: {
+        adminId: adminUser.id,
+        action: "SETTINGS_CHANGED",
+        details: "Reset all system settings to defaults",
+      },
+    })
+
+    return { success: true }
+  } catch (err) {
+    console.error("Failed to reset system settings:", err)
+    return { success: false, error: "Failed to reset system settings" }
+  }
+}

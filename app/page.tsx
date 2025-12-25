@@ -12,6 +12,8 @@ import FeaturedListings from "@/components/featured-listings"
 import TrendingGames from "@/components/trending-games"
 import TopVouchedSellers from "@/components/top-vouched-sellers"
 import { getLandingStats, getPopularGames, getTopTraders } from "@/app/actions/trends"
+import { checkAndExpireSubscriptions } from "@/app/actions/subscriptions"
+import { useSession } from "next-auth/react"
 
 interface PopularGame {
   game: string
@@ -32,6 +34,7 @@ interface TopTrader {
 
 export default function HomePage() {
   const router = useRouter()
+  const { data: session } = useSession()
   const [searchQuery, setSearchQuery] = useState("")
   const [stats, setStats] = useState({ totalUsers: 0, totalListings: 0, totalVolume: 0, activeTraders: 0 })
   const [games, setGames] = useState<PopularGame[]>([])
@@ -39,6 +42,15 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true)
   const [gamesLoading, setGamesLoading] = useState(true)
   const [tradersLoading, setTradersLoading] = useState(true)
+
+  // Check for expired subscriptions on mount (if user is logged in)
+  useEffect(() => {
+    if (session?.user?.id) {
+      checkAndExpireSubscriptions(session.user.id).catch(err => {
+        console.error("Failed to check subscription expiration:", err)
+      })
+    }
+  }, [session?.user?.id])
 
   // Load stats on mount
   useEffect(() => {

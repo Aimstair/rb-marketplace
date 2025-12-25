@@ -32,7 +32,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { getProfile, updateProfile, changePassword, type UserProfileData } from "@/app/actions/profile"
+import { getProfile, updateProfile, changePassword, getUserPreferences, updateUserPreferences, type UserProfileData } from "@/app/actions/profile"
 import { createSupportTicket, getMyTickets, getTicketMessages, addTicketReply } from "@/app/actions/admin"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -78,6 +78,7 @@ export default function SettingsPage() {
     socialLinks: {} as Record<string, any>,
   })
   const [saveLoading, setSaveLoading] = useState(false)
+  const [settingsLoading, setSettingsLoading] = useState(false)
 
   // Settings state
   const [settings, setSettings] = useState({
@@ -126,6 +127,8 @@ export default function SettingsPage() {
     } else {
       // Fetch profile data on mount
       loadProfileData()
+      // Load user preferences
+      loadUserPreferences()
       // Load support tickets if on support tab
       if (activeTab === "support") {
         loadSupportTickets()
@@ -174,8 +177,105 @@ export default function SettingsPage() {
     }
   }
 
+  const loadUserPreferences = async () => {
+    try {
+      setSettingsLoading(true)
+      const result = await getUserPreferences()
+      if (result.success && result.preferences) {
+        setSettings({
+          profileVisibility: result.preferences.profileVisibility ?? true,
+          showEmail: result.preferences.showEmail ?? false,
+          showRobloxProfile: result.preferences.showRobloxProfile ?? true,
+          showActivityStatus: result.preferences.showActivityStatus ?? true,
+          allowMessageRequests: result.preferences.allowMessageRequests ?? true,
+          newMessages: result.preferences.notifyNewMessages ?? true,
+          listingViews: result.preferences.notifyListingViews ?? true,
+          priceAlerts: result.preferences.notifyPriceAlerts ?? false,
+          vouchNotifications: result.preferences.notifyVouches ?? true,
+          tradeUpdates: result.preferences.notifyTradeUpdates ?? true,
+          marketingEmails: result.preferences.notifyMarketingEmails ?? false,
+        })
+      }
+    } catch (err) {
+      console.error("Failed to load preferences:", err)
+    } finally {
+      setSettingsLoading(false)
+    }
+  }
+
   const handleUnblock = (userId: number) => {
     setBlockedUsers((prev) => prev.filter((u) => u.id !== userId))
+  }
+
+  const handleSavePrivacySettings = async () => {
+    try {
+      setSaveLoading(true)
+      const result = await updateUserPreferences({
+        profileVisibility: settings.profileVisibility,
+        showEmail: settings.showEmail,
+        showRobloxProfile: settings.showRobloxProfile,
+        showActivityStatus: settings.showActivityStatus,
+        allowMessageRequests: settings.allowMessageRequests,
+      })
+
+      if (result.success) {
+        toast({
+          title: "✅ Settings Saved",
+          description: "Privacy settings have been updated successfully.",
+        })
+      } else {
+        toast({
+          title: "❌ Failed to Save",
+          description: result.error || "Failed to save settings",
+          variant: "destructive",
+        })
+      }
+    } catch (err) {
+      console.error("Failed to save privacy settings:", err)
+      toast({
+        title: "❌ Error",
+        description: "An unexpected error occurred",
+        variant: "destructive",
+      })
+    } finally {
+      setSaveLoading(false)
+    }
+  }
+
+  const handleSaveNotificationSettings = async () => {
+    try {
+      setSaveLoading(true)
+      const result = await updateUserPreferences({
+        notifyNewMessages: settings.newMessages,
+        notifyListingViews: settings.listingViews,
+        notifyPriceAlerts: settings.priceAlerts,
+        notifyVouches: settings.vouchNotifications,
+        notifyTradeUpdates: settings.tradeUpdates,
+        notifyMarketingEmails: settings.marketingEmails,
+      })
+
+      if (result.success) {
+        toast({
+          title: "✅ Settings Saved",
+          description: "Notification settings have been updated successfully.",
+        })
+      } else {
+        toast({
+          title: "❌ Failed to Save",
+          description: result.error || "Failed to save settings",
+          variant: "destructive",
+        })
+      }
+    } catch (err) {
+      console.error("Failed to save notification settings:", err)
+      toast({
+        title: "❌ Error",
+        description: "An unexpected error occurred",
+        variant: "destructive",
+      })
+    } finally {
+      setSaveLoading(false)
+    }
   }
 
   const loadSupportTickets = async () => {
@@ -685,7 +785,9 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                <Button>Save Changes</Button>
+                <Button onClick={handleSavePrivacySettings} disabled={saveLoading || settingsLoading}>
+                  {saveLoading ? "Saving..." : "Save Changes"}
+                </Button>
               </Card>
             )}
 
@@ -801,7 +903,9 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                <Button>Save Changes</Button>
+                <Button onClick={handleSaveNotificationSettings} disabled={saveLoading || settingsLoading}>
+                  {saveLoading ? "Saving..." : "Save Changes"}
+                </Button>
               </Card>
             )}
 
