@@ -11,16 +11,14 @@ async function seedGameItems() {
     })
 
     const gameItems = {
-      'General': [
-        { name: 'Accessory', displayName: 'Accessory', category: 'Accessories', itemType: 'Accessory', order: 1 },
-      ],
       'Roblox': [
         { name: 'Account', displayName: 'Account', category: 'Accounts', itemType: 'Account', order: 1 },
       ],
       'Grow a Garden': [
-        { name: 'In-game Item', displayName: 'In-game Item', category: 'Games', itemType: 'In-game Item', order: 1 },
-        { name: 'Gamepass', displayName: 'Gamepass', category: 'Games', itemType: 'Gamepass', order: 2 },
-        { name: 'Account', displayName: 'Account', category: 'Accounts', itemType: 'Account', order: 3 },
+        { name: 'Pet', displayName: 'Pet', category: 'Games', itemType: 'Pet', order: 1 },
+        { name: 'In-game Item', displayName: 'In-game Item', category: 'Games', itemType: 'In-game Item', order: 2 },
+        { name: 'Gamepass', displayName: 'Gamepass', category: 'Games', itemType: 'Gamepass', order: 3 },
+        { name: 'Account', displayName: 'Account', category: 'Accounts', itemType: 'Account', order: 4 },
       ],
       'Steal a Brainrot': [
         { name: 'Pet', displayName: 'Pet', category: 'Games', itemType: 'Pet', order: 1 },

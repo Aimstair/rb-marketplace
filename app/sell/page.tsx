@@ -14,7 +14,7 @@ import { FileUpload } from "@/components/file-upload"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
 import { createListing, createCurrencyListing, createNewCurrencyListing, getFilterOptions } from "@/app/actions/listings"
-import { getGames, getCurrenciesForGame, getCategories, getItemTypesForGameAndCategory, type GameOption, type CurrencyOption, type GameItemOption } from "@/app/actions/games"
+import { getGames, getGamesWithCurrencies, getCurrenciesForGame, getCategories, getItemTypesForGameAndCategory, type GameOption, type CurrencyOption, type GameItemOption } from "@/app/actions/games"
 
 const paymentMethods = ["GCash", "PayPal", "Robux Gift Cards", "Cross-Trade", "Venmo"]
 
@@ -30,6 +30,7 @@ export default function SellPage() {
   
   // New states for games and currencies from database
   const [availableGames, setAvailableGames] = useState<GameOption[]>([])
+  const [availableGamesWithCurrencies, setAvailableGamesWithCurrencies] = useState<GameOption[]>([])
   const [availableCurrencies, setAvailableCurrencies] = useState<CurrencyOption[]>([])
   const [availableCategories, setAvailableCategories] = useState<string[]>([])
   const [availableItemTypes, setAvailableItemTypes] = useState<GameItemOption[]>([])
@@ -44,12 +45,13 @@ export default function SellPage() {
   useEffect(() => {
     const fetchFilters = async () => {
       try {
-        const [categoriesData, gamesData, itemTypesData, conditionsData, dbGames, dbCategories] = await Promise.all([
+        const [categoriesData, gamesData, itemTypesData, conditionsData, dbGames, dbGamesWithCurrencies, dbCategories] = await Promise.all([
           getFilterOptions("CATEGORY"),
           getFilterOptions("GAME"),
           getFilterOptions("ITEM_TYPE"),
           getFilterOptions("CONDITION"),
           getGames(),
+          getGamesWithCurrencies(),
           getCategories(),
         ])
         setCategories(categoriesData)
@@ -57,6 +59,7 @@ export default function SellPage() {
         setItemTypes(itemTypesData)
         setConditions(conditionsData)
         setAvailableGames(dbGames)
+        setAvailableGamesWithCurrencies(dbGamesWithCurrencies)
         setAvailableCategories(dbCategories)
       } catch (error) {
         console.error("Error fetching filter options:", error)
@@ -699,7 +702,7 @@ export default function SellPage() {
                           }`}
                         >
                           <option value="">Select a game</option>
-                          {availableGames.map((game) => (
+                          {availableGamesWithCurrencies.map((game) => (
                             <option key={game.id} value={game.name}>
                               {game.displayName}
                             </option>

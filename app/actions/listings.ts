@@ -637,6 +637,7 @@ export async function getUserListings(
           featured: listing.featured,
           views: listing.views,
           inquiries: inquiriesCount,
+          listingType: listing.listingType,
         }
       }),
       ...currencyListings.map(async (listing: any) => {
@@ -666,6 +667,7 @@ export async function getUserListings(
           featured: listing.featured,
           views: listing.views,
           inquiries: inquiriesCount,
+          listingType: listing.listingType,
         }
       }),
     ])
@@ -848,7 +850,6 @@ export async function createListing(input: CreateItemListingInput): Promise<Crea
         email: session.user.email 
       },
       include: {
-        subscription: true,
         itemListings: {
           where: {
             status: { not: "banned" }
@@ -875,7 +876,7 @@ export async function createListing(input: CreateItemListingInput): Promise<Crea
     const maxListingsPro = maxListingsProSetting ? parseInt(maxListingsProSetting.value) : 50
     const maxListingsElite = maxListingsEliteSetting ? parseInt(maxListingsEliteSetting.value) : 100
 
-    const userTier = seller.subscription?.tier || "FREE"
+    const userTier = seller.subscriptionTier || "FREE"
     const currentListingsCount = seller.itemListings.length
     let maxAllowed = maxListingsFree
 

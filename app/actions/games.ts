@@ -31,7 +31,7 @@ export async function getGames(): Promise<GameOption[]> {
   try {
     const games = await prisma.game.findMany({
       where: { isActive: true },
-      orderBy: { order: "asc" },
+      orderBy: { displayName: "asc" },
       select: {
         id: true,
         name: true,
@@ -51,6 +51,39 @@ export async function getGames(): Promise<GameOption[]> {
 }
 
 /**
+ * Get only games that have currencies (for currency listing)
+ */
+export async function getGamesWithCurrencies(): Promise<GameOption[]> {
+  try {
+    const games = await prisma.game.findMany({
+      where: { 
+        isActive: true,
+        currencies: {
+          some: {
+            isActive: true,
+          },
+        },
+      },
+      orderBy: { displayName: "asc" },
+      select: {
+        id: true,
+        name: true,
+        displayName: true,
+        description: true,
+      },
+    })
+
+    return games.map(g => ({
+      ...g,
+      description: g.description || undefined,
+    }))
+  } catch (error) {
+    console.error("Error fetching games with currencies:", error)
+    return []
+  }
+}
+
+/**
  * Get all currencies for a specific game
  */
 export async function getCurrenciesForGame(gameName: string): Promise<CurrencyOption[]> {
@@ -60,7 +93,7 @@ export async function getCurrenciesForGame(gameName: string): Promise<CurrencyOp
       include: {
         currencies: {
           where: { isActive: true },
-          orderBy: { order: "asc" },
+          orderBy: { displayName: "asc" },
           select: {
             id: true,
             name: true,
@@ -148,19 +181,13 @@ export async function getItemTypesForGameAndCategory(
 
     if (!game) return []
 
-    // For Games category, only allow "In-game Item" and "Gamepass" item types
-    const itemTypeFilter = category === "Games" 
-      ? { in: ["In-game Item", "Gamepass"] }
-      : undefined
-
     const gameItems = await prisma.gameItem.findMany({
       where: {
         gameId: game.id,
         category: category,
         isActive: true,
-        ...(itemTypeFilter && { itemType: itemTypeFilter }),
       },
-      orderBy: { order: 'asc' },
+      orderBy: { displayName: 'asc' },
       select: {
         id: true,
         name: true,

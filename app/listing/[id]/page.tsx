@@ -72,6 +72,16 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
           return
         }
 
+        // Check if listing is deleted
+        if (result.listing.status === "deleted") {
+          setError("deleted")
+          // Auto redirect after 5 seconds
+          setTimeout(() => {
+            router.push("/marketplace")
+          }, 5000)
+          return
+        }
+
         console.log("Listing loaded:", result.listing)
         console.log("Seller ID:", result.listing.seller?.id)
         setListing(result.listing)
@@ -353,7 +363,34 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
           </div>
         )}
 
-        {error && !listing && (
+        {error === "deleted" && (
+          <Card className="max-w-2xl mx-auto mt-20">
+            <div className="p-12 text-center">
+              <div className="mb-6 flex justify-center">
+                <div className="p-4 bg-red-100 dark:bg-red-950/30 rounded-full">
+                  <X className="w-12 h-12 text-red-600 dark:text-red-400" />
+                </div>
+              </div>
+              <h1 className="text-3xl font-bold mb-4">Listing Deleted</h1>
+              <p className="text-muted-foreground text-lg mb-8">
+                This listing has been removed by the seller and is no longer available.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <Button onClick={() => router.push("/marketplace")} size="lg">
+                  Browse Marketplace
+                </Button>
+                <Button onClick={() => router.back()} variant="outline" size="lg">
+                  Go Back
+                </Button>
+              </div>
+              <p className="text-sm text-muted-foreground mt-6">
+                Redirecting to marketplace in 5 seconds...
+              </p>
+            </div>
+          </Card>
+        )}
+
+        {error && error !== "deleted" && !listing && (
           <div className="text-center py-12">
             <p className="text-destructive mb-4">{error}</p>
             <Button onClick={() => router.push("/marketplace")}>

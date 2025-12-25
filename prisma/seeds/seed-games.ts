@@ -8,12 +8,6 @@ async function main() {
   // Define game and currency data
   const gamesData = [
     {
-      name: "General",
-      displayName: "General",
-      description: "General marketplace items (Roblox Accessories, etc.)",
-      currencies: [],
-    },
-    {
       name: "Roblox",
       displayName: "Roblox",
       description: "Popular online gaming platform",
@@ -70,66 +64,6 @@ async function main() {
       currencies: [
         { name: "Gems", displayName: "Gems", description: "In-game currency" },
       ],
-    },
-    {
-      name: "Steal a Brainrot",
-      displayName: "Steal a Brainrot",
-      description: "Steal and collect brainrot memes",
-      currencies: [],
-    },
-    {
-      name: "Plants vs Brainrot",
-      displayName: "Plants vs Brainrot",
-      description: "Tower defense with brainrot theme",
-      currencies: [],
-    },
-    {
-      name: "Fisch",
-      displayName: "Fisch",
-      description: "Fishing simulation game",
-      currencies: [],
-    },
-    {
-      name: "Fish It",
-      displayName: "Fish It",
-      description: "Fishing adventure game",
-      currencies: [],
-    },
-    {
-      name: "Anime Last Stand",
-      displayName: "Anime Last Stand",
-      description: "Anime tower defense game",
-      currencies: [],
-    },
-    {
-      name: "Anime Vanguards",
-      displayName: "Anime Vanguards",
-      description: "Anime battle game",
-      currencies: [],
-    },
-    {
-      name: "Murder Mystery 2",
-      displayName: "Murder Mystery 2",
-      description: "Mystery and survival game",
-      currencies: [],
-    },
-    {
-      name: "Anime Fighting Simulator",
-      displayName: "Anime Fighting Simulator",
-      description: "Anime-themed combat game",
-      currencies: [],
-    },
-    {
-      name: "Bubble Gum Simulator",
-      displayName: "Bubble Gum Simulator",
-      description: "Bubble gum collection game",
-      currencies: [],
-    },
-    {
-      name: "Grand Piece Online",
-      displayName: "Grand Piece Online",
-      description: "One Piece inspired RPG",
-      currencies: [],
     },
   ]
 
