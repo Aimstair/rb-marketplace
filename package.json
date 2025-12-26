@@ -1,6 +1,10 @@
 {
   "name": "rbmarket",
   "version": "1.0.0",
+  "packageManager": "pnpm@10.26.2",
+  "engines": {
+    "node": "22.x"
+  },
   "private": true,
   "scripts": {
     "build": "prisma generate && next build",
@@ -11,9 +15,12 @@
     "prisma:migrate:deploy": "prisma migrate deploy"
   },
   "dependencies": {
-    "@auth/prisma-adapter": "^2.11.1",
-    "@hookform/resolvers": "^3.10.0",
     "@prisma/client": "^5.22.0",
+    "@auth/prisma-adapter": "^2.11.1",
+    "prisma": "^5.22.0",
+    "@tailwindcss/postcss": "^4.1.9",
+    "@radix-ui/react-visually-hidden": "latest",
+    "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "latest",
     "@radix-ui/react-alert-dialog": "latest",
     "@radix-ui/react-aspect-ratio": "latest",
@@ -56,7 +63,6 @@
     "next": "16.0.3",
     "next-auth": "^5.0.0-beta.30",
     "next-themes": "latest",
-    "prisma": "^5.22.0",
     "react": "19.2.0",
     "react-day-picker": "latest",
     "react-dom": "19.2.0",
@@ -72,7 +78,6 @@
     "zod": "3.25.76"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.1.9",
     "@types/bcrypt": "^6.0.0",
     "@types/node": "^22",
     "@types/react": "^19",
