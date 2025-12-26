@@ -15,6 +15,7 @@
     "prisma:migrate:deploy": "prisma migrate deploy"
   },
   "dependencies": {
+    "tsx": "^4.20.6",
     "typescript": "^5",
     "@types/node": "^22",
     "@types/react": "^19",
@@ -86,8 +87,7 @@
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",
     "dotenv": "^17.2.3",
-    "postcss": "^8.5",
-    "tsx": "^4.20.6"
+    "postcss": "^8.5"
   },
   "prisma": {
     "seed": "node --import tsx prisma/seed-minimal.ts"

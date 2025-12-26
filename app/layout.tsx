@@ -19,13 +19,13 @@ async function getMetadata(): Promise<Metadata> {
       prisma.systemSettings.findUnique({ where: { key: "site_description" } })
     ])
 
-    const siteName = siteNameSetting?.value || "RobloxTrade - Buy & Sell Roblox Items Safely"
+    const siteName = siteNameSetting?.value || "RbMarket"
     const siteDescription = siteDescSetting?.value || "Peer-to-peer marketplace for trading Roblox items anonymously. Browse listings, connect with sellers, and build trust through our vouch system."
 
     return {
       title: siteName,
       description: siteDescription,
-      generator: "v0.app",
+      generator: "Aerox Software",
       icons: {
         icon: [
           {
@@ -37,8 +37,8 @@ async function getMetadata(): Promise<Metadata> {
             media: "(prefers-color-scheme: dark)",
           },
           {
-            url: "/icon.svg",
-            type: "image/svg+xml",
+            url: "/logo.png",
+            type: "image/png",
           },
         ],
         apple: "/apple-icon.png",
@@ -48,9 +48,9 @@ async function getMetadata(): Promise<Metadata> {
     console.error("Error fetching metadata settings:", error)
     // Return defaults if there's an error
     return {
-      title: "RobloxTrade - Buy & Sell Roblox Items Safely",
+      title: "RbMarket - Buy & Sell Roblox Items Safely",
       description: "Peer-to-peer marketplace for trading Roblox items anonymously. Browse listings, connect with sellers, and build trust through our vouch system.",
-      generator: "v0.app",
+      generator: "Aerox Software",
       icons: {
         icon: [
           {
@@ -62,8 +62,8 @@ async function getMetadata(): Promise<Metadata> {
             media: "(prefers-color-scheme: dark)",
           },
           {
-            url: "/icon.svg",
-            type: "image/svg+xml",
+            url: "/logo.png",
+            type: "image/png",
           },
         ],
         apple: "/apple-icon.png",
