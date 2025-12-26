@@ -3,14 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "next build",
+    "build": "prisma generate && prisma migrate deploy && next build",
     "dev": "next dev",
     "lint": "eslint .",
     "start": "next start",
+    "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:seed": "node --import tsx prisma/seed.ts",
-    "db:seed": "prisma db seed"
+    "db:seed": "prisma db seed",
+    "db:push": "prisma db push"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
@@ -87,6 +90,6 @@
     "typescript": "^5"
   },
   "prisma": {
-    "seed": "node --import tsx prisma/seed.ts"
+    "seed": "node --import tsx prisma/seed-minimal.ts"
   }
 }

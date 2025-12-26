@@ -95,9 +95,10 @@ async function seedGameItems() {
         { name: 'Account', displayName: 'Account', category: 'Accounts', itemType: 'Account', order: 4 },
       ],
       'Bubble Gum Simulator': [
-        { name: 'In-game Item', displayName: 'In-game Item', category: 'Games', itemType: 'In-game Item', order: 1 },
-        { name: 'Gamepass', displayName: 'Gamepass', category: 'Games', itemType: 'Gamepass', order: 2 },
-        { name: 'Account', displayName: 'Account', category: 'Accounts', itemType: 'Account', order: 3 },
+        { name: 'Pet', displayName: 'Pet', category: 'Games', itemType: 'Pet', order: 1 },
+        { name: 'In-game Item', displayName: 'In-game Item', category: 'Games', itemType: 'In-game Item', order: 2 },
+        { name: 'Gamepass', displayName: 'Gamepass', category: 'Games', itemType: 'Gamepass', order: 3 },
+        { name: 'Account', displayName: 'Account', category: 'Accounts', itemType: 'Account', order: 4 },
       ],
       'Grand Piece Online': [
         { name: 'Fruit', displayName: 'Fruit', category: 'Games', itemType: 'Fruit', order: 1 },

@@ -51,6 +51,39 @@ export async function getGames(): Promise<GameOption[]> {
 }
 
 /**
+ * Get only games that have item types (for item listing)
+ */
+export async function getGamesWithItemTypes(): Promise<GameOption[]> {
+  try {
+    const games = await prisma.game.findMany({
+      where: { 
+        isActive: true,
+        items: {
+          some: {
+            isActive: true,
+          },
+        },
+      },
+      orderBy: { displayName: "asc" },
+      select: {
+        id: true,
+        name: true,
+        displayName: true,
+        description: true,
+      },
+    })
+
+    return games.map(g => ({
+      ...g,
+      description: g.description || undefined,
+    }))
+  } catch (error) {
+    console.error("Error fetching games with item types:", error)
+    return []
+  }
+}
+
+/**
  * Get only games that have currencies (for currency listing)
  */
 export async function getGamesWithCurrencies(): Promise<GameOption[]> {

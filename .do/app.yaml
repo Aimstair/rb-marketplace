@@ -1,0 +1,57 @@
+name: rb-marketplace
+region: nyc
+
+services:
+  - name: web
+    github:
+      repo: YOUR_GITHUB_USERNAME/YOUR_REPO_NAME
+      branch: main
+      deploy_on_push: true
+    
+    build_command: npm run build
+    run_command: npm start
+    
+    envs:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+      - key: NEXTAUTH_URL
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+      - key: NEXTAUTH_SECRET
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+      - key: UPLOADTHING_SECRET
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+      - key: UPLOADTHING_APP_ID
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+      - key: PAYMONGO_SECRET_KEY
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+      - key: PAYMONGO_PUBLIC_KEY
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+    
+    http_port: 3000
+    
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    
+    health_check:
+      http_path: /api/health
+      initial_delay_seconds: 60
+      period_seconds: 10
+      timeout_seconds: 5
+      success_threshold: 1
+      failure_threshold: 3
+
+databases:
+  - name: marketplace-db
+    engine: PG
+    version: "16"
+    size: db-s-1vcpu-1gb
+    num_nodes: 1

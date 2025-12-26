@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { AlertCircle, Eye, EyeOff } from "lucide-react"
 import { signIn } from "next-auth/react"
-import { resendVerificationCode, checkEmailVerification } from "@/app/actions/auth"
+import { doesUserExist, resendVerificationCode, checkEmailVerification } from "@/app/actions/auth"
 import { useToast } from "@/hooks/use-toast"
 
 export default function LoginPage() {
@@ -31,6 +31,13 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
+      // Check if user exists first
+    const userExists = await doesUserExist(email)
+    if (!userExists) {
+      setError("Account not found. Please check your email or sign up.")
+      setLoading(false)
+      return
+    }
       // First, check if email is verified
       const verificationStatus = await checkEmailVerification(email)
       

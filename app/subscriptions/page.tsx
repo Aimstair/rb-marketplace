@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
-import { upgradeSubscription, getMySubscription } from "@/app/actions/subscriptions"
+import { getMySubscription } from "@/app/actions/subscriptions"
+import { createSubscriptionPayment } from "@/app/actions/payments"
 
 export default function SubscriptionsPage() {
   const { user } = useAuth()
@@ -18,6 +19,7 @@ export default function SubscriptionsPage() {
   const [currentPlan, setCurrentPlan] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [upgrading, setUpgrading] = useState<string | null>(null)
+  const [processingPayment, setProcessingPayment] = useState(false)
 
   // Load current subscription on mount
   useEffect(() => {
@@ -47,29 +49,113 @@ export default function SubscriptionsPage() {
 
     try {
       setUpgrading(tier)
-      const result = await upgradeSubscription(user.id, tier)
+      setProcessingPayment(true)
 
-      if (result.success) {
-        setCurrentPlan(tier.toLowerCase())
+      // Create payment via PayMongo
+      const result = await createSubscriptionPayment(tier)
+
+      if (result.success && result.checkoutUrl && result.paymentId) {
         toast({
-          title: "Success",
-          description: `Upgraded to ${tier} plan! You will have access to all premium features.`,
+          title: "Opening Payment Checkout",
+          description: "Please complete your payment in the new tab.",
         })
+
+        // Open PayMongo checkout in new tab
+        const paymentWindow = window.open(result.checkoutUrl, "_blank")
+
+        // Poll for payment status
+        const checkPaymentStatus = async () => {
+          try {
+            // Reload subscription to check if it was updated
+            const subscription = await getMySubscription(user.id)
+            if (subscription.success && subscription.data?.tier.toLowerCase() === tier.toLowerCase()) {
+              // Payment successful!
+              setCurrentPlan(tier.toLowerCase())
+              toast({
+                title: "Payment Successful!",
+                description: `You've been upgraded to ${tier}. Enjoy your new features!`,
+              })
+              setProcessingPayment(false)
+              setUpgrading(null)
+              return true
+            }
+            return false
+          } catch (err) {
+            console.error("Error checking payment status:", err)
+            return false
+          }
+        }
+
+        // Polling TEMPORARILY DISABLED for webhook debugging
+        // Uncomment to re-enable polling
+        let attempts = 0
+        const maxAttempts = 200 // 10 minutes
+        const pollInterval = setInterval(async () => {
+          attempts++
+          
+          // Check if payment window was closed
+          if (paymentWindow && paymentWindow.closed) {
+            clearInterval(pollInterval)
+            const success = await checkPaymentStatus()
+            if (!success) {
+              toast({
+                title: "Payment Window Closed",
+                description: "If you completed the payment, it may take a few moments to process.",
+              })
+            }
+            setProcessingPayment(false)
+            setUpgrading(null)
+            return
+          }
+
+          // Check payment status
+          const success = await checkPaymentStatus()
+          if (success) {
+            clearInterval(pollInterval)
+            if (paymentWindow && !paymentWindow.closed) {
+              paymentWindow.close()
+            }
+          }
+
+          // Stop after max attempts
+          if (attempts >= maxAttempts) {
+            clearInterval(pollInterval)
+            toast({
+              title: "Status Check Timeout",
+              description: "Please refresh the page to see your updated subscription.",
+            })
+            setProcessingPayment(false)
+            setUpgrading(null)
+          }
+        }, 3000)
+        
+        // Instead just show a message to refresh manually
+        setTimeout(() => {
+          toast({
+            title: "Payment Processing",
+            description: "After completing payment, please refresh this page to see your updated subscription.",
+          })
+          setProcessingPayment(false)
+          setUpgrading(null)
+        }, 5000)
+
       } else {
         toast({
           title: "Error",
-          description: result.error || "Failed to upgrade subscription",
+          description: result.error || "Failed to create payment. Please try again.",
           variant: "destructive",
         })
+        setProcessingPayment(false)
+        setUpgrading(null)
       }
     } catch (err) {
-      console.error("Upgrade failed:", err)
+      console.error("Payment initiation failed:", err)
       toast({
         title: "Error",
-        description: "Failed to process upgrade. Please try again.",
+        description: "Failed to initiate payment. Please try again.",
         variant: "destructive",
       })
-    } finally {
+      setProcessingPayment(false)
       setUpgrading(null)
     }
   }
@@ -140,13 +226,13 @@ export default function SubscriptionsPage() {
                   <Button
                     className="w-full mb-6"
                     variant={currentPlan === "pro" ? "secondary" : "default"}
-                    disabled={currentPlan === "pro" || upgrading === "PRO"}
+                    disabled={currentPlan === "pro" || upgrading === "PRO" || processingPayment}
                     onClick={() => handleUpgrade("PRO")}
                   >
                     {upgrading === "PRO" ? (
                       <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Processing...
+                        Redirecting to payment...
                       </>
                     ) : currentPlan === "pro" ? (
                       "Current Plan"
@@ -195,13 +281,13 @@ export default function SubscriptionsPage() {
                   <Button
                     variant={currentPlan === "elite" ? "secondary" : "outline"}
                     className="w-full mb-6"
-                    disabled={currentPlan === "elite" || upgrading === "ELITE"}
+                    disabled={currentPlan === "elite" || upgrading === "ELITE" || processingPayment}
                     onClick={() => handleUpgrade("ELITE")}
                   >
                     {upgrading === "ELITE" ? (
                       <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Processing...
+                        Redirecting to payment...
                       </>
                     ) : currentPlan === "elite" ? (
                       "Current Plan"

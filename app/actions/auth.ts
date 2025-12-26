@@ -412,4 +412,13 @@ export async function checkEmailVerification(email: string): Promise<{ verified:
       verified: false,
     }
   }
+  
+}
+
+export async function doesUserExist(email: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true },
+  })
+  return !!user
 }

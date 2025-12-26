@@ -14,7 +14,7 @@ import { FileUpload } from "@/components/file-upload"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
 import { createListing, createCurrencyListing, createNewCurrencyListing, getFilterOptions } from "@/app/actions/listings"
-import { getGames, getGamesWithCurrencies, getCurrenciesForGame, getCategories, getItemTypesForGameAndCategory, type GameOption, type CurrencyOption, type GameItemOption } from "@/app/actions/games"
+import { getGames, getGamesWithItemTypes, getGamesWithCurrencies, getCurrenciesForGame, getCategories, getItemTypesForGameAndCategory, type GameOption, type CurrencyOption, type GameItemOption } from "@/app/actions/games"
 
 const paymentMethods = ["GCash", "PayPal", "Robux Gift Cards", "Cross-Trade", "Venmo"]
 
@@ -45,12 +45,12 @@ export default function SellPage() {
   useEffect(() => {
     const fetchFilters = async () => {
       try {
-        const [categoriesData, gamesData, itemTypesData, conditionsData, dbGames, dbGamesWithCurrencies, dbCategories] = await Promise.all([
+        const [categoriesData, gamesData, itemTypesData, conditionsData, dbGamesWithItems, dbGamesWithCurrencies, dbCategories] = await Promise.all([
           getFilterOptions("CATEGORY"),
           getFilterOptions("GAME"),
           getFilterOptions("ITEM_TYPE"),
           getFilterOptions("CONDITION"),
-          getGames(),
+          getGamesWithItemTypes(),
           getGamesWithCurrencies(),
           getCategories(),
         ])
@@ -58,7 +58,7 @@ export default function SellPage() {
         setGames(gamesData)
         setItemTypes(itemTypesData)
         setConditions(conditionsData)
-        setAvailableGames(dbGames)
+        setAvailableGames(dbGamesWithItems)
         setAvailableGamesWithCurrencies(dbGamesWithCurrencies)
         setAvailableCategories(dbCategories)
       } catch (error) {
@@ -511,7 +511,7 @@ export default function SellPage() {
                         </div>
                       )}
 
-                      {itemFormData.category && itemFormData.game && itemFormData.category !== "Accounts" && availableItemTypes.length > 0 && (
+                      {itemFormData.category === "Games" && itemFormData.game && (
                         <div>
                           <label className="text-sm font-semibold mb-2 block">Item Type *</label>
                           <select
@@ -521,8 +521,11 @@ export default function SellPage() {
                             className={`w-full px-3 py-2 border rounded-lg bg-background ${
                               itemErrors.itemType ? "border-red-500" : "border-border"
                             }`}
+                            disabled={availableItemTypes.length === 0}
                           >
-                            <option value="">Select item type</option>
+                            <option value="">
+                              {availableItemTypes.length === 0 ? "Loading item types..." : "Select item type"}
+                            </option>
                             {availableItemTypes.map((type) => (
                               <option key={type.id} value={type.itemType}>
                                 {type.displayName}
@@ -531,6 +534,11 @@ export default function SellPage() {
                           </select>
                           {itemErrors.itemType && (
                             <p className="text-xs text-red-500 mt-1">{itemErrors.itemType}</p>
+                          )}
+                          {availableItemTypes.length === 0 && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              No item types available for this game
+                            </p>
                           )}
                         </div>
                       )}
