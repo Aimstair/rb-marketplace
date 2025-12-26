@@ -29,11 +29,11 @@ async function getMetadata(): Promise<Metadata> {
       icons: {
         icon: [
           {
-            url: "/icon-light-32x32.png",
+            url: "/logo.png",
             media: "(prefers-color-scheme: light)",
           },
           {
-            url: "/icon-dark-32x32.png",
+            url: "/logo.png",
             media: "(prefers-color-scheme: dark)",
           },
           {
@@ -41,7 +41,7 @@ async function getMetadata(): Promise<Metadata> {
             type: "image/png",
           },
         ],
-        apple: "/apple-icon.png",
+        apple: "/logo.png",
       },
     }
   } catch (error) {
@@ -54,11 +54,11 @@ async function getMetadata(): Promise<Metadata> {
       icons: {
         icon: [
           {
-            url: "/icon-light-32x32.png",
+            url: "/logo.png",
             media: "(prefers-color-scheme: light)",
           },
           {
-            url: "/icon-dark-32x32.png",
+            url: "/logo.png",
             media: "(prefers-color-scheme: dark)",
           },
           {
@@ -66,7 +66,7 @@ async function getMetadata(): Promise<Metadata> {
             type: "image/png",
           },
         ],
-        apple: "/apple-icon.png",
+        apple: "/logo.png",
       },
     }
   }

@@ -1,3 +1,6 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -8,80 +11,727 @@ datasource db {
 }
 
 model User {
-  id                                           String                    @id @default(cuid())
-  username                                     String                    @unique
-  email                                        String                    @unique
-  password                                     String?
-  role                                         String                    @default("user")
-  profilePicture                               String?
-  banner                                       String?
-  bio                                          String?
-  joinDate                                     DateTime                  @default(now())
-  robloxProfile                                String?
-  discordTag                                   String?
-  createdAt                                    DateTime                  @default(now())
-  updatedAt                                    DateTime                  @updatedAt
-  isVerified                                   Boolean                   @default(false)
-  lastActive                                   DateTime                  @default(now())
-  socialLinks                                  Json?
-  isBanned                                     Boolean                   @default(false)
-  subscriptionEndsAt                           DateTime?
-  subscriptionStatus                           String                    @default("ACTIVE")
-  subscriptionTier                             String                    @default("FREE")
-  emailVerified                                DateTime?
-  customRoleId                                 String?
-  isMuted                                      Boolean                   @default(false)
-  mutedReason                                  String?
-  mutedUntil                                   DateTime?
-  failedLoginAttempts                          Int                       @default(0)
-  lockedUntil                                  DateTime?
-  salesResetMonth                              DateTime                  @default(now())
-  salesResetWeek                               DateTime                  @default(now())
-  totalSalesThisMonth                          Float                     @default(0)
-  totalSalesThisWeek                           Float                     @default(0)
-  accounts                                     Account[]
-  audit_logs                                   audit_logs[]
-  conversations1                               Conversation[]            @relation("Buyer")
-  conversations2                               Conversation[]            @relation("Seller")
-  currencyListings                             CurrencyListing[]
-  itemListings                                 ItemListing[]
-  listing_votes                                listing_votes[]
-  messagesSent                                 Message[]                 @relation("Sender")
-  notifications                                Notification[]
-  payments                                     Payment[]
-  report_listings                              report_listings[]
-  report_users_report_users_reportedIdTousers  report_users[]            @relation("report_users_reportedIdTousers")
-  report_users_report_users_reporterIdTousers  report_users[]            @relation("report_users_reporterIdTousers")
-  sessions                                     Session[]
-  subscription_logs                            subscription_logs[]
-  support_ticket_messages                      support_ticket_messages[]
-  support_tickets                              support_tickets[]
-  transactions1                                Transaction[]             @relation("BuyerTransactions")
-  transactions2                                Transaction[]             @relation("SellerTransactions")
-  user_follows_user_follows_followerIdTousers  user_follows[]            @relation("user_follows_followerIdTousers")
-  user_follows_user_follows_followingIdTousers user_follows[]            @relation("user_follows_followingIdTousers")
-  user_preferences                             user_preferences?
-  roles                                        roles?                    @relation(fields: [customRoleId], references: [id])
-  vouches_vouches_fromUserIdTousers            vouches[]                 @relation("vouches_fromUserIdTousers")
-  vouches_vouches_toUserIdTousers              vouches[]                 @relation("vouches_toUserIdTousers")
+  id             String    @id @default(cuid())
+  username       String    @unique
+  email          String    @unique
+  password       String?
+  emailVerified  DateTime?
+  role           String    @default("user") // "user" | "admin"
+  profilePicture String?
+  banner         String?
+  bio            String?
+  socialLinks    Json? // { discord?: string, twitter?: string, ... }
+  isVerified     Boolean   @default(false)
+  isBanned       Boolean   @default(false)
+  isMuted        Boolean   @default(false)
+  mutedUntil     DateTime?
+  mutedReason    String?
+  lastActive     DateTime  @default(now())
+  joinDate       DateTime  @default(now())
+
+  // Security fields
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+  totalSalesThisWeek  Float     @default(0)
+  totalSalesThisMonth Float     @default(0)
+  salesResetWeek      DateTime  @default(now())
+  salesResetMonth     DateTime  @default(now())
+  robloxProfile  String?
+  discordTag     String?
+
+  // Subscription fields
+  subscriptionTier   String    @default("FREE") // "FREE" | "PRO" | "ELITE"
+  subscriptionStatus String    @default("ACTIVE") // "ACTIVE" | "CANCELLED" | "EXPIRED"
+  subscriptionEndsAt DateTime?
+
+  // Relations
+  itemListings     ItemListing[]     @relation("ItemListings")
+  currencyListings CurrencyListing[] @relation("CurrencyListings")
+  listingVotes     ListingVote[]
+  vouchesReceived  Vouch[]           @relation("VouchesReceived")
+  vouchesSent      Vouch[]           @relation("VouchesSent")
+  subscriptionLogs SubscriptionLog[]
+
+  // Messaging relations
+  conversationsInitiated Conversation[] @relation("Buyer")
+  conversationsReceived  Conversation[] @relation("Seller")
+  messagesSent           Message[]      @relation("Sender")
+
+  // Transaction relations
+  buyerTransactions  Transaction[] @relation("BuyerTransactions")
+  sellerTransactions Transaction[] @relation("SellerTransactions")
+
+  // Notification relations
+  notifications Notification[]
+
+  // Follow relations
+  followers UserFollow[] @relation("FollowedBy")
+  following UserFollow[] @relation("Following")
+
+  // Report relations
+  listingReportsSubmitted ReportListing[] @relation("ListingReporterUser")
+  userReportsSubmitted    ReportUser[]    @relation("UserReporterUser")
+  userReportsReceived     ReportUser[]    @relation("ReportedUser")
+
+  // Admin relations
+  auditLogs              AuditLog[]             @relation("AdminUser")
+  supportTickets         SupportTicket[]
+  supportTicketMessages  SupportTicketMessage[]
+
+  // User preferences
+  preferences UserPreferences?
+
+  // Custom role relation
+  customRoleId String?
+  customRole   Role?   @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
+
+  // Payment relations
+  payments Payment[]
+
+  // NextAuth relations
+  accounts Account[]
+  sessions Session[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("users")
 }
 
+model UserFollow {
+  id String @id @default(cuid())
+
+  followerId String
+  follower   User   @relation("FollowedBy", fields: [followerId], references: [id], onDelete: Cascade)
+
+  followingId String
+  following   User   @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
+  @@map("user_follows")
+}
+
+// REMOVED: Old Listing model - data migrated to ItemListing/CurrencyListing
+// See migrate-listings.js for migration script
+
+// New dedicated Item Listing model
+model ItemListing {
+  id String @id @default(cuid())
+
+  // Basic Info
+  title       String
+  description String?
+  price       Int
+  stock       Int     @default(1)
+  image       String
+
+  // Game and Item relations
+  gameId     String
+  game       Game     @relation("ItemListingGame", fields: [gameId], references: [id], onDelete: Cascade)
+  gameItemId String
+  gameItem   GameItem @relation("ItemListingGameItem", fields: [gameItemId], references: [id], onDelete: Cascade)
+
+  // Item Details
+  listingType String @default("Item") // Always "Item"
+  condition   String // "Mint" | "New" | "Used"
+  pricingMode String @default("per-item") // "per-peso" | "per-item"
+
+  // Status
+  status   String  @default("available") // "available" | "sold"
+  featured Boolean @default(false)
+
+  // Engagement metrics
+  views     Int @default(0)
+  upvotes   Int @default(0)
+  downvotes Int @default(0)
+
+  // Relations
+  sellerId String
+  seller   User   @relation("ItemListings", fields: [sellerId], references: [id], onDelete: Cascade)
+
+  // Note: votes, conversations, transactions, and reports reference this table
+  // via listingId + listingType="ITEM" pattern (no back-reference needed)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sellerId])
+  @@index([status])
+  @@index([gameId])
+  @@index([gameItemId])
+  @@map("item_listings")
+}
+
+
+
+// New dedicated Currency Listing model
+model CurrencyListing {
+  id String @id @default(cuid())
+
+  // Basic Info
+  title       String
+  description String?
+
+  // Game and Currency relations
+  gameId         String
+  game           Game         @relation("CurrencyListingGame", fields: [gameId], references: [id], onDelete: Cascade)
+  gameCurrencyId String
+  gameCurrency   GameCurrency @relation("CurrencyListingCurrency", fields: [gameCurrencyId], references: [id], onDelete: Cascade)
+
+  // Currency Details
+  listingType String @default("Currency") // Always "Currency"
+  ratePerPeso Float // How much currency per PHP 1
+  pricingMode String @default("per-peso") // "per-peso" | "per-item"
+  stock       Int // Available amount
+  minOrder    Int // Minimum order quantity
+  maxOrder    Int // Maximum order quantity
+
+  // Display
+  image String
+
+  // Status
+  status   String  @default("available") // "available" | "sold"
+  featured Boolean @default(false)
+
+  // Engagement metrics
+  views     Int @default(0)
+  upvotes   Int @default(0)
+  downvotes Int @default(0)
+
+  // Relations
+  sellerId String
+  seller   User   @relation("CurrencyListings", fields: [sellerId], references: [id], onDelete: Cascade)
+
+  // Note: votes, conversations, transactions, and reports reference this table
+  // via listingId + listingType="CURRENCY" pattern (no back-reference needed)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sellerId])
+  @@index([status])
+  @@index([gameId])
+  @@index([gameCurrencyId])
+  @@map("currency_listings")
+}
+
+
+
+model ListingVote {
+  id String @id @default(cuid())
+
+  // Relations
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  listingId   String
+  listingType String // "ITEM" | "CURRENCY" | "OLD"
+
+  // Note: listingId references different tables based on listingType
+  // OLD -> listings table, ITEM -> item_listings, CURRENCY -> currency_listings
+  // No foreign key constraint to allow flexibility
+
+  // Vote type
+  type String // "UP" | "DOWN"
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, listingId])
+  @@index([userId])
+  @@index([listingId])
+  @@index([listingType])
+  @@map("listing_votes")
+}
+
+model ListingView {
+  id String @id @default(cuid())
+
+  listingId   String
+  listingType String // "ITEM" | "CURRENCY"
+  
+  // Track by user ID if logged in, otherwise by session/IP identifier
+  userId      String? // Null for anonymous users
+  sessionId   String? // For anonymous tracking
+  ipAddress   String? // Additional anonymous identifier
+  
+  viewedAt DateTime @default(now())
+
+  @@unique([listingId, userId, sessionId]) // One view per listing per user/session
+  @@index([listingId])
+  @@index([userId])
+  @@index([sessionId])
+  @@map("listing_views")
+}
+
+model Vouch {
+  id String @id @default(cuid())
+
+  // Relations
+  fromUserId String
+  fromUser   User   @relation("VouchesSent", fields: [fromUserId], references: [id], onDelete: Cascade)
+
+  toUserId String
+  toUser   User   @relation("VouchesReceived", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  // Optional transaction reference (for trade verification)
+  transactionId String?
+  transaction   Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  type    String // "buyer" | "seller"
+  message String?
+  rating  Int     @default(5) // 1-5 star rating
+
+  // Status tracking
+  status          String    @default("VALID") // "VALID" | "INVALID"
+  invalidatedBy   String? // Admin user ID
+  invalidatedAt   DateTime?
+  invalidReason   String?
+
+  createdAt DateTime @default(now())
+
+  @@index([fromUserId, toUserId]) // Changed from unique to index to allow multiple vouches with different statuses
+  @@index([toUserId])
+  @@index([transactionId])
+  @@map("vouches")
+}
+
+model Conversation {
+  id String @id @default(cuid())
+
+  // Relations to users
+  buyerId String
+  buyer   User   @relation("Buyer", fields: [buyerId], references: [id], onDelete: Cascade)
+
+  sellerId String
+  seller   User   @relation("Seller", fields: [sellerId], references: [id], onDelete: Cascade)
+
+  // Listing reference with type discriminator
+  listingId   String?
+  listingType String? // "ITEM" | "CURRENCY" | "OLD"
+
+  // Note: listingId references different tables based on listingType
+  // OLD -> listings table, ITEM -> item_listings, CURRENCY -> currency_listings
+  // No foreign key constraint to allow flexibility
+
+  // Messages in this conversation
+  messages Message[]
+
+  // Transactions linked to this conversation
+  transactions Transaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([listingId])
+  @@map("conversations")
+}
+
+model Message {
+  id String @id @default(cuid())
+
+  // Relations
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  senderId String
+  sender   User   @relation("Sender", fields: [senderId], references: [id], onDelete: Cascade)
+
+  // Content
+  content       String
+  attachmentUrl String?
+
+  // Counteroffer
+  offerAmount Int?
+  amount      Int? // For partial currency sales or bulk orders
+
+  // Status
+  isRead          Boolean @default(false)
+  isSystemMessage Boolean @default(false)
+  offerStatus     String? @default("pending") // "pending" | "accepted" | "declined"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@map("messages")
+}
+
+model Transaction {
+  id String @id @default(cuid())
+
+  // Relations
+  buyerId String
+  buyer   User   @relation("BuyerTransactions", fields: [buyerId], references: [id], onDelete: Cascade)
+
+  sellerId String
+  seller   User   @relation("SellerTransactions", fields: [sellerId], references: [id], onDelete: Cascade)
+
+  listingId   String
+  listingType String // "ITEM" | "CURRENCY" | "OLD"
+
+  // Note: listingId references different tables based on listingType
+  // OLD -> listings table, ITEM -> item_listings, CURRENCY -> currency_listings  
+  // No foreign key constraint to allow flexibility
+
+  conversationId String?
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  // Transaction details
+  price  Int
+  amount Int? // Quantity/amount of currency or items for this transaction
+  status String @default("PENDING") // "PENDING" | "COMPLETED" | "CANCELLED"
+
+  // Currency-specific fields
+  pricePerUnit Float? // Rate at time of purchase (for currency)
+  totalPrice   Int? // Total price in PHP (for currency)
+
+  // Confirmation flags
+  buyerConfirmed  Boolean @default(false)
+  sellerConfirmed Boolean @default(false)
+
+  // Dispute relation
+  dispute Dispute?
+
+  // Vouches linked to this transaction
+  vouches Vouch[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([listingId])
+  @@index([listingType])
+  @@index([conversationId])
+  @@map("transactions")
+}
+
+model Notification {
+  id String @id @default(cuid())
+
+  // Recipient
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Notification details
+  type    String // "MESSAGE" | "ORDER_NEW" | "ORDER_UPDATE" | "SYSTEM"
+  title   String
+  message String
+  link    String?
+
+  // Status
+  isRead Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+model ReportListing {
+  id String @id @default(cuid())
+
+  // Reporter
+  reporterId String
+  reporter   User   @relation("ListingReporterUser", fields: [reporterId], references: [id], onDelete: Cascade)
+
+  // Reported listing with type discriminator
+  listingId   String
+  listingType String // "ITEM" | "CURRENCY"
+
+  // Note: listingId references different tables based on listingType
+  // ITEM -> item_listings, CURRENCY -> currency_listings
+  // No foreign key constraint to allow flexibility
+
+  // Report details
+  reason  String // "Scam" | "Spam" | "Inappropriate" | "Fake Items" | etc
+  details String?
+  status  String  @default("PENDING") // "PENDING" | "RESOLVED" | "DISMISSED"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([reporterId])
+  @@index([listingId])
+  @@index([listingType])
+  @@index([status])
+  @@index([createdAt])
+  @@map("report_listings")
+}
+
+model ReportUser {
+  id String @id @default(cuid())
+
+  // Reporter
+  reporterId String
+  reporter   User   @relation("UserReporterUser", fields: [reporterId], references: [id], onDelete: Cascade)
+
+  // Reported user
+  reportedId String
+  reported   User   @relation("ReportedUser", fields: [reportedId], references: [id], onDelete: Cascade)
+
+  // Report details
+  reason  String // "Scam" | "Spam" | "Inappropriate" | "Impersonation" | etc
+  details String?
+  status  String  @default("PENDING") // "PENDING" | "RESOLVED" | "DISMISSED"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([reporterId])
+  @@index([reportedId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("report_users")
+}
+
+// Game and Currency master data
+model Game {
+  id          String  @id @default(cuid())
+  name        String  @unique // e.g., "Blox Fruits", "Pet Simulator X"
+  displayName String // Display name with proper formatting
+  description String?
+  image       String?
+  isActive    Boolean @default(true)
+  order       Int     @default(0) // For sorting
+
+  // Relations
+  currencies       GameCurrency[]      @relation
+  items            GameItem[]          @relation
+  itemListings     ItemListing[]       @relation("ItemListingGame")
+  currencyListings CurrencyListing[]   @relation("CurrencyListingGame")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([order])
+  @@map("games")
+}
+
+model GameCurrency {
+  id String @id @default(cuid())
+
+  // Relations
+  gameId String
+  game   Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  // Currency details
+  name        String // e.g., "Fragments", "Gems", "Robux"
+  displayName String // Display name with proper formatting
+  description String?
+  icon        String?
+  isActive    Boolean @default(true)
+  order       Int     @default(0) // For sorting within a game
+
+  // Relations
+  currencyListings CurrencyListing[] @relation("CurrencyListingCurrency")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([gameId, name])
+  @@index([gameId])
+  @@index([isActive])
+  @@map("game_currencies")
+}
+
+model GameItem {
+  id String @id @default(cuid())
+
+  // Relations
+  gameId String
+  game   Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  // Item details
+  name        String // e.g., "Huge Pets", "Robux", "Knives", "VIP Pass"
+  displayName String // Display name with proper formatting
+  description String?
+  category    String // "Accessories" | "Games" | "Accounts" | "Currency" | "Items"
+  itemType    String // "In-game Items" | "Gamepass" | "Services" | "Accounts" | "Pet" | "Weapon"
+  icon        String?
+  isActive    Boolean @default(true)
+  order       Int     @default(0) // For sorting within a game
+
+  // Relations
+  itemListings ItemListing[] @relation("ItemListingGameItem")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([gameId, name])
+  @@index([gameId])
+  @@index([isActive])
+  @@index([category])
+  @@map("game_items")
+}
+
+model SubscriptionLog {
+  id String @id @default(cuid())
+
+  // User who purchased/upgraded
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Subscription details
+  plan   String // "PRO" | "ELITE"
+  amount Int // In cents or pesos
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("subscription_logs")
+}
+
+model Dispute {
+  id String @id @default(cuid())
+
+  // Relations
+  transactionId String      @unique
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  // Details
+  reason     String // "Item Not Received" | "Item Different" | "Scam" | "Other"
+  status     String  @default("OPEN") // "OPEN" | "RESOLVED"
+  resolution String? // Resolution details
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([transactionId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("disputes")
+}
+
+model SupportTicket {
+  id String @id @default(cuid())
+
+  // Relations
+  userId   String
+  user     User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages SupportTicketMessage[]
+
+  // Details
+  subject  String
+  message  String @db.Text
+  category String @default("GENERAL") // "GENERAL" | "TECHNICAL" | "ACCOUNT" | "PAYMENT" | "REPORT" | "OTHER"
+  priority String @default("MEDIUM") // "LOW" | "MEDIUM" | "HIGH"
+  status   String @default("OPEN") // "OPEN" | "IN_PROGRESS" | "PENDING" | "CLOSED"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("support_tickets")
+}
+
+model SupportTicketMessage {
+  id String @id @default(cuid())
+
+  // Relations
+  ticketId String
+  ticket   SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Content
+  message String  @db.Text
+  isAdmin Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([userId])
+  @@map("support_ticket_messages")
+}
+
+model Announcement {
+  id String @id @default(cuid())
+
+  // Details
+  title     String
+  content   String    @db.Text
+  type      String    @default("info") // "info" | "warning" | "maintenance" | "event" | "update"
+  isActive  Boolean   @default(true)
+  expiresAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([createdAt])
+  @@map("announcements")
+}
+
+model Role {
+  id String @id @default(cuid())
+
+  // Role details
+  name        String   @unique
+  description String?
+  color       String // For UI badges (e.g., "bg-red-500", "bg-blue-500")
+  permissions String[] // Array of permission IDs (e.g., ["users_view", "users_ban", "listings_edit"])
+
+  // Relations
+  users User[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([name])
+  @@index([createdAt])
+  @@map("roles")
+}
+
+model AuditLog {
+  id String @id @default(cuid())
+
+  // Relations
+  adminId String
+  admin   User   @relation("AdminUser", fields: [adminId], references: [id], onDelete: Cascade)
+
+  // Details
+  action   String // "USER_BANNED" | "REPORT_RESOLVED" | "TICKET_CLOSED" | "ANNOUNCEMENT_CREATED" | etc
+  targetId String? // ID of affected user/listing/report
+  details  String? @db.Text
+
+  createdAt DateTime @default(now())
+
+  @@index([adminId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// NextAuth Models
 model Account {
   id                String  @id @default(cuid())
   userId            String
   type              String
   provider          String
   providerAccountId String
-  refresh_token     String?
-  access_token      String?
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String?
+  id_token          String? @db.Text
   session_state     String?
-  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
   @@index([userId])
@@ -108,6 +758,58 @@ model VerificationToken {
   @@map("verification_tokens")
 }
 
+model FilterOption {
+  id        String   @id @default(cuid())
+  type      String // "CATEGORY" | "GAME" | "ITEM_TYPE" | "CONDITION"
+  label     String
+  value     String
+  order     Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type])
+  @@map("filter_options")
+}
+
+model SystemSettings {
+  id        String   @id @default(cuid())
+  key       String   @unique // "site_name", "maintenance_mode", etc.
+  value     String   @db.Text // JSON string for complex values
+  category  String // "general", "security", "listings", "notifications", "moderation"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category])
+  @@map("system_settings")
+}
+
+model UserPreferences {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Privacy settings
+  profileVisibility     Boolean @default(true)
+  showEmail             Boolean @default(false)
+  showRobloxProfile     Boolean @default(true)
+  showActivityStatus    Boolean @default(true)
+  allowMessageRequests  Boolean @default(true)
+
+  // Notification settings
+  notifyNewMessages     Boolean @default(true)
+  notifyListingViews    Boolean @default(true)
+  notifyPriceAlerts     Boolean @default(false)
+  notifyVouches         Boolean @default(true)
+  notifyTradeUpdates    Boolean @default(true)
+  notifyMarketingEmails Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user_preferences")
+}
+
 model EmailVerification {
   id        String   @id @default(cuid())
   email     String
@@ -132,483 +834,27 @@ model PasswordReset {
   @@map("password_resets")
 }
 
-model Game {
-  id               String            @id @default(cuid())
-  name             String            @unique
-  displayName      String
-  description      String?
-  image            String?
-  isActive         Boolean           @default(true)
-  order            Int               @default(0)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  currencyListings CurrencyListing[]
-  gameCurrencies   GameCurrency[]
-  gameItems        GameItem[]
-  itemListings     ItemListing[]
-
-  @@index([isActive])
-  @@index([order])
-  @@map("games")
-}
-
-model GameItem {
-  id           String        @id @default(cuid())
-  gameId       String
-  name         String
-  displayName  String
-  description  String?
-  category     String
-  itemType     String
-  icon         String?
-  isActive     Boolean       @default(true)
-  order        Int           @default(0)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  game         Game          @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  itemListings ItemListing[] @relation("ItemListingGameItem")
-
-  @@unique([gameId, name])
-  @@index([gameId])
-  @@index([category])
-  @@index([isActive])
-  @@map("game_items")
-}
-
-model GameCurrency {
-  id               String            @id @default(cuid())
-  gameId           String
-  name             String
-  displayName      String
-  description      String?
-  icon             String?
-  isActive         Boolean           @default(true)
-  order            Int               @default(0)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  currencyListings CurrencyListing[] @relation("CurrencyListingGameCurrency")
-  game             Game              @relation(fields: [gameId], references: [id], onDelete: Cascade)
-
-  @@unique([gameId, name])
-  @@index([gameId])
-  @@index([isActive])
-  @@map("game_currencies")
-}
-
-model ItemListing {
-  id          String   @id @default(cuid())
-  title       String
-  description String?
-  price       Int
-  stock       Int      @default(1)
-  image       String
-  listingType String   @default("Item")
-  condition   String
-  status      String   @default("available")
-  featured    Boolean  @default(false)
-  views       Int      @default(0)
-  upvotes     Int      @default(0)
-  downvotes   Int      @default(0)
-  sellerId    String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  gameId      String
-  gameItemId  String
-  pricingMode String   @default("per-item")
-  game        Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  gameItem    GameItem @relation("ItemListingGameItem", fields: [gameItemId], references: [id], onDelete: Cascade)
-  seller      User     @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-
-  @@index([sellerId])
-  @@index([status])
-  @@index([gameId])
-  @@index([gameItemId])
-  @@map("item_listings")
-}
-
-model CurrencyListing {
-  id             String       @id @default(cuid())
-  title          String
-  description    String?
-  listingType    String       @default("Currency")
-  ratePerPeso    Float
-  stock          Int
-  minOrder       Int
-  maxOrder       Int
-  image          String
-  status         String       @default("available")
-  featured       Boolean      @default(false)
-  views          Int          @default(0)
-  upvotes        Int          @default(0)
-  downvotes      Int          @default(0)
-  sellerId       String
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  gameCurrencyId String
-  gameId         String
-  pricingMode    String       @default("per-peso")
-  gameCurrency   GameCurrency @relation("CurrencyListingGameCurrency", fields: [gameCurrencyId], references: [id], onDelete: Cascade)
-  game           Game         @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  seller         User         @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-
-  @@index([sellerId])
-  @@index([status])
-  @@index([gameId])
-  @@index([gameCurrencyId])
-  @@map("currency_listings")
-}
-
-model Conversation {
-  id           String        @id @default(cuid())
-  buyerId      String
-  sellerId     String
-  listingId    String?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  listingType  String?
-  buyer        User          @relation("Buyer", fields: [buyerId], references: [id], onDelete: Cascade)
-  seller       User          @relation("Seller", fields: [sellerId], references: [id], onDelete: Cascade)
-  messages     Message[]
-  transactions Transaction[]
-
-  @@index([buyerId])
-  @@index([sellerId])
-  @@index([listingId])
-  @@map("conversations")
-}
-
-model Message {
-  id              String       @id @default(cuid())
-  conversationId  String
-  senderId        String
-  content         String
-  attachmentUrl   String?
-  isRead          Boolean      @default(false)
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime
-  offerAmount     Int?
-  isSystemMessage Boolean      @default(false)
-  offerStatus     String?      @default("pending")
-  amount          Int?
-  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  sender          User         @relation("Sender", fields: [senderId], references: [id], onDelete: Cascade)
-
-  @@index([conversationId])
-  @@index([senderId])
-  @@map("messages")
-}
-
-model Transaction {
-  id              String        @id @default(cuid())
-  buyerId         String
-  sellerId        String
-  listingId       String
-  price           Int
-  status          String        @default("PENDING")
-  buyerConfirmed  Boolean       @default(false)
-  sellerConfirmed Boolean       @default(false)
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  amount          Int?
-  conversationId  String?
-  listingType     String
-  pricePerUnit    Float?
-  totalPrice      Int?
-  disputes        disputes?
-  buyer           User          @relation("BuyerTransactions", fields: [buyerId], references: [id], onDelete: Cascade)
-  conversation    Conversation? @relation(fields: [conversationId], references: [id])
-  seller          User          @relation("SellerTransactions", fields: [sellerId], references: [id], onDelete: Cascade)
-  vouches         vouches[]
-
-  @@index([buyerId])
-  @@index([sellerId])
-  @@index([listingId])
-  @@index([listingType])
-  @@index([conversationId])
-  @@map("transactions")
-}
-
-model Notification {
-  id        String   @id @default(cuid())
-  userId    String
-  type      String
-  title     String
-  message   String
-  link      String?
-  isRead    Boolean  @default(false)
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([isRead])
-  @@index([createdAt])
-  @@map("notifications")
-}
-
 model Payment {
-  id                String    @id @default(cuid())
-  userId            String
-  amount            Float
-  currency          String    @default("PHP")
-  status            String    @default("pending")
-  provider          String
-  providerPaymentId String
-  type              String
-  metadata          Json?
-  paidAt            DateTime?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                 String   @id @default(cuid())
+  userId             String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  amount             Float    // Amount in PHP (not centavos)
+  currency           String   @default("PHP")
+  status             String   @default("pending") // "pending" | "completed" | "failed" | "refunded"
+  
+  provider           String   // "paymongo"
+  providerPaymentId  String   // Payment ID from provider
+  
+  type               String   // "subscription" | "boost" | "feature"
+  metadata           Json?    // Additional data like tier, checkout URL, etc.
+  
+  paidAt             DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   @@index([userId])
   @@index([providerPaymentId])
   @@index([status])
   @@map("payments")
-}
-
-model SystemSettings {
-  id        String   @id @default(cuid())
-  key       String   @unique
-  value     String
-  category  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([category])
-  @@map("system_settings")
-}
-
-model announcements {
-  id        String    @id
-  title     String
-  content   String
-  type      String    @default("info")
-  isActive  Boolean   @default(true)
-  expiresAt DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime
-
-  @@index([createdAt])
-  @@index([isActive])
-}
-
-model audit_logs {
-  id        String   @id
-  adminId   String
-  action    String
-  targetId  String?
-  details   String?
-  createdAt DateTime @default(now())
-  users     User     @relation(fields: [adminId], references: [id], onDelete: Cascade)
-
-  @@index([action])
-  @@index([adminId])
-  @@index([createdAt])
-}
-
-model disputes {
-  id            String      @id
-  transactionId String      @unique
-  reason        String
-  status        String      @default("OPEN")
-  resolution    String?
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime
-  transactions  Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
-
-  @@index([createdAt])
-  @@index([status])
-  @@index([transactionId])
-}
-
-model filter_options {
-  id        String   @id
-  type      String
-  label     String
-  value     String
-  order     Int      @default(0)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime
-
-  @@index([type])
-}
-
-model listing_views {
-  id          String   @id
-  listingId   String
-  listingType String
-  userId      String?
-  sessionId   String?
-  ipAddress   String?
-  viewedAt    DateTime @default(now())
-
-  @@unique([listingId, userId, sessionId])
-  @@index([listingId])
-  @@index([sessionId])
-  @@index([userId])
-}
-
-model listing_votes {
-  id          String   @id
-  userId      String
-  listingId   String
-  type        String
-  createdAt   DateTime @default(now())
-  listingType String
-  users       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, listingId])
-  @@index([listingId])
-  @@index([listingType])
-  @@index([userId])
-}
-
-model report_listings {
-  id          String   @id
-  reporterId  String
-  listingId   String
-  listingType String
-  reason      String
-  details     String?
-  status      String   @default("PENDING")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime
-  users       User     @relation(fields: [reporterId], references: [id], onDelete: Cascade)
-
-  @@index([createdAt])
-  @@index([listingId])
-  @@index([listingType])
-  @@index([reporterId])
-  @@index([status])
-}
-
-model report_users {
-  id                                   String   @id
-  reporterId                           String
-  reportedId                           String
-  reason                               String
-  details                              String?
-  status                               String   @default("PENDING")
-  createdAt                            DateTime @default(now())
-  updatedAt                            DateTime
-  users_report_users_reportedIdTousers User     @relation("report_users_reportedIdTousers", fields: [reportedId], references: [id], onDelete: Cascade)
-  users_report_users_reporterIdTousers User     @relation("report_users_reporterIdTousers", fields: [reporterId], references: [id], onDelete: Cascade)
-
-  @@index([createdAt])
-  @@index([reportedId])
-  @@index([reporterId])
-  @@index([status])
-}
-
-model roles {
-  id          String   @id
-  name        String   @unique
-  description String?
-  color       String
-  permissions String[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime
-  users       User[]
-
-  @@index([createdAt])
-  @@index([name])
-}
-
-model subscription_logs {
-  id        String   @id
-  userId    String
-  plan      String
-  amount    Int
-  createdAt DateTime @default(now())
-  users     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([createdAt])
-  @@index([userId])
-}
-
-model support_ticket_messages {
-  id              String          @id
-  ticketId        String
-  userId          String
-  message         String
-  isAdmin         Boolean         @default(false)
-  createdAt       DateTime        @default(now())
-  support_tickets support_tickets @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  users           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([ticketId])
-  @@index([userId])
-}
-
-model support_tickets {
-  id                      String                    @id
-  userId                  String
-  subject                 String
-  message                 String
-  status                  String                    @default("OPEN")
-  createdAt               DateTime                  @default(now())
-  updatedAt               DateTime
-  category                String                    @default("GENERAL")
-  priority                String                    @default("MEDIUM")
-  support_ticket_messages support_ticket_messages[]
-  users                   User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([createdAt])
-  @@index([status])
-  @@index([userId])
-}
-
-model user_follows {
-  id                                    String   @id
-  followerId                            String
-  followingId                           String
-  createdAt                             DateTime @default(now())
-  users_user_follows_followerIdTousers  User     @relation("user_follows_followerIdTousers", fields: [followerId], references: [id], onDelete: Cascade)
-  users_user_follows_followingIdTousers User     @relation("user_follows_followingIdTousers", fields: [followingId], references: [id], onDelete: Cascade)
-
-  @@unique([followerId, followingId])
-  @@index([followerId])
-  @@index([followingId])
-}
-
-model user_preferences {
-  id                    String   @id
-  userId                String   @unique
-  profileVisibility     Boolean  @default(true)
-  showEmail             Boolean  @default(false)
-  showRobloxProfile     Boolean  @default(true)
-  showActivityStatus    Boolean  @default(true)
-  allowMessageRequests  Boolean  @default(true)
-  notifyNewMessages     Boolean  @default(true)
-  notifyListingViews    Boolean  @default(true)
-  notifyPriceAlerts     Boolean  @default(false)
-  notifyVouches         Boolean  @default(true)
-  notifyTradeUpdates    Boolean  @default(true)
-  notifyMarketingEmails Boolean  @default(false)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime
-  users                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model vouches {
-  id                              String       @id
-  fromUserId                      String
-  toUserId                        String
-  transactionId                   String?
-  type                            String
-  message                         String?
-  rating                          Int          @default(5)
-  createdAt                       DateTime     @default(now())
-  invalidReason                   String?
-  invalidatedAt                   DateTime?
-  invalidatedBy                   String?
-  status                          String       @default("VALID")
-  users_vouches_fromUserIdTousers User         @relation("vouches_fromUserIdTousers", fields: [fromUserId], references: [id], onDelete: Cascade)
-  users_vouches_toUserIdTousers   User         @relation("vouches_toUserIdTousers", fields: [toUserId], references: [id], onDelete: Cascade)
-  transactions                    Transaction? @relation(fields: [transactionId], references: [id])
-
-  @@index([fromUserId, toUserId])
-  @@index([toUserId])
-  @@index([transactionId])
 }
