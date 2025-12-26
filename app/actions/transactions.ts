@@ -1132,9 +1132,17 @@ export async function cancelTransaction(transactionId: string): Promise<{
   error?: string
 }> {
   try {
-    // Get the current user (placeholder)
-    const currentUser = await prisma.user.findFirst({
-      where: { role: "user" },
+    const session = await auth()
+
+    if (!session?.user?.email) {
+      return {
+        success: false,
+        error: "Unauthorized. Please log in.",
+      }
+    }
+    
+    const currentUser = await prisma.user.findUnique({
+      where: { email: session.user.email },
     })
 
     if (!currentUser) {

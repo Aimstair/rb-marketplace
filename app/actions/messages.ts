@@ -537,7 +537,28 @@ export async function sendMessage(
         offerAmount: options.offerAmount,
         amount: options.amount,
       },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            username: true,
+            profilePicture: true,
+          }
+        }
+      }
     })
+
+    try {
+      const { pusherServer } = await import("@/lib/pusher")
+      await pusherServer.trigger(
+        `chat-${conversationId}`, // Channel unique to this chat
+        "new-message",            // Event name
+        message                   // The actual message data
+      )
+    } catch (pusherError) {
+      console.error("Pusher trigger failed:", pusherError)
+      // We don't return an error here because the message IS saved in DB
+    }
 
     let transactionCreated = false
 

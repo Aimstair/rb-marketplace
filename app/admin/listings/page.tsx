@@ -306,7 +306,7 @@ export default function ListingsPage() {
 
                       {/* Price & Status */}
                       <div className="text-right flex-shrink-0">
-                        <p className="font-semibold">?{listing.price}</p>
+                        <p className="font-semibold">₱{listing.price}</p>
                         {getStatusBadge(listing.status)}
                       </div>
 

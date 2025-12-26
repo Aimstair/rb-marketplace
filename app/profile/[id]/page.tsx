@@ -381,10 +381,6 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
               <div className="flex flex-wrap gap-2">
                 {!profile.isOwnProfile && (
                   <>
-                    <Button onClick={handleMessage} disabled={isBlocked}>
-                      <MessageCircle className="w-4 h-4 mr-2" />
-                      Message
-                    </Button>
                     <Button
                       variant={isFollowing ? "secondary" : "outline"}
                       onClick={handleToggleFollow}

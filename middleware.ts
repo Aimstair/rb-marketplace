@@ -5,46 +5,51 @@ import { getToken } from "next-auth/jwt"
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Skip middleware for static files, API routes (including NextAuth), and auth routes
+  // 1. Skip middleware for static assets and specific system routes
   if (
     pathname.startsWith("/_next") ||
-    pathname.startsWith("/api/auth") || // Explicitly allow NextAuth API routes
-    pathname.startsWith("/api") ||
+    pathname.startsWith("/api") || // Skip ALL API routes to prevent infinite loops
     pathname.startsWith("/auth") ||
+    pathname.startsWith("/maintenance") || // Crucial: don't redirect if already here
     pathname.match(/\.(ico|png|jpg|jpeg|svg|gif|webp|css|js)$/)
   ) {
     return NextResponse.next()
   }
 
-  // Check maintenance mode by fetching from API
+  // 2. Check maintenance mode
   try {
+    // Force absolute URL using the incoming request's host
     const baseUrl = request.nextUrl.origin
+    
     const response = await fetch(`${baseUrl}/api/settings/maintenance`, {
       method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      // Set a short timeout/cache policy so the site doesn't hang if the DB is slow
+      next: { revalidate: 60 } 
     })
 
     if (response.ok) {
       const data = await response.json()
       
       if (data.maintenanceMode === true) {
-        // Get user token
-        const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET })
+        // Get user token to check role
+        const token = await getToken({ 
+          req: request, 
+          secret: process.env.NEXTAUTH_SECRET 
+        })
         
-        // Allow admins to access during maintenance
-        if (token?.role !== "admin") {
-          // Redirect to maintenance page (except if already on it)
-          if (pathname !== "/maintenance") {
-            return NextResponse.redirect(new URL("/maintenance", request.url))
-          }
+        // ALLOW admins to bypass maintenance
+        if (token?.role === "admin") {
+          return NextResponse.next()
         }
+
+        // REDIRECT everyone else
+        return NextResponse.redirect(new URL("/maintenance", request.url))
       }
     }
   } catch (error) {
-    console.error("Middleware error checking maintenance mode:", error)
-    // If there's an error, allow the request to continue
+    // If the fetch fails (e.g. during build or DB downtime), 
+    // we log it but allow the request to proceed so the site doesn't go 500
+    console.error("Middleware fetch failed:", error)
   }
 
   return NextResponse.next()
@@ -52,13 +57,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - api (API routes)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     */
+    // Match all paths except those starting with api, _next/static, _next/image, or favicon.ico
     "/((?!api|_next/static|_next/image|favicon.ico).*)",
   ],
 }

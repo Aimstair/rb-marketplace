@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-
+import Pusher from "pusher-js" // Add this line
 import Navigation from "@/components/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -411,6 +411,66 @@ export default function MessagesPage() {
 
     loadMessages()
   }, [selectedConversationId, user?.id])
+
+  // --- STEP 4: Pusher Real-time Listener ---
+  useEffect(() => {
+    if (!selectedConversationId || !user?.id) return
+
+    // Initialize Pusher Client
+    const pusher = new Pusher(process.env.NEXT_PUBLIC_PUSHER_KEY!, {
+      cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
+    })
+
+    // Subscribe to the specific conversation channel
+    const channel = pusher.subscribe(`chat-${selectedConversationId}`)
+
+    // Listen for the 'new-message' event we triggered in the Server Action
+    channel.bind("new-message", (data: any) => {
+      // IMPORTANT: Check if the message is from the OTHER user. 
+      // We already added our own messages "optimistically" in handleSendMessage.
+      if (data.senderId !== user.id) {
+        const incomingMsg: Message = {
+          id: data.id,
+          sender: "seller", // From the perspective of the current user
+          text: data.content,
+          timestamp: new Date(data.createdAt).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          createdAt: new Date(data.createdAt),
+          type: data.offerAmount ? "counteroffer" : data.attachmentUrl ? "image" : "text",
+          imageUrl: data.attachmentUrl || undefined,
+          offerAmount: data.offerAmount || undefined,
+          offerStatus: data.offerStatus || "pending",
+        }
+
+        setMessages((prev) => {
+          // Prevent duplicate messages if the event fires twice
+          if (prev.find((m) => m.id === data.id)) return prev
+          return [...prev, incomingMsg]
+        })
+        
+        // Update the contacts list to show the new message preview on the left sidebar
+        setContacts((prev) => prev.map(contact => {
+          if (contact.id === selectedConversationId) {
+            return {
+              ...contact,
+              lastMessage: data.content,
+              timestamp: "Just now"
+            }
+          }
+          return contact
+        }))
+      }
+    })
+
+    // Cleanup: Unsubscribe when the user switches chats or leaves the page
+    return () => {
+      pusher.unsubscribe(`chat-${selectedConversationId}`)
+      pusher.disconnect()
+    }
+  }, [selectedConversationId, user?.id])
+  // ------------------------------------------
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })

@@ -131,7 +131,6 @@ export default function LoginPage() {
                 className="w-full"
                 disabled={loading}
               />
-              <p className="text-xs text-muted-foreground mt-1">Demo: user@test.com / admin@test.com</p>
             </div>
 
             {/* Password */}
@@ -155,7 +154,6 @@ export default function LoginPage() {
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
-              <p className="text-xs text-muted-foreground mt-1">Demo: password123 (user) / admin123 (admin)</p>
             </div>
 
             {/* Remember & Forgot */}
