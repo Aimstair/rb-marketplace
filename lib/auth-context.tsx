@@ -40,7 +40,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (status === "loading") {
       setIsLoading(true)
-    } else if (session?.user) {
+      return
+    } 
+    
+    if (session?.user) {
       // Convert NextAuth session to local User format
       const sessionUser = session.user as any
       setUser({
@@ -51,7 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profilePicture: session.user.image || undefined,
         banner: undefined, // TODO: Fetch from database
         bio: undefined, // TODO: Fetch from database
-        joinDate: new Date().toISOString().split("T")[0], // TODO: Fetch from database
+        joinDate: new Date().toISOString().split("T")[0], // TODO: Fetch  from database
         vouches: {
           total: 0, // TODO: Fetch from database
           buyer: 0,
@@ -73,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const logout = async () => {
-    await nextAuthSignOut({ redirect: false })
+    await nextAuthSignOut({ redirect: true, callbackUrl: "/auth/login" })
   }
 
   const signup = async (email: string, password: string, username: string) => {

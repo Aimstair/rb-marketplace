@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
-import bcrypt from "bcrypt"
+import bcrypt from "bcryptjs"
 
 export interface UserProfileData {
   id: string

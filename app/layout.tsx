@@ -7,6 +7,9 @@ import { NextAuthProvider } from "@/lib/next-auth-provider"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
 import { prisma } from "@/lib/prisma"
+import { redirect } from "next/navigation" 
+import { headers } from "next/headers"
+import { auth } from "@/auth"
 import "./globals.css"
 
 const _geist = Geist({ subsets: ["latin"] })
@@ -76,15 +79,32 @@ export async function generateMetadata(): Promise<Metadata> {
   return getMetadata()
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  const [session, maintenanceSetting] = await Promise.all([
+    auth(),
+    prisma.systemSettings.findUnique({ where: { key: "maintenance_mode" } })
+  ])
+
+  const isMaintenance = maintenanceSetting?.value === "true"
+  
+  // 2. Determine if we are on the maintenance page
+  const headerList = await headers()
+  const fullUrl = headerList.get("x-url") || ""
+  const isMaintenancePage = fullUrl.includes("/maintenance")
+
+  // 3. Maintenance Redirect Logic
+  if (isMaintenance && session?.user?.role !== "admin" && !isMaintenancePage) {
+    redirect("/maintenance")
+  }
+
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`font-sans antialiased`}>
-        <NextAuthProvider>
+        <NextAuthProvider session={session}>
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
             <AuthProvider>{children}</AuthProvider>
             <Toaster />

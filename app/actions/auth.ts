@@ -1,12 +1,13 @@
 "use server"
 
 import { prisma } from "@/lib/prisma"
-import bcrypt from "bcrypt"
+import bcrypt from "bcryptjs"
 import { z } from "zod"
 import { signUpSchema, type SignUpInput, type SignUpResult } from "@/lib/schemas"
 import { signIn } from "@/auth"
 import { sendEmail, generateVerificationEmail, generatePasswordResetEmail } from "@/lib/email"
 import crypto from "crypto"
+import { AuthError } from "next-auth"
 
 export async function signUp(input: SignUpInput): Promise<SignUpResult> {
   try {
@@ -129,29 +130,32 @@ export async function signInWithCredentials(
   password: string
 ): Promise<LoginResult> {
   try {
-    // Call NextAuth signIn with redirect disabled
-    const result = await signIn("credentials", {
+    // 1. Remove 'redirect: false'. 
+    // Auth.js v5 needs to control the redirect to update the session properly.
+    await signIn("credentials", {
       email,
       password,
-      redirect: false,
+      redirectTo: "/", // Where the user should go after success
     })
 
-    if (result?.error) {
-      return {
-        success: false,
-        error: result.error,
+    // This line will actually never be reached on success 
+    // because signIn throws a redirect error
+    return { success: true }
+    
+  } catch (error) {
+    // 2. Handle specific Auth.js errors
+    if (error instanceof AuthError) {
+      switch (error.type) {
+        case "CredentialsSignin":
+          return { success: false, error: "Invalid email or password." }
+        default:
+          return { success: false, error: "Something went wrong. Please try again." }
       }
     }
 
-    return {
-      success: true,
-    }
-  } catch (error) {
-    console.error("Error during login:", error)
-    return {
-      success: false,
-      error: "Failed to sign in. Please try again.",
-    }
+    // 3. CRITICAL: Re-throw the error if it is NOT an AuthError.
+    // This allows the Next.js internal RedirectError to work and move the user to "/"
+    throw error 
   }
 }
 

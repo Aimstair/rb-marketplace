@@ -237,27 +237,30 @@ export async function getPaymentLink(linkId: string) {
 /**
  * Verify webhook signature
  */
-export function verifyWebhookSignature(payload: string, signature: string): boolean {
-  const crypto = require("crypto")
-  
-  if (!PAYMONGO_WEBHOOK_SECRET) {
-    console.error("PAYMONGO_WEBHOOK_SECRET is not set")
-    return false
+export function verifyWebhookSignature(payload: string, header: string): boolean {
+  const crypto = require("crypto");
+  if (!PAYMONGO_WEBHOOK_SECRET || !header) return false;
+
+  try {
+    // 1. PayMongo sends: t=<timestamp>,v1=<signature>
+    const parts = header.split(',');
+    const timestamp = parts.find(p => p.startsWith('t='))?.split('=')[1];
+    const signature = parts.find(p => p.startsWith('v1='))?.split('=')[1];
+
+    if (!timestamp || !signature) return false;
+
+    // 2. Base string must be: timestamp + "." + payload
+    const toSign = timestamp + "." + payload;
+
+    const computedSignature = crypto
+      .createHmac("sha256", PAYMONGO_WEBHOOK_SECRET)
+      .update(toSign)
+      .digest("hex");
+
+    return computedSignature === signature;
+  } catch (error) {
+    return false;
   }
-
-  console.log("[PayMongo] Verifying webhook signature")
-  console.log("[PayMongo] Secret loaded:", PAYMONGO_WEBHOOK_SECRET ? `${PAYMONGO_WEBHOOK_SECRET.substring(0, 10)}...` : "NOT SET")
-  console.log("[PayMongo] Received signature:", signature ? `${signature.substring(0, 20)}...` : "EMPTY")
-
-  const computedSignature = crypto
-    .createHmac("sha256", PAYMONGO_WEBHOOK_SECRET)
-    .update(payload)
-    .digest("hex")
-
-  console.log("[PayMongo] Computed signature:", `${computedSignature.substring(0, 20)}...`)
-  console.log("[PayMongo] Signatures match:", computedSignature === signature)
-
-  return computedSignature === signature
 }
 
 /**

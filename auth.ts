@@ -2,7 +2,8 @@ import NextAuth from "next-auth"
 import Credentials from "next-auth/providers/credentials"
 import { PrismaAdapter } from "@auth/prisma-adapter"
 import { prisma } from "@/lib/prisma"
-import bcrypt from "bcrypt"
+import bcrypt from "bcryptjs"
+
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
@@ -143,11 +144,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return session
     },
   },
-  session: {
-    strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60, // 30 days
-  },
-  secret: process.env.NEXTAUTH_SECRET,
+  session: { strategy: "jwt" }, // Force JWT even with adapter
+  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
+  trustHost: true, // Crucial for production stability
   events: {
     async signIn({ user }) {
       // Update last active timestamp

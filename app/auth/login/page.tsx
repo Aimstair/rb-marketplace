@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { AlertCircle, Eye, EyeOff } from "lucide-react"
 import { signIn } from "next-auth/react"
-import { doesUserExist, resendVerificationCode, checkEmailVerification } from "@/app/actions/auth"
+import { signInWithCredentials, doesUserExist, resendVerificationCode, checkEmailVerification } from "@/app/actions/auth"
 import { useToast } from "@/hooks/use-toast"
 
 export default function LoginPage() {
@@ -34,7 +34,7 @@ export default function LoginPage() {
       // Check if user exists first
     const userExists = await doesUserExist(email)
     if (!userExists) {
-      setError("Account not found. Please check your email or sign up.")
+      setError("Account not found. Please sign up.")
       setLoading(false)
       return
     }
@@ -58,42 +58,37 @@ export default function LoginPage() {
       }
 
       // Use NextAuth signIn with credentials provider
-      const result = await signIn("credentials", {
-        email,
-        password,
-        redirect: false,
-      })
-
-      if (result?.error) {
-        // Map common NextAuth errors to user-friendly messages
-        let errorMessage = result.error
-        
-        // Check for specific error messages from our authorize function
-        if (result.error.includes("locked") || result.error.includes("Too many failed attempts")) {
-          errorMessage = result.error
-        } else if (result.error.includes("Invalid password")) {
-          errorMessage = result.error
-        } else if (result.error.includes("Invalid credentials")) {
-          errorMessage = "Invalid email or password. Please try again."
-        } else if (result.error.includes("banned")) {
-          errorMessage = "Your account has been banned. Please contact support."
-        } else if (result.error === "CredentialsSignin" || result.error === "Configuration") {
-          // Generic NextAuth errors - show friendly message
-          errorMessage = "Invalid email or password. Please try again."
-        }
-        
-        setError(errorMessage)
-      } else if (result?.ok) {
-        // Successful login
-        toast({
-          title: "Welcome Back!",
-          description: "You've successfully logged in.",
-        })
-        router.push(redirectUrl)
+      const result = await signInWithCredentials(email, password)
+      if (result && !result.success && result.error) {
+      let errorMessage = result.error
+      
+      // Keep your custom error mapping logic here
+      if (result.error.includes("locked") || result.error.includes("Too many failed attempts")) {
+        errorMessage = result.error
+      } else if (result.error.includes("Invalid password")) {
+        errorMessage = result.error
+      } else if (result.error.includes("Invalid credentials")) {
+        errorMessage = "Invalid email or password. Please try again."
+      } else if (result.error.includes("banned")) {
+        errorMessage = "Your account has been banned. Please contact support."
+      } else if (result.error === "CredentialsSignin" || result.error === "Configuration") {
+        errorMessage = "Invalid email or password. Please try again."
       }
+      
+      setError(errorMessage)
+      setLoading(false) // Only stop loading if there is an error
+    } 
+    
+    // NOTE: You don't need 'else if (result.success)' with router.push here
+    // because the Server Action will trigger a redirect automatically.
+    // If it reaches here without an error, the browser will navigate away.
+
     } catch (err: any) {
-      setError(err.message || "Login failed. Please try again.")
-    } finally {
+      // 4. Handle unexpected errors
+      // If the error is a Next.js redirect, don't show it as a login failure
+      if (err.message === "NEXT_REDIRECT") return;
+
+      setError("Login failed. Please try again.")
       setLoading(false)
     }
   }

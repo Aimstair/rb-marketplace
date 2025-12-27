@@ -33,16 +33,16 @@ const testPayload = {
       type: "link.payment.paid",
       livemode: false,
       data: {
-        id: "link_TEST" + Date.now(),
+        id: "link_d1rHrvxrPm8UJcBBjRrZAAqE",
         type: "link",
         attributes: {
           amount: 19900,
           archived: false,
           currency: "PHP",
-          description: "Test Payment - PRO Subscription",
+          description: "Test Payment - ELITE Subscription",
           livemode: false,
           fee: 2985,
-          remarks: "Upgrade to PRO plan",
+          remarks: "Upgrade to ELITE plan",
           status: "paid",
           tax_amount: null,
           taxes: [],
@@ -52,10 +52,10 @@ const testPayload = {
           updated_at: Date.now(),
           payments: [],
           metadata: {
-            userId: "test_user_123",
-            tier: "PRO",
-            username: "testuser",
-            email: "test@example.com",
+            userId: "cmjm3fvtu0000sk2rkampfhmp",
+            tier: "ELITE",
+            username: "test",
+            email: "ericmargeonzon@gmail.com",
             type: "subscription"
           }
         }
@@ -67,12 +67,17 @@ const testPayload = {
 }
 
 const payload = JSON.stringify(testPayload)
+const timestamp = Math.floor(Date.now() / 1000);
 
-// Generate signature
+// Generate signature using PayMongo's required format: timestamp + "." + payload
+const toSign = timestamp + "." + payload;
 const signature = crypto
   .createHmac("sha256", WEBHOOK_SECRET)
-  .update(payload)
-  .digest("hex")
+  .update(toSign)
+  .digest("hex");
+
+// Create the correct header string
+const paymongoHeader = `t=${timestamp},v1=${signature}`;
 
 console.log("📦 Test payload created")
 console.log(`   Event type: link.payment.paid`)
@@ -87,8 +92,8 @@ const options = {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
-    "Content-Length": payload.length,
-    "paymongo-signature": signature
+    "Content-Length": Buffer.byteLength(payload),
+    "paymongo-signature": paymongoHeader // Send the formatted header
   }
 }
 
