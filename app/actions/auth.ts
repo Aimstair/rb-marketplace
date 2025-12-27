@@ -135,7 +135,7 @@ export async function signInWithCredentials(
     await signIn("credentials", {
       email,
       password,
-      redirectTo: "/", // Where the user should go after success
+      redirect: false, // Where the user should go after success
     })
 
     // This line will actually never be reached on success 

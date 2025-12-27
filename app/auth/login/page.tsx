@@ -59,7 +59,12 @@ export default function LoginPage() {
 
       // Use NextAuth signIn with credentials provider
       const result = await signInWithCredentials(email, password)
-      if (result && !result.success && result.error) {
+      if (result && result.success) {
+        // 1. Refresh the router to clear the cache and update the session state
+        router.refresh(); 
+        // 2. Navigate to the marketplace
+        window.location.href = redirectUrl;
+      } else if (result && !result.success && result.error) {
       let errorMessage = result.error
       
       // Keep your custom error mapping logic here
