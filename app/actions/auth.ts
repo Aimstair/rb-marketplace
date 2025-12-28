@@ -296,7 +296,7 @@ export async function sendPasswordResetLink(email: string): Promise<{ success: b
     })
 
     // Generate reset link
-    const resetLink = `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/auth/reset-password?token=${resetToken}`
+    const resetLink = `${process.env.NEXTAUTH_URL || "https://rbmarket.app"}/auth/reset-password?token=${resetToken}`
 
     // Send password reset email
     await sendEmail({

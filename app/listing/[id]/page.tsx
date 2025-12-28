@@ -9,6 +9,9 @@ import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
+import { Metadata } from "next"
+import { notFound } from "next/navigation"
+import { JsonLd } from "@/components/json-ld"
 import { getListing, toggleListingVote, reportListing, getListingViewers, nudgeViewer } from "@/app/actions/listings"
 import {
   Dialog,
@@ -82,8 +85,6 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
           return
         }
 
-        console.log("Listing loaded:", result.listing)
-        console.log("Seller ID:", result.listing.seller?.id)
         setListing(result.listing)
         setVotes({ 
           upvotes: result.listing.upvotes || 0, 

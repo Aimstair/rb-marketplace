@@ -64,7 +64,7 @@ export async function createSubscriptionPayment(
     const description = `${tier} Subscription - ${user.username}`
 
     // Get base URL for redirects
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://rbmarket.app"
 
     // Create payment link
     const paymentResult = await createPaymentLink({

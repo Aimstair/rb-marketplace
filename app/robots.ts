@@ -32,6 +32,6 @@ export default function robots(): MetadataRoute.Robots {
         crawlDelay: 1,
       },
     ],
-    sitemap: `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/sitemap.xml`,
+    sitemap: `${process.env.NEXTAUTH_URL || "https://rbmarket.app"}/sitemap.xml`,
   }
 }

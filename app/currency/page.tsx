@@ -84,10 +84,8 @@ export default function CurrencyMarketplace() {
           setListings(mapped)
           setTotalListings(mapped.filter(l => l.status === "Available").length)
         } catch (newModelError) {
-          console.log("[Currency Page] New model not ready, using old model...")
           // Fallback to old model
           dbListings = await getCurrencyListings()
-          console.log("[Currency Page] Fetched from old model:", dbListings)
 
           // Transform old model listings to UI format
           const mapped: CurrencyListing[] = (dbListings || []).map((listing: DBCurrencyListing) => {
