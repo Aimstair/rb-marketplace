@@ -3,6 +3,47 @@
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import bcrypt from "bcryptjs"
+import { headers } from "next/headers"
+import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit"
+
+const ONE_HOUR_MS = 60 * 60 * 1000
+
+const PROFILE_RATE_LIMITS = {
+  updateProfile: { maxRequests: 30, windowMs: ONE_HOUR_MS },
+  toggleFollow: { maxRequests: 120, windowMs: ONE_HOUR_MS },
+  changePassword: { maxRequests: 10, windowMs: ONE_HOUR_MS },
+  updatePreferences: { maxRequests: 30, windowMs: ONE_HOUR_MS },
+} as const
+
+async function enforceProfileRateLimit(params: {
+  namespace: string
+  maxRequests: number
+  windowMs: number
+  userId?: string | null
+  email?: string | null
+  message: string
+}): Promise<{ success: true } | { success: false; error: string }> {
+  const requestHeaders = await headers()
+  const rate = await checkRateLimit(
+    getRateLimitIdentifier({
+      headers: requestHeaders,
+      userId: params.userId,
+      email: params.email,
+    }),
+    params.maxRequests,
+    params.windowMs,
+    { namespace: params.namespace }
+  )
+
+  if (rate.allowed) {
+    return { success: true }
+  }
+
+  return {
+    success: false,
+    error: `${params.message} Please try again in ${rate.retryAfterSeconds} seconds.`,
+  }
+}
 
 export interface UserProfileData {
   id: string
@@ -203,63 +244,83 @@ export async function getProfile(usernameOrId: string): Promise<GetProfileResult
         take: 50,
       })
 
-      // Manually fetch listing details based on listingType
-      transactions = await Promise.all(
-        rawTransactions.map(async (t: any) => {
-          let listing = null
-          let game = null
-
-          try {
-            if (t.listingType === "ITEM") {
-              listing = await prisma.itemListing.findUnique({
-                where: { id: t.listingId },
-                select: {
-                  id: true,
-                  title: true,
-                  image: true,
-                  game: {
-                    select: { displayName: true }
-                  }
-                },
-              })
-              game = listing?.game?.displayName
-            } else if (t.listingType === "CURRENCY") {
-              listing = await prisma.currencyListing.findUnique({
-                where: { id: t.listingId },
-                select: {
-                  id: true,
-                  title: true,
-                  image: true,
-                  game: {
-                    select: { displayName: true }
-                  }
-                },
-              })
-              game = listing?.game?.displayName
-            } else if (t.listingType === "OLD") {
-              // Handle old listings table
-              listing = await prisma.listing.findUnique({
-                where: { id: t.listingId },
-                select: {
-                  id: true,
-                  title: true,
-                  image: true,
-                  game: true,
-                },
-              })
-              game = listing?.game
-            }
-          } catch (err) {
-            console.error("Error fetching listing for transaction:", t.id, err)
-          }
-
-          return {
-            ...t,
-            listing,
-            game,
-          }
-        })
+      const itemListingIds = Array.from(
+        new Set(
+          rawTransactions
+            .filter((t: any) => t.listingType === "ITEM" && !!t.listingId)
+            .map((t: any) => t.listingId)
+        )
       )
+      const currencyListingIds = Array.from(
+        new Set(
+          rawTransactions
+            .filter((t: any) => t.listingType === "CURRENCY" && !!t.listingId)
+            .map((t: any) => t.listingId)
+        )
+      )
+      const oldListingIds = Array.from(
+        new Set(
+          rawTransactions
+            .filter((t: any) => t.listingType === "OLD" && !!t.listingId)
+            .map((t: any) => t.listingId)
+        )
+      )
+
+      void oldListingIds
+
+      const [itemListings, currencyListings, oldListings] = await Promise.all([
+        itemListingIds.length > 0
+          ? prisma.itemListing.findMany({
+              where: { id: { in: itemListingIds } },
+              select: {
+                id: true,
+                title: true,
+                image: true,
+                game: { select: { displayName: true } },
+              },
+            })
+          : Promise.resolve([]),
+        currencyListingIds.length > 0
+          ? prisma.currencyListing.findMany({
+              where: { id: { in: currencyListingIds } },
+              select: {
+                id: true,
+                title: true,
+                image: true,
+                game: { select: { displayName: true } },
+              },
+            })
+          : Promise.resolve([]),
+        Promise.resolve([] as Array<{ id: string; title: string; image: string | null; game: string | null }>),
+      ])
+
+      const itemListingMap = new Map(itemListings.map((listing: any) => [listing.id, listing]))
+      const currencyListingMap = new Map(
+        currencyListings.map((listing: any) => [listing.id, listing])
+      )
+      const oldListingMap = new Map(oldListings.map((listing: any) => [listing.id, listing]))
+
+      transactions = rawTransactions.map((t: any) => {
+        let listing: any = null
+        let game: string | null = null
+
+        if (t.listingType === "ITEM" && t.listingId) {
+          listing = itemListingMap.get(t.listingId) || null
+          game = listing?.game?.displayName || null
+        } else if (t.listingType === "CURRENCY" && t.listingId) {
+          listing = currencyListingMap.get(t.listingId) || null
+          game = listing?.game?.displayName || null
+        } else if (t.listingType === "OLD" && t.listingId) {
+          listing = oldListingMap.get(t.listingId) || null
+          game = listing?.game || null
+        }
+
+        return {
+          ...t,
+          listing,
+          game,
+        }
+      })
     } catch (err) {
       console.error("Error fetching transactions:", err)
       transactions = []
@@ -394,6 +455,22 @@ export async function updateProfile(data: Partial<UserProfileData>): Promise<Upd
       }
     }
 
+    const updateRateLimit = await enforceProfileRateLimit({
+      namespace: "profile-update",
+      maxRequests: PROFILE_RATE_LIMITS.updateProfile.maxRequests,
+      windowMs: PROFILE_RATE_LIMITS.updateProfile.windowMs,
+      userId: currentUser.id,
+      email: session.user.email,
+      message: "Too many profile update attempts.",
+    })
+
+    if (!updateRateLimit.success) {
+      return {
+        success: false,
+        error: updateRateLimit.error,
+      }
+    }
+
     // Check bio for prohibited content
     if (data.bio) {
       const { moderateContent } = await import("@/lib/moderation")
@@ -453,6 +530,21 @@ export async function toggleFollow(targetUserId: string): Promise<ToggleFollowRe
     // Prevent self-follow
     if (currentUserId === targetUserId) {
       return { success: false, error: "Cannot follow yourself" }
+    }
+
+    const toggleFollowRate = await enforceProfileRateLimit({
+      namespace: "profile-toggle-follow",
+      maxRequests: PROFILE_RATE_LIMITS.toggleFollow.maxRequests,
+      windowMs: PROFILE_RATE_LIMITS.toggleFollow.windowMs,
+      userId: currentUserId,
+      message: "Too many follow toggle attempts.",
+    })
+
+    if (!toggleFollowRate.success) {
+      return {
+        success: false,
+        error: toggleFollowRate.error,
+      }
     }
 
     // Use raw query to work with UserFollow model during transition
@@ -596,6 +688,22 @@ export async function changePassword(data: {
       }
     }
 
+    const changePasswordRate = await enforceProfileRateLimit({
+      namespace: "profile-change-password",
+      maxRequests: PROFILE_RATE_LIMITS.changePassword.maxRequests,
+      windowMs: PROFILE_RATE_LIMITS.changePassword.windowMs,
+      userId: currentUser.id,
+      email: session.user.email,
+      message: "Too many password change attempts.",
+    })
+
+    if (!changePasswordRate.success) {
+      return {
+        success: false,
+        error: changePasswordRate.error,
+      }
+    }
+
     // Verify current password
     const passwordMatch = await bcrypt.compare(
       data.currentPassword,
@@ -705,6 +813,22 @@ export async function updateUserPreferences(preferences: {
 
     if (!user) {
       return { success: false, error: "User not found" }
+    }
+
+    const updatePreferencesRate = await enforceProfileRateLimit({
+      namespace: "profile-update-preferences",
+      maxRequests: PROFILE_RATE_LIMITS.updatePreferences.maxRequests,
+      windowMs: PROFILE_RATE_LIMITS.updatePreferences.windowMs,
+      userId: user.id,
+      email: session.user.email,
+      message: "Too many preferences update attempts.",
+    })
+
+    if (!updatePreferencesRate.success) {
+      return {
+        success: false,
+        error: updatePreferencesRate.error,
+      }
     }
 
     // Upsert preferences

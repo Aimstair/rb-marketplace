@@ -3,7 +3,51 @@
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import { createNotification } from "./notifications"
+import { sendTransactionCompletedEmail } from "@/lib/engagement-email"
 import { z } from "zod"
+import { headers } from "next/headers"
+import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit"
+
+const ONE_MINUTE_MS = 60 * 1000
+const ONE_HOUR_MS = 60 * ONE_MINUTE_MS
+
+const TRANSACTION_RATE_LIMITS = {
+  create: { maxRequests: 30, windowMs: ONE_HOUR_MS },
+  read: { maxRequests: 120, windowMs: ONE_MINUTE_MS },
+  confirm: { maxRequests: 60, windowMs: ONE_HOUR_MS },
+  vouch: { maxRequests: 20, windowMs: ONE_HOUR_MS },
+  cancel: { maxRequests: 30, windowMs: ONE_HOUR_MS },
+} as const
+
+async function enforceTransactionRateLimit(params: {
+  namespace: string
+  maxRequests: number
+  windowMs: number
+  userId?: string | null
+  email?: string | null
+  message: string
+}): Promise<{ success: true } | { success: false; error: string }> {
+  const requestHeaders = await headers()
+  const rate = await checkRateLimit(
+    getRateLimitIdentifier({
+      headers: requestHeaders,
+      userId: params.userId,
+      email: params.email,
+    }),
+    params.maxRequests,
+    params.windowMs,
+    { namespace: params.namespace }
+  )
+
+  if (rate.allowed) {
+    return { success: true }
+  }
+
+  return {
+    success: false,
+    error: `${params.message} Please try again in ${rate.retryAfterSeconds} seconds.`,
+  }
+}
 
 // Helper function to get listing details based on type
 async function getListingDetails(listingId: string, listingType: string) {
@@ -88,6 +132,20 @@ export async function createTransaction(
   listingType: string = "ITEM"
 ): Promise<CreateTransactionResult> {
   try {
+    const createRateLimit = await enforceTransactionRateLimit({
+      namespace: "transactions-create",
+      maxRequests: TRANSACTION_RATE_LIMITS.create.maxRequests,
+      windowMs: TRANSACTION_RATE_LIMITS.create.windowMs,
+      message: "Too many transaction creation attempts.",
+    })
+
+    if (!createRateLimit.success) {
+      return {
+        success: false,
+        error: createRateLimit.error,
+      }
+    }
+
     // Get the current user (placeholder - first user in DB)
     const currentUser = await prisma.user.findFirst({
       where: { role: "user" },
@@ -209,6 +267,22 @@ export async function getTransactions(
       }
     }
 
+    const readRateLimit = await enforceTransactionRateLimit({
+      namespace: "transactions-read-list",
+      maxRequests: TRANSACTION_RATE_LIMITS.read.maxRequests,
+      windowMs: TRANSACTION_RATE_LIMITS.read.windowMs,
+      userId: currentUser.id,
+      email: session.user.email,
+      message: "Too many transaction list requests.",
+    })
+
+    if (!readRateLimit.success) {
+      return {
+        success: false,
+        error: readRateLimit.error,
+      }
+    }
+
     // Build where clause based on role
     let whereClause: any = {
       OR: [{ buyerId: currentUser.id }, { sellerId: currentUser.id }],
@@ -234,54 +308,75 @@ export async function getTransactions(
       orderBy: { createdAt: "desc" },
     })
 
-    // Manually fetch listings for each transaction
-    const transformedTransactions: TransactionData[] = await Promise.all(
-      transactions.map(async (tx: any) => {
-        let listing = { id: "", title: "Unknown Item", price: 0, image: "" }
-
-        if (tx.listingId && tx.listingType) {
-          if (tx.listingType === "ITEM") {
-            const itemListing = await prisma.itemListing.findUnique({
-              where: { id: tx.listingId },
-              select: { id: true, title: true, price: true, image: true },
-            })
-            if (itemListing) {
-              listing = itemListing
-            }
-          } else if (tx.listingType === "CURRENCY") {
-            const currencyListing = await prisma.currencyListing.findUnique({
-              where: { id: tx.listingId },
-              select: { id: true, title: true, ratePerPeso: true, image: true },
-            })
-            if (currencyListing) {
-              listing = {
-                id: currencyListing.id,
-                title: currencyListing.title,
-                price: currencyListing.ratePerPeso,
-                image: currencyListing.image,
-              }
-            }
-          }
-        }
-
-        return {
-          id: tx.id,
-          buyerId: tx.buyerId,
-          sellerId: tx.sellerId,
-          buyer: tx.buyer,
-          seller: tx.seller,
-          listing,
-          price: tx.price,
-          amount: tx.amount,
-          status: tx.status,
-          buyerConfirmed: tx.buyerConfirmed,
-          sellerConfirmed: tx.sellerConfirmed,
-          userVouched: false, // Would need to check Vouch table
-          createdAt: tx.createdAt,
-          updatedAt: tx.updatedAt,
-        }
-      })
+    const itemListingIds: string[] = Array.from(
+      new Set(
+        transactions
+          .filter((tx: any) => tx.listingType === "ITEM" && !!tx.listingId)
+          .map((tx: any) => tx.listingId as string)
+      )
     )
+    const currencyListingIds: string[] = Array.from(
+      new Set(
+        transactions
+          .filter((tx: any) => tx.listingType === "CURRENCY" && !!tx.listingId)
+          .map((tx: any) => tx.listingId as string)
+      )
+    )
+
+    const [itemListings, currencyListings] = await Promise.all([
+      itemListingIds.length > 0
+        ? prisma.itemListing.findMany({
+            where: { id: { in: itemListingIds } },
+            select: { id: true, title: true, price: true, image: true },
+          })
+        : Promise.resolve([]),
+      currencyListingIds.length > 0
+        ? prisma.currencyListing.findMany({
+            where: { id: { in: currencyListingIds } },
+            select: { id: true, title: true, ratePerPeso: true, image: true },
+          })
+        : Promise.resolve([]),
+    ])
+
+    const itemListingMap = new Map(itemListings.map((listing) => [listing.id, listing]))
+    const currencyListingMap = new Map(
+      currencyListings.map((listing) => [
+        listing.id,
+        {
+          id: listing.id,
+          title: listing.title,
+          price: listing.ratePerPeso,
+          image: listing.image,
+        },
+      ])
+    )
+
+    const transformedTransactions: TransactionData[] = transactions.map((tx: any) => {
+      let listing = { id: "", title: "Unknown Item", price: 0, image: "" }
+
+      if (tx.listingType === "ITEM" && tx.listingId) {
+        listing = itemListingMap.get(tx.listingId) || listing
+      } else if (tx.listingType === "CURRENCY" && tx.listingId) {
+        listing = currencyListingMap.get(tx.listingId) || listing
+      }
+
+      return {
+        id: tx.id,
+        buyerId: tx.buyerId,
+        sellerId: tx.sellerId,
+        buyer: tx.buyer,
+        seller: tx.seller,
+        listing,
+        price: tx.price,
+        amount: tx.amount,
+        status: tx.status,
+        buyerConfirmed: tx.buyerConfirmed,
+        sellerConfirmed: tx.sellerConfirmed,
+        userVouched: false,
+        createdAt: tx.createdAt,
+        updatedAt: tx.updatedAt,
+      }
+    })
 
     return {
       success: true,
@@ -322,6 +417,22 @@ export async function getTransactionById(transactionId: string): Promise<{
       return {
         success: false,
         error: "User not found",
+      }
+    }
+
+    const readRateLimit = await enforceTransactionRateLimit({
+      namespace: "transactions-read-single",
+      maxRequests: TRANSACTION_RATE_LIMITS.read.maxRequests,
+      windowMs: TRANSACTION_RATE_LIMITS.read.windowMs,
+      userId: currentUser.id,
+      email: session.user.email,
+      message: "Too many transaction detail requests.",
+    })
+
+    if (!readRateLimit.success) {
+      return {
+        success: false,
+        error: readRateLimit.error,
       }
     }
 
@@ -373,12 +484,11 @@ export async function getTransactionById(transactionId: string): Promise<{
 
     // Check if current user has already vouched for the counterparty (global vouch rule)
     const counterpartyId = transaction.buyerId === currentUser.id ? transaction.sellerId : transaction.buyerId
-    const userVouch = await prisma.vouch.findUnique({
+    const userVouch = await prisma.vouch.findFirst({
       where: {
-        fromUserId_toUserId: {
-          fromUserId: currentUser.id,
-          toUserId: counterpartyId,
-        },
+        fromUserId: currentUser.id,
+        toUserId: counterpartyId,
+        status: "VALID",
       },
     })
 
@@ -445,6 +555,22 @@ export async function getTransactionByPeers(
     })
 
     if (!currentUser) {
+      return {
+        success: true,
+        transaction: undefined,
+      }
+    }
+
+    const readRateLimit = await enforceTransactionRateLimit({
+      namespace: "transactions-read-peers",
+      maxRequests: TRANSACTION_RATE_LIMITS.read.maxRequests,
+      windowMs: TRANSACTION_RATE_LIMITS.read.windowMs,
+      userId: currentUser.id,
+      email: session.user.email,
+      message: "Too many transaction peer requests.",
+    })
+
+    if (!readRateLimit.success) {
       return {
         success: true,
         transaction: undefined,
@@ -530,7 +656,7 @@ export async function getTransactionByPeers(
       where: {
         fromUserId: currentUser.id,
         toUserId: counterpartyId,
-        // No status filter - users can only vouch once, even if invalidated
+        status: "VALID",
       },
     })
 
@@ -621,6 +747,22 @@ export async function toggleTransactionConfirmation(
       }
     }
 
+    const confirmRateLimit = await enforceTransactionRateLimit({
+      namespace: "transactions-confirm",
+      maxRequests: TRANSACTION_RATE_LIMITS.confirm.maxRequests,
+      windowMs: TRANSACTION_RATE_LIMITS.confirm.windowMs,
+      userId: currentUser.id,
+      email: session.user.email,
+      message: "Too many confirmation attempts.",
+    })
+
+    if (!confirmRateLimit.success) {
+      return {
+        success: false,
+        error: confirmRateLimit.error,
+      }
+    }
+
     // Find the transaction with amount field
     const transaction = await (prisma.transaction as any).findUnique({
       where: { id: transactionId },
@@ -641,6 +783,13 @@ export async function toggleTransactionConfirmation(
       return {
         success: false,
         error: "You don't have access to this transaction",
+      }
+    }
+
+    if (transaction.status !== "PENDING") {
+      return {
+        success: false,
+        error: "Only pending transactions can be confirmed",
       }
     }
 
@@ -749,15 +898,52 @@ export async function toggleTransactionConfirmation(
         }
       }
 
-      // Update transaction status to COMPLETED
-      const completedTransaction = await (prisma.transaction as any).update({
-        where: { id: transactionId },
+      const openDispute = await prisma.dispute.findFirst({
+        where: {
+          transactionId,
+          status: "OPEN",
+        },
+        select: { id: true },
+      })
+
+      if (openDispute) {
+        return {
+          success: false,
+          error: "Cannot complete a transaction while an open dispute exists",
+        }
+      }
+
+      const completionGate = await (prisma.transaction as any).updateMany({
+        where: {
+          id: transactionId,
+          status: "PENDING",
+          buyerConfirmed: true,
+          sellerConfirmed: true,
+        },
         data: { status: "COMPLETED" },
+      })
+
+      if (completionGate.count === 0) {
+        return {
+          success: false,
+          error: "Transaction is no longer pending",
+        }
+      }
+
+      const completedTransaction = await (prisma.transaction as any).findUnique({
+        where: { id: transactionId },
         include: {
           buyer: { select: { id: true, username: true } },
           seller: { select: { id: true, username: true } },
         },
       })
+
+      if (!completedTransaction) {
+        return {
+          success: false,
+          error: "Transaction not found after completion",
+        }
+      }
 
       // Update listing stock and status
       const listingDetails = await getListingDetails(completedTransaction.listingId, completedTransaction.listingType)
@@ -765,41 +951,115 @@ export async function toggleTransactionConfirmation(
       if (listingDetails) {
         // Deduct transaction amount (or 1 if amount not specified)
         const deductedAmount = transaction.amount || 1
-        const newStock = Math.max(0, listingDetails.stock - deductedAmount)
+        let stockReserved = true
         
         // For currency listings, check if stock is less than ratePerPeso (minimum sellable unit)
         // For item listings, check if stock is 0 or less
-        let newListingStatus: string
-        if (completedTransaction.listingType === "CURRENCY") {
-          // Get listing to access ratePerPeso
-          const currencyListing = await prisma.currencyListing.findUnique({
-            where: { id: completedTransaction.listingId },
-            select: { ratePerPeso: true },
-          })
-          newListingStatus = newStock < (currencyListing?.ratePerPeso || 1) ? "sold" : "available"
-        } else {
-          newListingStatus = newStock < 1 ? "sold" : "available"
-        }
-        
         // Update listing with new stock
         if (completedTransaction.listingType === "ITEM") {
-          await prisma.itemListing.update({
-            where: { id: completedTransaction.listingId },
-            data: { 
-              stock: newStock,
-              status: newListingStatus,
+          const stockUpdate = await prisma.itemListing.updateMany({
+            where: {
+              id: completedTransaction.listingId,
+              stock: { gte: deductedAmount },
+            },
+            data: {
+              stock: { decrement: deductedAmount },
             },
           })
+
+          stockReserved = stockUpdate.count > 0
+          if (stockReserved) {
+            const refreshedItemListing = await prisma.itemListing.findUnique({
+              where: { id: completedTransaction.listingId },
+              select: {
+                stock: true,
+                pricingMode: true,
+                price: true,
+              },
+            })
+
+            const nextStatus = refreshedItemListing
+              ? refreshedItemListing.pricingMode === "per-peso"
+                ? refreshedItemListing.stock < refreshedItemListing.price
+                  ? "sold"
+                  : "available"
+                : refreshedItemListing.stock < 1
+                  ? "sold"
+                  : "available"
+              : "available"
+
+            await prisma.itemListing.update({
+              where: { id: completedTransaction.listingId },
+              data: {
+                status: nextStatus,
+              },
+            })
+          }
         } else if (completedTransaction.listingType === "CURRENCY") {
-          await prisma.currencyListing.update({
-            where: { id: completedTransaction.listingId },
-            data: { 
-              stock: newStock,
-              status: newListingStatus,
+          const stockUpdate = await prisma.currencyListing.updateMany({
+            where: {
+              id: completedTransaction.listingId,
+              stock: { gte: deductedAmount },
+            },
+            data: {
+              stock: { decrement: deductedAmount },
             },
           })
+
+          stockReserved = stockUpdate.count > 0
+          if (stockReserved) {
+            const refreshedCurrencyListing = await prisma.currencyListing.findUnique({
+              where: { id: completedTransaction.listingId },
+              select: {
+                stock: true,
+                ratePerPeso: true,
+              },
+            })
+
+            const nextStatus = refreshedCurrencyListing
+              ? refreshedCurrencyListing.stock < refreshedCurrencyListing.ratePerPeso
+                ? "sold"
+                : "available"
+              : "available"
+
+            await prisma.currencyListing.update({
+              where: { id: completedTransaction.listingId },
+              data: {
+                status: nextStatus,
+              },
+            })
+          }
+        }
+
+        if (!stockReserved) {
+          await (prisma.transaction as any).update({
+            where: { id: transactionId },
+            data: {
+              status: "CANCELLED",
+              buyerConfirmed: false,
+              sellerConfirmed: false,
+            },
+          })
+
+          return {
+            success: false,
+            error: "Listing stock is no longer available for this transaction",
+          }
         }
       }
+
+      await (prisma.transaction as any).updateMany({
+        where: {
+          listingId: completedTransaction.listingId,
+          status: "PENDING",
+          id: { not: completedTransaction.id },
+        },
+        data: {
+          status: "CANCELLED",
+          buyerConfirmed: false,
+          sellerConfirmed: false,
+        },
+      })
 
       // Auto-decline all pending counteroffers for other conversations on this listing
       console.log("[toggleTransactionConfirmation] Auto-declining pending offers for listing:", completedTransaction.listingId)
@@ -862,6 +1122,21 @@ export async function toggleTransactionConfirmation(
         console.error("Failed to create completion notification for seller:", error)
       })
 
+      await Promise.allSettled([
+        sendTransactionCompletedEmail({
+          recipientUserId: completedTransaction.buyerId,
+          counterpartyUsername: completedTransaction.seller.username,
+          listingTitle: completedListingTitle,
+          role: "buyer",
+        }),
+        sendTransactionCompletedEmail({
+          recipientUserId: completedTransaction.sellerId,
+          counterpartyUsername: completedTransaction.buyer.username,
+          listingTitle: completedListingTitle,
+          role: "seller",
+        }),
+      ])
+
       // Fetch full listing data for return
       let completedListing = null
       if (completedTransaction.listingId && completedTransaction.listingType) {
@@ -896,7 +1171,7 @@ export async function toggleTransactionConfirmation(
         where: {
           transactionId,
           fromUserId: currentUser.id,
-          // No status filter - users can only vouch once, even if invalidated
+          status: "VALID",
         },
       })
 
@@ -972,7 +1247,7 @@ export async function toggleTransactionConfirmation(
         where: {
           transactionId,
           fromUserId: currentUser.id,
-          // No status filter - users can only vouch once, even if invalidated
+          status: "VALID",
         },
       })
 
@@ -1043,6 +1318,22 @@ export async function submitVouch(
       }
     }
 
+    const vouchRateLimit = await enforceTransactionRateLimit({
+      namespace: "transactions-vouch",
+      maxRequests: TRANSACTION_RATE_LIMITS.vouch.maxRequests,
+      windowMs: TRANSACTION_RATE_LIMITS.vouch.windowMs,
+      userId: currentUser.id,
+      email: session.user.email,
+      message: "Too many vouch attempts.",
+    })
+
+    if (!vouchRateLimit.success) {
+      return {
+        success: false,
+        error: vouchRateLimit.error,
+      }
+    }
+
     // Find the transaction
     const transaction = await (prisma.transaction as any).findUnique({
       where: { id: transactionId },
@@ -1087,7 +1378,7 @@ export async function submitVouch(
       where: {
         fromUserId: currentUser.id,
         toUserId: vouchToUserId,
-        // No status filter - users can only vouch once per person, ever
+        status: "VALID",
       },
     })
 
@@ -1149,6 +1440,22 @@ export async function cancelTransaction(transactionId: string): Promise<{
       return {
         success: false,
         error: "No user found",
+      }
+    }
+
+    const cancelRateLimit = await enforceTransactionRateLimit({
+      namespace: "transactions-cancel",
+      maxRequests: TRANSACTION_RATE_LIMITS.cancel.maxRequests,
+      windowMs: TRANSACTION_RATE_LIMITS.cancel.windowMs,
+      userId: currentUser.id,
+      email: session.user.email,
+      message: "Too many transaction cancel attempts.",
+    })
+
+    if (!cancelRateLimit.success) {
+      return {
+        success: false,
+        error: cancelRateLimit.error,
       }
     }
 

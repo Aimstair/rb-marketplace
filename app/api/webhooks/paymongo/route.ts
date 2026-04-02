@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
 import { verifyWebhookSignature } from "@/lib/paymongo"
-import { createNotification } from "@/app/actions/notifications"
+import { completeProviderPayment, markProviderPaymentFailed } from "@/lib/payment-processing"
+import { logError, logInfo, logWarn } from "@/lib/observability"
+import { isPaymongoWebhookEnabled } from "@/lib/feature-flags"
 
 /**
  * PayMongo Webhook Handler
@@ -12,19 +13,20 @@ import { createNotification } from "@/app/actions/notifications"
  */
 export async function POST(request: NextRequest) {
   try {
+    if (!isPaymongoWebhookEnabled()) {
+      logWarn("paymongo.webhook.disabled")
+      return NextResponse.json(
+        { error: "PayMongo webhook is disabled" },
+        { status: 410 }
+      )
+    }
+
     const body = await request.text()
     const signature = request.headers.get("paymongo-signature") || ""
 
-    // Detailed logging for debugging
-    console.log("[PayMongo Webhook] Received request")
-    console.log("[PayMongo Webhook] Signature header:", signature ? `${signature.substring(0, 20)}...` : "MISSING")
-    console.log("[PayMongo Webhook] Body length:", body.length)
-    console.log("[PayMongo Webhook] All headers:", JSON.stringify(Object.fromEntries(request.headers.entries())))
-
     // Verify webhook signature
     if (!verifyWebhookSignature(body, signature)) {
-      console.error("[PayMongo Webhook] Invalid webhook signature")
-      console.error("[PayMongo Webhook] Expected signature format: HMAC SHA256 hex")
+      logWarn("paymongo.webhook.signature_invalid")
       return NextResponse.json(
         { error: "Invalid signature" },
         { status: 401 }
@@ -32,28 +34,32 @@ export async function POST(request: NextRequest) {
     }
 
     const event = JSON.parse(body)
+    const eventId = event?.data?.id as string | undefined
     const eventType = event.data.attributes.type
 
-    console.log(`[PayMongo Webhook] Received event: ${eventType}`)
+    logInfo("paymongo.webhook.received", {
+      eventType: eventType || null,
+      eventId: eventId || null,
+    })
 
     // Handle payment.paid event
     if (eventType === "payment.paid") {
-      await handlePaymentPaid(event.data)
+      await handlePaymentPaid(event.data, eventId)
     }
     
     // Handle link.payment.paid event
     if (eventType === "link.payment.paid") {
-      await handleLinkPaymentPaid(event.data)
+      await handleLinkPaymentPaid(event.data, eventId)
     }
 
     // Handle payment.failed event
     if (eventType === "payment.failed") {
-      await handlePaymentFailed(event.data)
+      await handlePaymentFailed(event.data, eventId)
     }
 
     return NextResponse.json({ received: true })
   } catch (error) {
-    console.error("[PayMongo Webhook] Error:", error)
+    logError("paymongo.webhook.processing_failed", error)
     return NextResponse.json(
       { error: "Webhook processing failed" },
       { status: 500 }
@@ -64,65 +70,37 @@ export async function POST(request: NextRequest) {
 /**
  * Handle payment.paid event
  */
-async function handlePaymentPaid(data: any) {
+async function handlePaymentPaid(data: any, eventId?: string) {
   try {
-    const paymentIntentId = data.attributes.data.id
-    const metadata = data.attributes.data.attributes.metadata
+    const paymentIntentId = data?.attributes?.data?.id
+    const metadata = data?.attributes?.data?.attributes?.metadata || {}
+    const referenceNumber = data?.attributes?.data?.attributes?.reference_number
 
-    // Find payment record
-    const payment = await prisma.payment.findFirst({
-      where: {
-        providerPaymentId: paymentIntentId,
-        status: "pending",
-      },
-    })
-
-    if (!payment) {
-      console.log(`[PayMongo Webhook] Payment record not found for: ${paymentIntentId}`)
+    if (!paymentIntentId) {
+      logWarn("paymongo.webhook.payment_paid_missing_intent", {
+        eventId: eventId || null,
+      })
       return
     }
 
-    // Update payment and subscription in transaction
-    await prisma.$transaction(async (tx) => {
-      // Update payment status
-      await tx.payment.update({
-        where: { id: payment.id },
-        data: {
-          status: "completed",
-          paidAt: new Date(),
-        },
-      })
-
-      // Upgrade subscription if it's a subscription payment
-      if (payment.type === "subscription" && metadata?.tier) {
-        const tier = metadata.tier as "PRO" | "ELITE"
-        
-        // Calculate expiry date (30 days)
-        const expiresAt = new Date()
-        expiresAt.setDate(expiresAt.getDate() + 30)
-
-        await tx.user.update({
-          where: { id: payment.userId },
-          data: {
-            subscriptionTier: tier,
-            subscriptionEndsAt: expiresAt,
-          },
-        })
-
-        // Create notification
-        await createNotification(
-          payment.userId,
-          "SYSTEM",
-          `Upgraded to ${tier}!`,
-          `Your subscription has been upgraded to ${tier}. Enjoy your new features!`,
-          "/subscriptions"
-        )
-
-        console.log(`[PayMongo Webhook] Upgraded user ${payment.userId} to ${tier}`)
-      }
+    const result = await completeProviderPayment({
+      provider: "paymongo",
+      providerPaymentId: paymentIntentId,
+      metadata,
+      providerReferenceId: referenceNumber || null,
+      providerEventId: eventId || null,
     })
+
+    if (result.status === "not_found") {
+      logWarn("paymongo.webhook.payment_not_found", {
+        eventId: eventId || null,
+        providerPaymentId: paymentIntentId,
+      })
+    }
   } catch (error) {
-    console.error("[PayMongo Webhook] handlePaymentPaid error:", error)
+    logError("paymongo.webhook.payment_paid_failed", error, {
+      eventId: eventId || null,
+    })
     throw error
   }
 }
@@ -130,71 +108,43 @@ async function handlePaymentPaid(data: any) {
 /**
  * Handle link.payment.paid event (for payment links)
  */
-async function handleLinkPaymentPaid(data: any) {
+async function handleLinkPaymentPaid(data: any, eventId?: string) {
   try {
-    const linkData = data.attributes.data
-    const linkId = linkData.id
-    const linkAttributes = linkData.attributes
-    const metadata = linkAttributes.metadata || {}
-
-    console.log(`[PayMongo Webhook] Processing link payment: ${linkId}`)
-
-    // Find payment record by link ID
-    const payment = await prisma.payment.findFirst({
-      where: {
-        providerPaymentId: linkId,
-        status: "pending",
-      },
-    })
-
-    if (!payment) {
-      console.log(`[PayMongo Webhook] Payment record not found for link: ${linkId}`)
+    const linkData = data?.attributes?.data
+    if (!linkData?.id) {
+      logWarn("paymongo.webhook.link_paid_missing_id", {
+        eventId: eventId || null,
+      })
       return
     }
 
-    // Update payment and subscription in transaction
-    await prisma.$transaction(async (tx) => {
-      // Update payment status
-      await tx.payment.update({
-        where: { id: payment.id },
-        data: {
-          status: "completed",
-          paidAt: new Date(),
-        },
-      })
+    const linkId = linkData.id
+    const linkAttributes = linkData.attributes || {}
+    const metadata = linkAttributes.metadata || {}
 
-      // Upgrade subscription if it's a subscription payment
-      if (payment.type === "subscription") {
-        const tier = metadata.tier || (payment.metadata as any)?.tier
-
-        if (tier && (tier === "PRO" || tier === "ELITE")) {
-          // Calculate expiry date (30 days)
-          const expiresAt = new Date()
-          expiresAt.setDate(expiresAt.getDate() + 30)
-
-          await tx.user.update({
-            where: { id: payment.userId },
-            data: {
-              subscriptionTier: tier,
-              subscriptionEndsAt: expiresAt,
-            },
-          })
-
-          // Create notification
-          await createNotification(
-            payment.userId,
-            "SYSTEM",
-            `Upgraded to ${tier}!`,
-            `Your subscription has been upgraded to ${tier}. Enjoy your new features!`,
-            "/subscriptions"
-          )
-
-          console.log(`[PayMongo Webhook] Upgraded user ${payment.userId} to ${tier}`)
-        }
-      }
+    logInfo("paymongo.webhook.link_paid_processing", {
+      eventId: eventId || null,
+      providerPaymentId: linkId,
     })
+
+    const result = await completeProviderPayment({
+      provider: "paymongo",
+      providerPaymentId: linkId,
+      metadata,
+      providerReferenceId: linkAttributes.reference_number || null,
+      providerEventId: eventId || null,
+    })
+
+    if (result.status === "not_found") {
+      logWarn("paymongo.webhook.link_payment_not_found", {
+        eventId: eventId || null,
+        providerPaymentId: linkId,
+      })
+    }
   } catch (error) {
-    console.error("[PayMongo Webhook] handleLinkPaymentPaid error:", error)
+    logError("paymongo.webhook.link_paid_failed", error, {
+      eventId: eventId || null,
+    })
     throw error
   }
 }
@@ -202,42 +152,33 @@ async function handleLinkPaymentPaid(data: any) {
 /**
  * Handle payment.failed event
  */
-async function handlePaymentFailed(data: any) {
+async function handlePaymentFailed(data: any, eventId?: string) {
   try {
-    const paymentIntentId = data.attributes.data.id
-
-    // Find and update payment record
-    const payment = await prisma.payment.findFirst({
-      where: {
-        providerPaymentId: paymentIntentId,
-        status: "pending",
-      },
-    })
-
-    if (!payment) {
-      console.log(`[PayMongo Webhook] Payment record not found for failed payment: ${paymentIntentId}`)
+    const paymentIntentId = data?.attributes?.data?.id
+    if (!paymentIntentId) {
+      logWarn("paymongo.webhook.payment_failed_missing_intent", {
+        eventId: eventId || null,
+      })
       return
     }
 
-    await prisma.payment.update({
-      where: { id: payment.id },
-      data: {
-        status: "failed",
-      },
+    const result = await markProviderPaymentFailed({
+      provider: "paymongo",
+      providerPaymentId: paymentIntentId,
+      providerEventId: eventId || null,
     })
 
-    // Notify user
-    await createNotification(
-      payment.userId,
-      "SYSTEM",
-      "Payment Failed",
-      "Your payment could not be processed. Please try again or contact support.",
-      "/subscriptions"
-    )
-
-    console.log(`[PayMongo Webhook] Payment failed for user ${payment.userId}`)
+    if (result.status === "not_found") {
+      logWarn("paymongo.webhook.failed_payment_not_found", {
+        eventId: eventId || null,
+        providerPaymentId: paymentIntentId,
+      })
+      return
+    }
   } catch (error) {
-    console.error("[PayMongo Webhook] handlePaymentFailed error:", error)
+    logError("paymongo.webhook.payment_failed_handler_failed", error, {
+      eventId: eventId || null,
+    })
     throw error
   }
 }

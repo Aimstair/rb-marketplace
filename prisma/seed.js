@@ -40,9 +40,9 @@ async function main() {
       role: "admin",
       profilePicture: "/admin-avatar.png",
       banner: "/admin-banner.jpg",
-      bio: "RobloxTrade Admin & Moderator. Here to ensure safe and fair trading for all users.",
+      bio: "RbMarket Admin & Moderator. Here to ensure safe and fair trading for all users.",
       joinDate: new Date("2021-01-01"),
-      robloxProfile: "AdminMod_RobloxTrade",
+      robloxProfile: "AdminMod_RbMarket",
     },
   });
   console.log("Created admin:", adminModerator.username);
@@ -506,9 +506,9 @@ async function main() {
       role: "admin",
       profilePicture: "/admin-avatar.png",
       banner: "/admin-banner.jpg",
-      bio: "RobloxTrade Admin & Moderator. Here to ensure safe and fair trading for all users.",
+      bio: "RbMarket Admin & Moderator. Here to ensure safe and fair trading for all users.",
       joinDate: new Date("2021-01-01"),
-      robloxProfile: "AdminMod_RobloxTrade",
+      robloxProfile: "AdminMod_RbMarket",
     },
   });
 

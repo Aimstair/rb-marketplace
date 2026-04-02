@@ -155,9 +155,14 @@ export default function MyListingsPage() {
     return matchesSearch && matchesStatus && matchesType
   })
 
+  const getListingType = (listing: ListingResponse): "ITEM" | "CURRENCY" => {
+    if (listing.listingType) return listing.listingType
+    return listing.category === "Currency" ? "CURRENCY" : "ITEM"
+  }
+
   const handleView = (listing: ListingResponse) => {
-    // Navigate to the listing detail page
-    router.push(`/listing/${listing.id}`)
+    const listingType = getListingType(listing)
+    router.push(listingType === "CURRENCY" ? `/currency/${listing.id}` : `/listing/${listing.id}`)
   }
 
   const handleDeleteClick = (listingId: string) => {
@@ -175,10 +180,11 @@ export default function MyListingsPage() {
 
     const listing = listings.find((l) => l.id === listingToDelete)
     if (!listing) return
+    const listingType = getListingType(listing)
 
     setIsDeleting(true)
     try {
-      const result = await deleteListingSoft(listingToDelete, listing.listingType as "ITEM" | "CURRENCY")
+      const result = await deleteListingSoft(listingToDelete, listingType)
 
       if (result.success) {
         // Remove listing from local state
@@ -218,11 +224,13 @@ export default function MyListingsPage() {
   const handleToggleStatus = async (listingId: string, currentStatus: string) => {
     const listing = listings.find((l) => l.id === listingId)
     if (!listing) return
+    const listingType = getListingType(listing)
 
     const newStatus = currentStatus === "available" ? "hidden" : "available"
 
     try {
-      const result = await toggleListingStatus(listingId, newStatus, listing.listingType as "ITEM" | "CURRENCY")
+      const managementType = listingType === "CURRENCY" ? "Currency" : "Item"
+      const result = await toggleListingStatus(listingId, newStatus, managementType)
 
       if (result.success) {
         // Update local state

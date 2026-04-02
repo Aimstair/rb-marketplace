@@ -13,7 +13,7 @@ interface EmailOptions {
 export async function sendEmail(options: EmailOptions): Promise<boolean> {
   try {
     const { data, error } = await resend.emails.send({
-      from: process.env.EMAIL_FROM || 'RobloxTrade <onboarding@resend.dev>',
+      from: process.env.EMAIL_FROM || 'RbMarket <onboarding@resend.dev>',
       to: options.to,
       subject: options.subject,
       html: options.html,
@@ -43,12 +43,12 @@ export function generateVerificationEmail(code: string, username: string): strin
     </head>
     <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
       <div style="background: linear-gradient(to right, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-        <h1 style="color: white; margin: 0; font-size: 28px;">RobloxTrade</h1>
+        <h1 style="color: white; margin: 0; font-size: 28px;">RbMarket</h1>
       </div>
       
       <div style="background: #f9f9f9; padding: 40px; border-radius: 0 0 10px 10px;">
         <h2 style="color: #333; margin-top: 0;">Welcome, ${username}!</h2>
-        <p style="font-size: 16px; color: #555;">Thank you for signing up for RobloxTrade. To complete your registration, please verify your email address.</p>
+        <p style="font-size: 16px; color: #555;">Thank you for signing up for RbMarket. To complete your registration, please verify your email address.</p>
         
         <div style="background: white; padding: 30px; text-align: center; border-radius: 8px; margin: 30px 0;">
           <p style="font-size: 14px; color: #666; margin-bottom: 15px;">Your verification code is:</p>
@@ -58,12 +58,12 @@ export function generateVerificationEmail(code: string, username: string): strin
           <p style="font-size: 12px; color: #999; margin-top: 15px;">This code will expire in 15 minutes</p>
         </div>
         
-        <p style="font-size: 14px; color: #666;">If you didn't create an account with RobloxTrade, you can safely ignore this email.</p>
+        <p style="font-size: 14px; color: #666;">If you didn't create an account with RbMarket, you can safely ignore this email.</p>
         
         <hr style="border: none; border-top: 1px solid #ddd; margin: 30px 0;">
         
         <p style="font-size: 12px; color: #999; text-align: center;">
-          © ${new Date().getFullYear()} RobloxTrade. All rights reserved.
+          © ${new Date().getFullYear()} RbMarket. All rights reserved.
         </p>
       </div>
     </body>
@@ -82,7 +82,7 @@ export function generatePasswordResetEmail(resetLink: string, username: string):
     </head>
     <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
       <div style="background: linear-gradient(to right, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-        <h1 style="color: white; margin: 0; font-size: 28px;">RobloxTrade</h1>
+        <h1 style="color: white; margin: 0; font-size: 28px;">RbMarket</h1>
       </div>
       
       <div style="background: #f9f9f9; padding: 40px; border-radius: 0 0 10px 10px;">
@@ -108,7 +108,7 @@ export function generatePasswordResetEmail(resetLink: string, username: string):
         <hr style="border: none; border-top: 1px solid #ddd; margin: 30px 0;">
         
         <p style="font-size: 12px; color: #999; text-align: center;">
-          © ${new Date().getFullYear()} RobloxTrade. All rights reserved.
+          © ${new Date().getFullYear()} RbMarket. All rights reserved.
         </p>
       </div>
     </body>

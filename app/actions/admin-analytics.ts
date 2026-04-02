@@ -2,6 +2,45 @@
 
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { headers } from "next/headers"
+import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit"
+
+const ONE_MINUTE_MS = 60 * 1000
+const ONE_HOUR_MS = 60 * ONE_MINUTE_MS
+
+const ADMIN_ANALYTICS_RATE_LIMITS = {
+  read: { maxRequests: 90, windowMs: ONE_MINUTE_MS },
+  heavyRead: { maxRequests: 30, windowMs: ONE_MINUTE_MS },
+  export: { maxRequests: 20, windowMs: ONE_HOUR_MS },
+} as const
+
+async function enforceAdminAnalyticsRateLimit(params: {
+  namespace: string
+  maxRequests: number
+  windowMs: number
+  fallback: string
+  message: string
+}): Promise<{ success: true } | { success: false; error: string }> {
+  const requestHeaders = await headers()
+  const rate = await checkRateLimit(
+    getRateLimitIdentifier({
+      headers: requestHeaders,
+      fallback: params.fallback,
+    }),
+    params.maxRequests,
+    params.windowMs,
+    { namespace: params.namespace }
+  )
+
+  if (rate.allowed) {
+    return { success: true }
+  }
+
+  return {
+    success: false,
+    error: `${params.message} Please try again in ${rate.retryAfterSeconds} seconds.`,
+  }
+}
 
 // Check if user is admin
 async function isAdmin() {
@@ -42,6 +81,18 @@ function getDateRange(timeRange: string) {
 
 export async function getAnalyticsOverview(timeRange: string = "6m") {
   try {
+    const overviewRate = await enforceAdminAnalyticsRateLimit({
+      namespace: "admin-analytics-overview",
+      maxRequests: ADMIN_ANALYTICS_RATE_LIMITS.read.maxRequests,
+      windowMs: ADMIN_ANALYTICS_RATE_LIMITS.read.windowMs,
+      fallback: "admin-analytics-overview",
+      message: "Too many analytics overview requests.",
+    })
+
+    if (!overviewRate.success) {
+      return { success: false, error: overviewRate.error }
+    }
+
     if (!(await isAdmin())) {
       return { success: false, error: "Unauthorized" }
     }
@@ -176,6 +227,18 @@ export async function getAnalyticsOverview(timeRange: string = "6m") {
 
 export async function getUserGrowthData(timeRange: string = "6m") {
   try {
+    const growthRate = await enforceAdminAnalyticsRateLimit({
+      namespace: "admin-analytics-user-growth",
+      maxRequests: ADMIN_ANALYTICS_RATE_LIMITS.heavyRead.maxRequests,
+      windowMs: ADMIN_ANALYTICS_RATE_LIMITS.heavyRead.windowMs,
+      fallback: "admin-analytics-user-growth",
+      message: "Too many user growth requests.",
+    })
+
+    if (!growthRate.success) {
+      return { success: false, error: growthRate.error }
+    }
+
     if (!(await isAdmin())) {
       return { success: false, error: "Unauthorized" }
     }
@@ -218,6 +281,18 @@ export async function getUserGrowthData(timeRange: string = "6m") {
 
 export async function getListingActivityData(timeRange: string = "6m") {
   try {
+    const listingActivityRate = await enforceAdminAnalyticsRateLimit({
+      namespace: "admin-analytics-listing-activity",
+      maxRequests: ADMIN_ANALYTICS_RATE_LIMITS.heavyRead.maxRequests,
+      windowMs: ADMIN_ANALYTICS_RATE_LIMITS.heavyRead.windowMs,
+      fallback: "admin-analytics-listing-activity",
+      message: "Too many listing activity requests.",
+    })
+
+    if (!listingActivityRate.success) {
+      return { success: false, error: listingActivityRate.error }
+    }
+
     if (!(await isAdmin())) {
       return { success: false, error: "Unauthorized" }
     }
@@ -268,6 +343,18 @@ export async function getListingActivityData(timeRange: string = "6m") {
 
 export async function getRevenueData(timeRange: string = "6m") {
   try {
+    const revenueRate = await enforceAdminAnalyticsRateLimit({
+      namespace: "admin-analytics-revenue",
+      maxRequests: ADMIN_ANALYTICS_RATE_LIMITS.heavyRead.maxRequests,
+      windowMs: ADMIN_ANALYTICS_RATE_LIMITS.heavyRead.windowMs,
+      fallback: "admin-analytics-revenue",
+      message: "Too many revenue analytics requests.",
+    })
+
+    if (!revenueRate.success) {
+      return { success: false, error: revenueRate.error }
+    }
+
     if (!(await isAdmin())) {
       return { success: false, error: "Unauthorized" }
     }
@@ -321,6 +408,18 @@ export async function getRevenueData(timeRange: string = "6m") {
 
 export async function getCategoryDistribution() {
   try {
+    const categoryRate = await enforceAdminAnalyticsRateLimit({
+      namespace: "admin-analytics-category-distribution",
+      maxRequests: ADMIN_ANALYTICS_RATE_LIMITS.read.maxRequests,
+      windowMs: ADMIN_ANALYTICS_RATE_LIMITS.read.windowMs,
+      fallback: "admin-analytics-category-distribution",
+      message: "Too many category distribution requests.",
+    })
+
+    if (!categoryRate.success) {
+      return { success: false, error: categoryRate.error }
+    }
+
     if (!(await isAdmin())) {
       return { success: false, error: "Unauthorized" }
     }
@@ -375,6 +474,18 @@ export async function getCategoryDistribution() {
 
 export async function getTopSellers(limit: number = 5) {
   try {
+    const topSellersRate = await enforceAdminAnalyticsRateLimit({
+      namespace: "admin-analytics-top-sellers",
+      maxRequests: ADMIN_ANALYTICS_RATE_LIMITS.read.maxRequests,
+      windowMs: ADMIN_ANALYTICS_RATE_LIMITS.read.windowMs,
+      fallback: "admin-analytics-top-sellers",
+      message: "Too many top seller requests.",
+    })
+
+    if (!topSellersRate.success) {
+      return { success: false, error: topSellersRate.error }
+    }
+
     if (!(await isAdmin())) {
       return { success: false, error: "Unauthorized" }
     }
@@ -433,6 +544,18 @@ export async function getTopSellers(limit: number = 5) {
 
 export async function getTopFlaggedUsers(limit: number = 4) {
   try {
+    const topFlaggedRate = await enforceAdminAnalyticsRateLimit({
+      namespace: "admin-analytics-top-flagged-users",
+      maxRequests: ADMIN_ANALYTICS_RATE_LIMITS.read.maxRequests,
+      windowMs: ADMIN_ANALYTICS_RATE_LIMITS.read.windowMs,
+      fallback: "admin-analytics-top-flagged-users",
+      message: "Too many flagged user requests.",
+    })
+
+    if (!topFlaggedRate.success) {
+      return { success: false, error: topFlaggedRate.error }
+    }
+
     if (!(await isAdmin())) {
       return { success: false, error: "Unauthorized" }
     }

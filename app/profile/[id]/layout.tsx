@@ -1,15 +1,28 @@
 import { Metadata } from "next"
 import { prisma } from "@/lib/prisma"
 
+const DEFAULT_SITE_URL = "https://rbmarket.app"
+
+function getSiteUrl(): string {
+  const candidate = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || DEFAULT_SITE_URL
+  try {
+    return new URL(candidate).toString().replace(/\/$/, "")
+  } catch {
+    return DEFAULT_SITE_URL
+  }
+}
+
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   try {
     const resolvedParams = await params
+    const siteUrl = getSiteUrl()
     const user = await prisma.user.findUnique({
       where: { id: resolvedParams.id },
       select: {
         username: true,
         bio: true,
-        avatar: true,
+        profilePicture: true,
+        isBanned: true,
       },
     })
 
@@ -23,15 +36,24 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     return {
       title: `${user.username}'s Profile - RB Marketplace`,
       description: user.bio || `${user.username} is a trusted trader on RB Marketplace. Check out their listings and trading history.`,
+      metadataBase: new URL(siteUrl),
+      alternates: {
+        canonical: `/profile/${resolvedParams.id}`,
+      },
+      robots: {
+        index: !user.isBanned,
+        follow: !user.isBanned,
+      },
       keywords: [user.username, "profile", "trader", "Roblox", "marketplace"],
       openGraph: {
         title: `${user.username}'s Profile - RB Marketplace`,
         description: user.bio || `Check out ${user.username}'s profile on RB Marketplace`,
         type: "profile",
-        images: user.avatar
+        url: `${siteUrl}/profile/${resolvedParams.id}`,
+        images: user.profilePicture
           ? [
               {
-                url: user.avatar,
+                url: user.profilePicture,
                 width: 400,
                 height: 400,
                 alt: user.username,
@@ -43,7 +65,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
         card: "summary",
         title: `${user.username}'s Profile - RB Marketplace`,
         description: user.bio || `Check out ${user.username}'s profile`,
-        images: user.avatar ? [user.avatar] : [],
+        images: user.profilePicture ? [user.profilePicture] : [],
       },
     }
   } catch (error) {

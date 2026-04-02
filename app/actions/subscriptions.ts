@@ -1,6 +1,49 @@
 "use server"
 
 import { prisma } from "@/lib/prisma"
+import { headers } from "next/headers"
+import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit"
+
+const ONE_MINUTE_MS = 60 * 1000
+const ONE_HOUR_MS = 60 * ONE_MINUTE_MS
+
+const SUBSCRIPTION_RATE_LIMITS = {
+  read: { maxRequests: 120, windowMs: ONE_MINUTE_MS },
+  mutate: { maxRequests: 30, windowMs: ONE_HOUR_MS },
+  maintenance: { maxRequests: 20, windowMs: ONE_HOUR_MS },
+} as const
+
+async function enforceSubscriptionRateLimit(params: {
+  namespace: string
+  maxRequests: number
+  windowMs: number
+  userId?: string | null
+  email?: string | null
+  fallback?: string
+  message: string
+}): Promise<{ success: true } | { success: false; error: string }> {
+  const requestHeaders = await headers()
+  const rate = await checkRateLimit(
+    getRateLimitIdentifier({
+      headers: requestHeaders,
+      userId: params.userId,
+      email: params.email,
+      fallback: params.fallback,
+    }),
+    params.maxRequests,
+    params.windowMs,
+    { namespace: params.namespace }
+  )
+
+  if (rate.allowed) {
+    return { success: true }
+  }
+
+  return {
+    success: false,
+    error: `${params.message} Please try again in ${rate.retryAfterSeconds} seconds.`,
+  }
+}
 
 interface SubscriptionResult {
   success: boolean
@@ -31,6 +74,18 @@ const SUBSCRIPTION_PRICING = {
  */
 export async function upgradeSubscription(userId: string, tier: "PRO" | "ELITE"): Promise<SubscriptionResult> {
   try {
+    const upgradeRate = await enforceSubscriptionRateLimit({
+      namespace: "subscriptions-upgrade",
+      maxRequests: SUBSCRIPTION_RATE_LIMITS.mutate.maxRequests,
+      windowMs: SUBSCRIPTION_RATE_LIMITS.mutate.windowMs,
+      userId,
+      message: "Too many subscription upgrade attempts.",
+    })
+
+    if (!upgradeRate.success) {
+      return { success: false, error: upgradeRate.error }
+    }
+
     // Validate tier
     if (!["PRO", "ELITE"].includes(tier)) {
       return { success: false, error: "Invalid subscription tier" }
@@ -88,6 +143,18 @@ export async function getSubscriptionStats(): Promise<{
   error?: string
 }> {
   try {
+    const statsRate = await enforceSubscriptionRateLimit({
+      namespace: "subscriptions-stats",
+      maxRequests: SUBSCRIPTION_RATE_LIMITS.read.maxRequests,
+      windowMs: SUBSCRIPTION_RATE_LIMITS.read.windowMs,
+      fallback: "subscriptions-stats",
+      message: "Too many subscription statistics requests.",
+    })
+
+    if (!statsRate.success) {
+      return { success: false, error: statsRate.error }
+    }
+
     // TODO: Verify admin role from auth context
 
     // Calculate total revenue from all subscription logs
@@ -160,6 +227,18 @@ export async function getMySubscription(userId: string): Promise<{
   error?: string
 }> {
   try {
+    const mySubscriptionRate = await enforceSubscriptionRateLimit({
+      namespace: "subscriptions-my-plan",
+      maxRequests: SUBSCRIPTION_RATE_LIMITS.read.maxRequests,
+      windowMs: SUBSCRIPTION_RATE_LIMITS.read.windowMs,
+      userId,
+      message: "Too many subscription detail requests.",
+    })
+
+    if (!mySubscriptionRate.success) {
+      return { success: false, error: mySubscriptionRate.error }
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -200,6 +279,18 @@ export async function getSubscriptionLimitsFromSettings(): Promise<{
   error?: string
 }> {
   try {
+    const limitsRate = await enforceSubscriptionRateLimit({
+      namespace: "subscriptions-limits-settings",
+      maxRequests: SUBSCRIPTION_RATE_LIMITS.read.maxRequests,
+      windowMs: SUBSCRIPTION_RATE_LIMITS.read.windowMs,
+      fallback: "subscriptions-limits",
+      message: "Too many subscription limits requests.",
+    })
+
+    if (!limitsRate.success) {
+      return { success: false, error: limitsRate.error }
+    }
+
     const [freeSetting, proSetting, eliteSetting] = await Promise.all([
       prisma.systemSettings.findUnique({ where: { key: "max_listings_free" } }),
       prisma.systemSettings.findUnique({ where: { key: "max_listings_pro" } }),
@@ -234,6 +325,18 @@ export async function enforceListingLimits(userId: string): Promise<{
   error?: string
 }> {
   try {
+    const enforceLimitsRate = await enforceSubscriptionRateLimit({
+      namespace: "subscriptions-enforce-listing-limits",
+      maxRequests: SUBSCRIPTION_RATE_LIMITS.mutate.maxRequests,
+      windowMs: SUBSCRIPTION_RATE_LIMITS.mutate.windowMs,
+      userId,
+      message: "Too many listing limit enforcement attempts.",
+    })
+
+    if (!enforceLimitsRate.success) {
+      return { success: false, error: enforceLimitsRate.error }
+    }
+
     // Get user with subscription info and all active listings
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -318,6 +421,19 @@ export async function checkAndExpireSubscriptions(userId?: string): Promise<{
   error?: string
 }> {
   try {
+    const expireRate = await enforceSubscriptionRateLimit({
+      namespace: "subscriptions-expire-check",
+      maxRequests: SUBSCRIPTION_RATE_LIMITS.maintenance.maxRequests,
+      windowMs: SUBSCRIPTION_RATE_LIMITS.maintenance.windowMs,
+      userId,
+      fallback: "subscriptions-expire-check",
+      message: "Too many subscription expiration checks.",
+    })
+
+    if (!expireRate.success) {
+      return { success: false, error: expireRate.error }
+    }
+
     const now = new Date()
     
     // Build where clause

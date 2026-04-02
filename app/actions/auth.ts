@@ -8,9 +8,45 @@ import { signIn } from "@/auth"
 import { sendEmail, generateVerificationEmail, generatePasswordResetEmail } from "@/lib/email"
 import crypto from "crypto"
 import { AuthError } from "next-auth"
+import { headers } from "next/headers"
+import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit"
+
+const ONE_MINUTE_MS = 60 * 1000
+const ONE_HOUR_MS = 60 * ONE_MINUTE_MS
+
+const AUTH_RATE_LIMITS = {
+  signUp: { maxRequests: 5, windowMs: ONE_HOUR_MS },
+  signIn: { maxRequests: 10, windowMs: 10 * ONE_MINUTE_MS },
+  verifyEmail: { maxRequests: 8, windowMs: 15 * ONE_MINUTE_MS },
+  resendVerificationCode: { maxRequests: 3, windowMs: ONE_HOUR_MS },
+  sendPasswordResetLink: { maxRequests: 3, windowMs: ONE_HOUR_MS },
+} as const
+
+async function rateLimitAuthAction(params: {
+  namespace: string
+  identifier: string
+  maxRequests: number
+  windowMs: number
+  message: string
+}): Promise<{ success: true } | { success: false; error: string }> {
+  const rate = await checkRateLimit(params.identifier, params.maxRequests, params.windowMs, {
+    namespace: params.namespace,
+  })
+
+  if (rate.allowed) {
+    return { success: true }
+  }
+
+  return {
+    success: false,
+    error: `${params.message} Please try again in ${rate.retryAfterSeconds} seconds.`,
+  }
+}
 
 export async function signUp(input: SignUpInput): Promise<SignUpResult> {
   try {
+    const requestHeaders = await headers()
+
     // Check if registration is enabled
     const registrationSetting = await prisma.systemSettings.findUnique({
       where: { key: "registration_enabled" }
@@ -39,6 +75,24 @@ export async function signUp(input: SignUpInput): Promise<SignUpResult> {
     }
 
     const validatedData = signUpSchema.parse(input)
+
+    const signUpRateLimit = await rateLimitAuthAction({
+      namespace: "auth-signup",
+      identifier: getRateLimitIdentifier({
+        headers: requestHeaders,
+        email: validatedData.email,
+      }),
+      maxRequests: AUTH_RATE_LIMITS.signUp.maxRequests,
+      windowMs: AUTH_RATE_LIMITS.signUp.windowMs,
+      message: "Too many sign up attempts.",
+    })
+
+    if (!signUpRateLimit.success) {
+      return {
+        success: false,
+        error: signUpRateLimit.error,
+      }
+    }
 
     // Check if email already exists
     const existingEmail = await prisma.user.findUnique({
@@ -94,9 +148,9 @@ export async function signUp(input: SignUpInput): Promise<SignUpResult> {
     // Send verification email
     await sendEmail({
       to: validatedData.email,
-      subject: "Verify Your Email - RobloxTrade",
+      subject: "Verify Your Email - RbMarket",
       html: generateVerificationEmail(verificationCode, validatedData.username),
-      text: `Welcome to RobloxTrade! Your verification code is: ${verificationCode}. This code will expire in 15 minutes.`,
+      text: `Welcome to RbMarket! Your verification code is: ${verificationCode}. This code will expire in 15 minutes.`,
     })
 
     return {
@@ -130,6 +184,27 @@ export async function signInWithCredentials(
   password: string
 ): Promise<LoginResult> {
   try {
+    const requestHeaders = await headers()
+    const normalizedEmail = email.trim().toLowerCase()
+
+    const signInRateLimit = await rateLimitAuthAction({
+      namespace: "auth-signin",
+      identifier: getRateLimitIdentifier({
+        headers: requestHeaders,
+        email: normalizedEmail,
+      }),
+      maxRequests: AUTH_RATE_LIMITS.signIn.maxRequests,
+      windowMs: AUTH_RATE_LIMITS.signIn.windowMs,
+      message: "Too many login attempts.",
+    })
+
+    if (!signInRateLimit.success) {
+      return {
+        success: false,
+        error: signInRateLimit.error,
+      }
+    }
+
     // 1. Remove 'redirect: false'. 
     // Auth.js v5 needs to control the redirect to update the session properly.
     await signIn("credentials", {
@@ -162,10 +237,31 @@ export async function signInWithCredentials(
 // Verify email with code
 export async function verifyEmail(email: string, code: string): Promise<{ success: boolean; error?: string }> {
   try {
+    const requestHeaders = await headers()
+    const normalizedEmail = email.trim().toLowerCase()
+
+    const verifyRateLimit = await rateLimitAuthAction({
+      namespace: "auth-verify-email",
+      identifier: getRateLimitIdentifier({
+        headers: requestHeaders,
+        email: normalizedEmail,
+      }),
+      maxRequests: AUTH_RATE_LIMITS.verifyEmail.maxRequests,
+      windowMs: AUTH_RATE_LIMITS.verifyEmail.windowMs,
+      message: "Too many verification attempts.",
+    })
+
+    if (!verifyRateLimit.success) {
+      return {
+        success: false,
+        error: verifyRateLimit.error,
+      }
+    }
+
     // Find verification code
     const verification = await prisma.emailVerification.findFirst({
       where: {
-        email,
+        email: normalizedEmail,
         code,
         expiresAt: {
           gt: new Date(),
@@ -182,7 +278,7 @@ export async function verifyEmail(email: string, code: string): Promise<{ succes
 
     // Update user's emailVerified field
     await prisma.user.update({
-      where: { email },
+      where: { email: normalizedEmail },
       data: { emailVerified: new Date() },
     })
 
@@ -206,9 +302,30 @@ export async function verifyEmail(email: string, code: string): Promise<{ succes
 // Resend verification code
 export async function resendVerificationCode(email: string): Promise<{ success: boolean; error?: string }> {
   try {
+    const requestHeaders = await headers()
+    const normalizedEmail = email.trim().toLowerCase()
+
+    const resendRateLimit = await rateLimitAuthAction({
+      namespace: "auth-resend-verification",
+      identifier: getRateLimitIdentifier({
+        headers: requestHeaders,
+        email: normalizedEmail,
+      }),
+      maxRequests: AUTH_RATE_LIMITS.resendVerificationCode.maxRequests,
+      windowMs: AUTH_RATE_LIMITS.resendVerificationCode.windowMs,
+      message: "Too many verification resend attempts.",
+    })
+
+    if (!resendRateLimit.success) {
+      return {
+        success: false,
+        error: resendRateLimit.error,
+      }
+    }
+
     // Check if user exists
     const user = await prisma.user.findUnique({
-      where: { email },
+      where: { email: normalizedEmail },
     })
 
     if (!user) {
@@ -227,7 +344,7 @@ export async function resendVerificationCode(email: string): Promise<{ success: 
 
     // Delete old verification codes for this email
     await prisma.emailVerification.deleteMany({
-      where: { email },
+      where: { email: normalizedEmail },
     })
 
     // Generate new verification code
@@ -236,7 +353,7 @@ export async function resendVerificationCode(email: string): Promise<{ success: 
     // Store verification code in database
     await prisma.emailVerification.create({
       data: {
-        email,
+        email: normalizedEmail,
         code: verificationCode,
         expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes
       },
@@ -244,8 +361,8 @@ export async function resendVerificationCode(email: string): Promise<{ success: 
 
     // Send verification email
     await sendEmail({
-      to: email,
-      subject: "Verify Your Email - RobloxTrade",
+      to: normalizedEmail,
+      subject: "Verify Your Email - RbMarket",
       html: generateVerificationEmail(verificationCode, user.username),
       text: `Your new verification code is: ${verificationCode}. This code will expire in 15 minutes.`,
     })
@@ -265,9 +382,30 @@ export async function resendVerificationCode(email: string): Promise<{ success: 
 // Send password reset link
 export async function sendPasswordResetLink(email: string): Promise<{ success: boolean; error?: string }> {
   try {
+    const requestHeaders = await headers()
+    const normalizedEmail = email.trim().toLowerCase()
+
+    const passwordResetRateLimit = await rateLimitAuthAction({
+      namespace: "auth-password-reset-request",
+      identifier: getRateLimitIdentifier({
+        headers: requestHeaders,
+        email: normalizedEmail,
+      }),
+      maxRequests: AUTH_RATE_LIMITS.sendPasswordResetLink.maxRequests,
+      windowMs: AUTH_RATE_LIMITS.sendPasswordResetLink.windowMs,
+      message: "Too many password reset requests.",
+    })
+
+    if (!passwordResetRateLimit.success) {
+      return {
+        success: false,
+        error: passwordResetRateLimit.error,
+      }
+    }
+
     // Check if user exists
     const user = await prisma.user.findUnique({
-      where: { email },
+      where: { email: normalizedEmail },
     })
 
     // Return error if user doesn't exist
@@ -280,7 +418,7 @@ export async function sendPasswordResetLink(email: string): Promise<{ success: b
 
     // Delete old password reset tokens for this email
     await prisma.passwordReset.deleteMany({
-      where: { email },
+      where: { email: normalizedEmail },
     })
 
     // Generate reset token
@@ -289,7 +427,7 @@ export async function sendPasswordResetLink(email: string): Promise<{ success: b
     // Store reset token in database
     await prisma.passwordReset.create({
       data: {
-        email,
+        email: normalizedEmail,
         token: resetToken,
         expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
       },
@@ -300,8 +438,8 @@ export async function sendPasswordResetLink(email: string): Promise<{ success: b
 
     // Send password reset email
     await sendEmail({
-      to: email,
-      subject: "Reset Your Password - RobloxTrade",
+      to: normalizedEmail,
+      subject: "Reset Your Password - RbMarket",
       html: generatePasswordResetEmail(resetLink, user.username),
       text: `Click the following link to reset your password: ${resetLink}. This link will expire in 1 hour.`,
     })

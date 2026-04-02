@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Image from "next/image"
 import { Search, Filter, ThumbsUp, ThumbsDown, ChevronLeft, ChevronRight, StarIcon, Star, MessageCircle } from "lucide-react"
 import Navigation from "@/components/navigation"
 import { Button } from "@/components/ui/button"
@@ -35,6 +36,7 @@ export default function MarketplacePage() {
   
   // Filter States
   const [searchQuery, setSearchQuery] = useState("")
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("")
   const [mainCategory, setMainCategory] = useState("All")
   const [selectedGame, setSelectedGame] = useState("All Games")
   const [selectedItemType, setSelectedItemType] = useState("All")
@@ -56,11 +58,20 @@ export default function MarketplacePage() {
 
   // Initialize Search from URL
   useEffect(() => {
-    const itemParam = searchParams.get("item")
-    if (itemParam) {
-      setSearchQuery(itemParam)
+    const queryParam = searchParams.get("search") || searchParams.get("item")
+    if (queryParam) {
+      setSearchQuery(queryParam)
+      setDebouncedSearchQuery(queryParam)
     }
   }, [searchParams])
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery)
+    }, 300)
+
+    return () => window.clearTimeout(timeout)
+  }, [searchQuery])
 
   // Fetch Dynamic Filter Options on Mount
   useEffect(() => {
@@ -92,7 +103,7 @@ export default function MarketplacePage() {
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchQuery, mainCategory, selectedGame, selectedItemType, sortBy, priceRange])
+  }, [debouncedSearchQuery, mainCategory, selectedGame, selectedItemType, sortBy, priceRange])
 
   // Fetch listings
   useEffect(() => {
@@ -100,7 +111,7 @@ export default function MarketplacePage() {
       setIsLoading(true)
       try {
         const result = await getListings({
-          search: searchQuery,
+          search: debouncedSearchQuery,
           mainCategory,
           selectedGame,
           selectedItemType,
@@ -120,7 +131,7 @@ export default function MarketplacePage() {
     }
 
     fetchListings()
-  }, [searchQuery, mainCategory, selectedGame, selectedItemType, sortBy, priceRange, currentPage])
+  }, [debouncedSearchQuery, mainCategory, selectedGame, selectedItemType, sortBy, priceRange, currentPage])
 
   const totalPages = Math.ceil(totalListings / ITEMS_PER_PAGE)
 
@@ -158,7 +169,7 @@ export default function MarketplacePage() {
     <main className="min-h-screen bg-background">
       <Navigation />
       {/* Header */}
-      <section className="bg-gradient-to-r from-primary/10 to-primary/5 py-12">
+      <section className="bg-linear-to-r from-primary/10 to-primary/5 py-12">
           <div className="container max-w-[1920px] mx-auto px-6">
             <h1 className="text-4xl font-bold mb-2">Item Marketplace</h1>
             <p className="text-muted-foreground">
@@ -478,10 +489,12 @@ export default function MarketplacePage() {
                       <Card className="overflow-hidden hover:shadow-lg transition-all duration-300 cursor-pointer group h-full flex flex-col">
                         {/* Image */}
                         <div className="relative h-48 bg-muted overflow-hidden">
-                          <img
+                          <Image
                             src={listing.image || "/placeholder.svg"}
                             alt={listing.title}
-                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                            fill
+                            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                            className="object-cover group-hover:scale-110 transition-transform duration-300"
                           />
                           <Badge className="absolute top-3 right-3 bg-primary text-primary-foreground">
                             {listing.condition}
@@ -495,7 +508,7 @@ export default function MarketplacePage() {
                         </div>
 
                         {/* Content */}
-                        <div className="p-4 flex flex-col flex-grow">
+                        <div className="p-4 flex grow flex-col">
                           <h3 className="font-bold line-clamp-2 mb-2 group-hover:text-primary transition">
                             {listing.title}
                           </h3>

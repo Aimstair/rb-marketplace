@@ -17,6 +17,9 @@ import {
 import { getUnreadCount, getNotifications, markAsRead, markAllAsRead } from "@/app/actions/notifications"
 import type { NotificationData } from "@/app/actions/notifications"
 import { getUnreadMessageCount } from "@/app/actions/messages"
+import { getPusherClient } from "@/lib/pusher-client"
+import { isRealtimeMessagingFeatureEnabled } from "@/lib/feature-flags"
+import { buildMessagingChannel, buildPrivateNotificationsChannel } from "@/lib/pusher-channels"
 
 export default function Navigation() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -28,19 +31,69 @@ export default function Navigation() {
   const router = useRouter()
   const { data: session, status } = useSession()
 
-  // Fetch unread count on mount and periodically
+  // Initial unread/message snapshot on authenticated load
   useEffect(() => {
-    if (status === "authenticated") {
-      fetchUnreadCount()
-      fetchUnreadMessageCount()
-      // Refresh unread count every 30 seconds
-      const interval = setInterval(() => {
-        fetchUnreadCount()
-        fetchUnreadMessageCount()
-      }, 30000)
-      return () => clearInterval(interval)
+    if (status !== "authenticated" || !session?.user?.id) return
+
+    fetchUnreadCount()
+    fetchUnreadMessageCount()
+  }, [status, session?.user?.id])
+
+  useEffect(() => {
+    if (status !== "authenticated" || !session?.user?.id) return
+    if (!isRealtimeMessagingFeatureEnabled()) return
+
+    const pusher = getPusherClient()
+    if (!pusher) return
+
+    const notificationsChannelName = buildPrivateNotificationsChannel(session.user.id)
+    const messagingChannelName = buildMessagingChannel(session.user.id)
+    const notificationsChannel = pusher.subscribe(notificationsChannelName)
+    const messagingChannel = pusher.subscribe(messagingChannelName)
+
+    const onNotificationUpdated = (data: any) => {
+      if (typeof data?.unreadCount === "number") {
+        setUnreadCount(data.unreadCount)
+      }
+
+      if (data?.action === "created" && data?.notification) {
+        const incoming = data.notification as NotificationData
+        const normalized: NotificationData = {
+          ...incoming,
+          createdAt: new Date(incoming.createdAt),
+        }
+
+        setNotifications((prev) => {
+          const filtered = prev.filter((item) => item.id !== normalized.id)
+          return [normalized, ...filtered]
+        })
+      }
     }
-  }, [status])
+
+    const onUnreadMessageCountUpdated = (data: any) => {
+      if (typeof data?.unreadMessageCount === "number") {
+        setUnreadMessageCount(data.unreadMessageCount)
+      }
+    }
+
+    const onConversationUpdated = (data: any) => {
+      if (typeof data?.unreadMessageCount === "number") {
+        setUnreadMessageCount(data.unreadMessageCount)
+      }
+    }
+
+    notificationsChannel.bind("notification-updated", onNotificationUpdated)
+    messagingChannel.bind("unread-message-count-updated", onUnreadMessageCountUpdated)
+    messagingChannel.bind("conversation-updated", onConversationUpdated)
+
+    return () => {
+      notificationsChannel.unbind("notification-updated", onNotificationUpdated)
+      messagingChannel.unbind("unread-message-count-updated", onUnreadMessageCountUpdated)
+      messagingChannel.unbind("conversation-updated", onConversationUpdated)
+      pusher.unsubscribe(notificationsChannelName)
+      pusher.unsubscribe(messagingChannelName)
+    }
+  }, [status, session?.user?.id])
 
   // Fetch notifications when dropdown is opened
   const fetchNotifications = async () => {
@@ -136,6 +189,9 @@ export default function Navigation() {
           </Link>
           <Link href="/currency" className="text-muted-foreground hover:text-foreground transition">
             Currency
+          </Link>
+          <Link href="/hall-of-shame" className="text-muted-foreground hover:text-foreground transition">
+            Hall of Shame
           </Link>
           <Link href="/trends" className="text-muted-foreground hover:text-foreground transition">
             Trends
@@ -323,6 +379,9 @@ export default function Navigation() {
             </Link>
             <Link href="/currency" className="py-2 text-muted-foreground hover:text-foreground">
               Currency
+            </Link>
+            <Link href="/hall-of-shame" className="py-2 text-muted-foreground hover:text-foreground">
+              Hall of Shame
             </Link>
             <Link href="/trends" className="py-2 text-muted-foreground hover:text-foreground">
               Trends

@@ -6,7 +6,7 @@ import bcrypt from "bcryptjs"
 
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  adapter: PrismaAdapter(prisma),
+  adapter: PrismaAdapter(prisma) as any,
   providers: [
     Credentials({
       name: "Credentials",
@@ -14,7 +14,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         email: { label: "Email", type: "email", placeholder: "user@example.com" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, _request) {
         // Validate credentials object
         if (!credentials?.email || !credentials?.password) {
           throw new Error("Email and password required")
@@ -97,8 +97,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           id: user.id,
           email: user.email,
           name: user.username,
+          username: user.username,
           image: user.profilePicture,
+          profilePicture: user.profilePicture,
           role: user.role,
+          isBanned: user.isBanned,
         }
       },
     }),

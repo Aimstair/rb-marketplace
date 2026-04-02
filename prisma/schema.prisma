@@ -88,6 +88,16 @@ model User {
   // Payment relations
   payments Payment[]
 
+  // Giveaway relations
+  giveawayEntries GiveawayEntry[] @relation("GiveawayEntries")
+  giveawaysWon    Giveaway[]      @relation("GiveawayWinner")
+  giveawaysCreated Giveaway[]     @relation("GiveawayCreator")
+
+  // Hall of Shame relations
+  hallOfShameReportsSubmitted HallOfShameEntry[]   @relation("HallOfShameReporter")
+  hallOfShameReviews          HallOfShameEntry[]   @relation("HallOfShameReviewer")
+  hallOfShameComments         HallOfShameComment[] @relation("HallOfShameCommentAuthor")
+
   // NextAuth relations
   accounts Account[]
   sessions Session[]
@@ -857,4 +867,175 @@ model Payment {
   @@index([providerPaymentId])
   @@index([status])
   @@map("payments")
+}
+
+model Giveaway {
+  id String @id @default(cuid())
+
+  title         String
+  description   String?
+  rewardLabel   String?
+  rewardImageUrl String?
+  status        String   @default("QUEUED") // "QUEUED" | "ACTIVE" | "COMPLETED" | "CANCELLED"
+  startsAt      DateTime?
+  endsAt        DateTime?
+
+  winnerUserId String?
+  winnerUser   User?   @relation("GiveawayWinner", fields: [winnerUserId], references: [id], onDelete: SetNull)
+
+  createdById String?
+  createdBy   User?   @relation("GiveawayCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  entries GiveawayEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([startsAt])
+  @@index([endsAt])
+  @@index([winnerUserId])
+  @@index([createdById])
+  @@map("giveaways")
+}
+
+model GiveawayEntry {
+  id String @id @default(cuid())
+
+  giveawayId String
+  giveaway   Giveaway @relation(fields: [giveawayId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation("GiveawayEntries", fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([giveawayId, userId])
+  @@index([giveawayId])
+  @@index([userId])
+  @@map("giveaway_entries")
+}
+
+model HallOfShameEntry {
+  id String @id @default(cuid())
+
+  reporterId String
+  reporter   User   @relation("HallOfShameReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+
+  reviewerId String?
+  reviewer   User?   @relation("HallOfShameReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  incidentSummary    String
+  transactionContext String?
+  incidentDate       DateTime?
+  amount             Int?
+  currency           String @default("PHP")
+
+  status          String    @default("PENDING") // "PENDING" | "APPROVED" | "REJECTED" | "REMOVED"
+  reviewerNotes   String?
+  rejectionReason String?
+  publishedAt     DateTime?
+
+  aliases     HallOfShameAlias[]
+  identifiers HallOfShameIdentifier[]
+  socialLinks HallOfShameSocialLink[]
+  evidence    HallOfShameEvidence[]
+  comments    HallOfShameComment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([reporterId])
+  @@index([reviewerId])
+  @@index([status])
+  @@index([publishedAt])
+  @@index([createdAt])
+  @@map("hall_of_shame_entries")
+}
+
+model HallOfShameAlias {
+  id String @id @default(cuid())
+
+  entryId String
+  entry   HallOfShameEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  alias           String
+  normalizedAlias String
+
+  createdAt DateTime @default(now())
+
+  @@unique([entryId, normalizedAlias])
+  @@index([normalizedAlias])
+  @@map("hall_of_shame_aliases")
+}
+
+model HallOfShameIdentifier {
+  id String @id @default(cuid())
+
+  entryId String
+  entry   HallOfShameEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  type            String // "GCASH" | "BANK_ACCOUNT" | "PAYPAL_EMAIL" | "OTHER"
+  label           String?
+  value           String
+  normalizedValue String
+
+  createdAt DateTime @default(now())
+
+  @@unique([entryId, type, normalizedValue])
+  @@index([type])
+  @@index([normalizedValue])
+  @@map("hall_of_shame_identifiers")
+}
+
+model HallOfShameSocialLink {
+  id String @id @default(cuid())
+
+  entryId String
+  entry   HallOfShameEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  platform         String
+  url              String?
+  handle           String?
+  normalizedHandle String?
+
+  createdAt DateTime @default(now())
+
+  @@index([platform])
+  @@index([normalizedHandle])
+  @@map("hall_of_shame_social_links")
+}
+
+model HallOfShameEvidence {
+  id String @id @default(cuid())
+
+  entryId String
+  entry   HallOfShameEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  url String
+
+  createdAt DateTime @default(now())
+
+  @@index([entryId])
+  @@map("hall_of_shame_evidence")
+}
+
+model HallOfShameComment {
+  id String @id @default(cuid())
+
+  entryId String
+  entry   HallOfShameEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  authorId String
+  author   User   @relation("HallOfShameCommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  content String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([entryId])
+  @@index([authorId])
+  @@index([createdAt])
+  @@map("hall_of_shame_comments")
 }

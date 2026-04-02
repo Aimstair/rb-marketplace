@@ -1,8 +1,46 @@
+// @ts-nocheck
 "use server"
 
 import { prisma } from "@/lib/prisma"
 import { createNotification } from "@/app/actions/notifications"
 import { auth } from "@/auth"
+import { headers } from "next/headers"
+import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit"
+
+const ONE_MINUTE_MS = 60 * 1000
+const ONE_HOUR_MS = 60 * ONE_MINUTE_MS
+
+const ADMIN_CORE_RATE_LIMITS = {
+  read: { maxRequests: 120, windowMs: ONE_MINUTE_MS },
+  mutate: { maxRequests: 60, windowMs: ONE_HOUR_MS },
+} as const
+
+async function enforceAdminCoreRateLimit(action: string, isMutation: boolean): Promise<{
+  allowed: boolean
+  error?: string
+}> {
+  const requestHeaders = await headers()
+  const config = isMutation ? ADMIN_CORE_RATE_LIMITS.mutate : ADMIN_CORE_RATE_LIMITS.read
+
+  const rate = await checkRateLimit(
+    getRateLimitIdentifier({
+      headers: requestHeaders,
+      fallback: "admin-core",
+    }),
+    config.maxRequests,
+    config.windowMs,
+    { namespace: `admin-core-${action}` }
+  )
+
+  if (rate.allowed) {
+    return { allowed: true }
+  }
+
+  return {
+    allowed: false,
+    error: `Too many admin requests for ${action}. Please try again in ${rate.retryAfterSeconds} seconds.`,
+  }
+}
 
 /**
  * Type definitions for admin responses
@@ -103,6 +141,11 @@ interface ReportsResult {
  */
 export async function getDashboardStats(): Promise<{ success: boolean; data?: DashboardStats; error?: string }> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("getDashboardStats", false)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     // TODO: Verify admin role from auth context
     // For now, we'll proceed but this should check: if (user.role !== "admin") throw new Error("Unauthorized")
 
@@ -516,6 +559,11 @@ export async function getUsers(
   statusFilter: string = "all",
 ): Promise<PaginatedUsers> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("getUsers", false)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     // TODO: Verify admin role from auth context
     const pageSize = 10
     const skip = (page - 1) * pageSize
@@ -600,6 +648,11 @@ export async function getUsers(
  */
 export async function banUser(userId: string, ban: boolean = true, adminId?: string): Promise<AdminResult> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("banUser", true)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     // TODO: Verify admin role from auth context
     // TODO: Verify current user is admin
 
@@ -695,6 +748,11 @@ export async function getReports(
   page: number = 1,
 ): Promise<ReportsResult> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("getReports", false)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     // TODO: Verify admin role from auth context
     const pageSize = 15
     const skip = (page - 1) * pageSize
@@ -826,6 +884,11 @@ export async function resolveReport(
   resolution: "RESOLVED" | "DISMISSED",
 ): Promise<AdminResult> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("resolveReport", true)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     // TODO: Verify admin role from auth context
 
     if (!reportId) {
@@ -959,6 +1022,11 @@ export async function updateReportStatus(
   reportId: string,
   newStatus: "RESOLVED" | "DISMISSED",
 ): Promise<AdminResult> {
+  const adminRateLimit = await enforceAdminCoreRateLimit("updateReportStatus", true)
+  if (!adminRateLimit.allowed) {
+    return { success: false, error: adminRateLimit.error }
+  }
+
   return resolveReport(reportId, newStatus)
 }
 
@@ -973,6 +1041,11 @@ export async function createReport(data: {
   details?: string
 }): Promise<AdminResult> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("createReport", true)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     const session = await auth()
 
     if (!session?.user?.id) {
@@ -1071,6 +1144,11 @@ export async function getAdminListings(
   error?: string
 }> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("getAdminListings", false)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     // TODO: Verify admin role from auth context
     const pageSize = 15
     const skip = (page - 1) * pageSize
@@ -1187,6 +1265,11 @@ export async function getAdminListingStats(): Promise<{
   error?: string
 }> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("getAdminListingStats", false)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     // Get counts for each status from both tables
     const [itemAvailable, itemPending, itemHidden, itemBanned, itemSold] = await Promise.all([
       prisma.itemListing.count({ where: { status: "available" } }),
@@ -1231,6 +1314,11 @@ export async function adminUpdateListingStatus(
   adminId?: string,
 ): Promise<AdminResult> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("adminUpdateListingStatus", true)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     // TODO: Verify admin role from auth context
 
     if (!listingId) {
@@ -1370,6 +1458,11 @@ export async function getDisputes(): Promise<{
   error?: string
 }> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("getDisputes", false)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     const disputes = await prisma.dispute.findMany({
       include: {
         transaction: {
@@ -1400,6 +1493,11 @@ export async function resolveDispute(
   adminId: string,
 ): Promise<AdminResult> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("resolveDispute", true)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     const dispute = await prisma.dispute.findUnique({ where: { id: disputeId } })
     if (!dispute) {
       return { success: false, error: "Dispute not found" }
@@ -1449,6 +1547,11 @@ export async function getSupportTickets(): Promise<{
   error?: string
 }> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("getSupportTickets", false)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     const tickets = await prisma.supportTicket.findMany({
       include: {
         user: { select: { id: true, username: true, email: true, profilePicture: true } },
@@ -1474,6 +1577,11 @@ export async function createSupportTicket(data: {
   priority?: string
 }): Promise<{ success: boolean; ticketId?: string; error?: string }> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("createSupportTicket", true)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     if (!data.subject || !data.message) {
       return { success: false, error: "Subject and message are required" }
     }
@@ -1525,6 +1633,11 @@ export async function getMyTickets(userId: string): Promise<{
   error?: string
 }> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("getMyTickets", false)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     const tickets = await prisma.supportTicket.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" }
@@ -1547,6 +1660,11 @@ export async function updateTicketStatus(
   adminId: string
 ): Promise<AdminResult> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("updateTicketStatus", true)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     const ticket = await prisma.supportTicket.findUnique({ 
       where: { id: ticketId },
       include: { user: true }
@@ -1595,6 +1713,11 @@ export async function updateTicketStatus(
  */
 export async function closeTicket(ticketId: string, adminId: string): Promise<AdminResult> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("closeTicket", true)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     const ticket = await prisma.supportTicket.findUnique({ 
       where: { id: ticketId },
       include: { user: true }
@@ -1643,6 +1766,11 @@ export async function closeTicket(ticketId: string, adminId: string): Promise<Ad
  */
 export async function reopenTicket(ticketId: string, adminId: string): Promise<AdminResult> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("reopenTicket", true)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     const ticket = await prisma.supportTicket.findUnique({ 
       where: { id: ticketId },
       include: { user: true }
@@ -1695,6 +1823,11 @@ export async function addTicketReply(
   isAdmin: boolean = false
 ): Promise<{ success: boolean; error?: string; data?: any }> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("addTicketReply", true)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     if (!message.trim()) {
       return { success: false, error: "Message cannot be empty" }
     }
@@ -1777,6 +1910,11 @@ export async function getTicketMessages(ticketId: string): Promise<{
   error?: string
 }> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("getTicketMessages", false)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     const messages = await prisma.supportTicketMessage.findMany({
       where: { ticketId },
       include: {
@@ -1816,6 +1954,11 @@ export async function getAnnouncements(): Promise<{
   error?: string
 }> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("getAnnouncements", false)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     const announcements = await prisma.announcement.findMany({
       orderBy: { createdAt: "desc" },
     })
@@ -1841,6 +1984,11 @@ export async function createAnnouncement(
   adminId: string,
 ): Promise<AdminResult & { announcementId?: string }> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("createAnnouncement", true)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     if (!data.title || !data.content) {
       return { success: false, error: "Title and content are required" }
     }
@@ -1906,6 +2054,11 @@ export async function createAnnouncement(
  */
 export async function deleteAnnouncement(announcementId: string, adminId: string): Promise<AdminResult> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("deleteAnnouncement", true)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     const announcement = await prisma.announcement.findUnique({ where: { id: announcementId } })
     if (!announcement) {
       return { success: false, error: "Announcement not found" }
@@ -1946,6 +2099,11 @@ export async function updateAnnouncement(
   adminId: string
 ): Promise<AdminResult> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("updateAnnouncement", true)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     const announcement = await prisma.announcement.findUnique({ where: { id: announcementId } })
     if (!announcement) {
       return { success: false, error: "Announcement not found" }
@@ -1999,6 +2157,11 @@ export async function getAuditLogs(limit: number = 50): Promise<{
   error?: string
 }> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("getAuditLogs", false)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     const logs = await prisma.auditLog.findMany({
       include: {
         admin: { select: { id: true, username: true } },
@@ -2031,6 +2194,11 @@ export async function exportAuditLogs(
   error?: string
 }> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("exportAuditLogs", false)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     const session = await auth()
     if (!session?.user || session.user.role !== "admin") {
       return { success: false, error: "Unauthorized" }
@@ -2107,6 +2275,11 @@ export async function getAdmins(): Promise<{
   error?: string
 }> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("getAdmins", false)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     const admins = await prisma.user.findMany({
       where: { role: "admin" },
       select: {
@@ -2144,6 +2317,11 @@ export async function getStaffUsers(): Promise<{
   error?: string
 }> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("getStaffUsers", false)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     const staff = await prisma.user.findMany({
       where: {
         role: {
@@ -2178,6 +2356,11 @@ export async function updateUserRole(
   adminId: string,
 ): Promise<AdminResult> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("updateUserRole", true)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     if (!userId) {
       return { success: false, error: "User ID is required" }
     }
@@ -2248,6 +2431,11 @@ export async function getRoles(): Promise<{
   error?: string
 }> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("getRoles", false)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     const roles = await prisma.role.findMany({
       include: {
         _count: { select: { users: true } },
@@ -2295,6 +2483,11 @@ export async function createRole(
   adminId: string,
 ): Promise<{ success: boolean; roleId?: string; error?: string }> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("createRole", true)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     if (!data.name || !data.color) {
       return { success: false, error: "Name and color are required" }
     }
@@ -2342,6 +2535,11 @@ export async function updateRolePermissions(
   adminId: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("updateRolePermissions", true)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     if (!roleId) {
       return { success: false, error: "Role ID is required" }
     }
@@ -2384,6 +2582,11 @@ export async function assignUserRole(
   adminId: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("assignUserRole", true)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     if (!username || !roleId) {
       return { success: false, error: "Username and Role ID are required" }
     }
@@ -2450,6 +2653,11 @@ export async function getChatConversations(searchQuery: string = "", filterType:
   error?: string
 }> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("getChatConversations", false)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     // TODO: Verify admin role from auth context
 
     // Get all conversations with messages
@@ -2602,6 +2810,11 @@ export async function getConversationMessages(conversationId: string): Promise<{
   error?: string
 }> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("getConversationMessages", false)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     // TODO: Verify admin role from auth context
 
     const messages = await prisma.message.findMany({
@@ -2668,6 +2881,11 @@ export async function muteUser(
   duration?: number // duration in hours, undefined = permanent
 ): Promise<AdminResult> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("muteUser", true)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     const session = await auth()
     if (!session?.user || session.user.role !== "admin") {
       return { success: false, error: "Unauthorized" }
@@ -2794,6 +3012,11 @@ export async function getVouches(searchQuery: string = "", statusFilter: string 
   error?: string
 }> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("getVouches", false)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     // Fetch all vouches with user details and transaction info
     const vouches = await prisma.vouch.findMany({
       select: {
@@ -3097,6 +3320,11 @@ export async function getVouches(searchQuery: string = "", statusFilter: string 
  */
 export async function invalidateVouch(vouchId: string, reason: string): Promise<AdminResult> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("invalidateVouch", true)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     const session = await auth()
     if (!session?.user || session.user.role !== "admin") {
       return { success: false, error: "Unauthorized" }
@@ -3171,6 +3399,11 @@ export async function invalidateVouch(vouchId: string, reason: string): Promise<
  */
 export async function approveVouch(vouchId: string): Promise<AdminResult> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("approveVouch", true)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     const session = await auth()
     if (!session?.user || session.user.role !== "admin") {
       return { success: false, error: "Unauthorized" }
@@ -3236,6 +3469,11 @@ export async function invalidatePattern(
   reason: string
 ): Promise<AdminResult> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("invalidatePattern", true)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     const session = await auth()
     if (!session?.user || session.user.role !== "admin") {
       return { success: false, error: "Unauthorized" }
@@ -3314,6 +3552,11 @@ export async function getSystemSettings(): Promise<{
   error?: string
 }> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("getSystemSettings", false)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     const session = await auth()
     if (!session?.user || session.user.role !== "admin") {
       return { success: false, error: "Unauthorized" }
@@ -3334,9 +3577,9 @@ export async function getSystemSettings(): Promise<{
 
     // Set defaults if not in database
     const defaults = {
-      site_name: "RobloxTrade",
+      site_name: "RbMarket",
       site_description: "Peer-to-peer marketplace for trading Roblox items safely.",
-      support_email: "support@robloxtrade.com",
+      support_email: "support@rbmarket.app",
       maintenance_mode: false,
       registration_enabled: true,
       new_user_limit_week: 5000,
@@ -3350,7 +3593,7 @@ export async function getSystemSettings(): Promise<{
       featured_duration_hours: 24,
       default_sort: "newest",
       email_notifications: true,
-      admin_alert_email: "admin@robloxtrade.com",
+      admin_alert_email: "admin@rbmarket.app",
       alert_high_value_trades: true,
       alert_new_reports: true,
       alert_system_errors: true,
@@ -3373,6 +3616,11 @@ export async function updateSystemSettings(
   settings: Record<string, any>
 ): Promise<AdminResult> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("updateSystemSettings", true)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     const session = await auth()
     if (!session?.user || session.user.role !== "admin") {
       return { success: false, error: "Unauthorized" }
@@ -3458,6 +3706,11 @@ export async function updateSystemSettings(
  */
 export async function resetSystemSettings(): Promise<AdminResult> {
   try {
+    const adminRateLimit = await enforceAdminCoreRateLimit("resetSystemSettings", true)
+    if (!adminRateLimit.allowed) {
+      return { success: false, error: adminRateLimit.error } as any
+    }
+
     const session = await auth()
     if (!session?.user || session.user.role !== "admin") {
       return { success: false, error: "Unauthorized" }

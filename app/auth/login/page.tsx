@@ -103,7 +103,7 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <Link href="/" className="flex items-center justify-center mb-8">
-          <div className="text-3xl font-bold text-primary">RobloxTrade</div>
+          <div className="text-3xl font-bold text-primary">RbMarket</div>
         </Link>
 
         {/* Login Card */}
@@ -125,7 +125,7 @@ export default function LoginPage() {
               <label className="text-sm font-semibold mb-2 block">Email Address</label>
               <Input
                 type="email"
-                placeholder="user@test.com or admin@test.com"
+                placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full"

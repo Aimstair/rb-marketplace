@@ -1,0 +1,3 @@
+-- Migration file restored to repair local migration history.
+-- Changes for this phase were previously applied out-of-band.
+-- Intentionally left as no-op.

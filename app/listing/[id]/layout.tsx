@@ -1,6 +1,17 @@
 import { Metadata } from "next"
 import { prisma } from "@/lib/prisma"
 
+const DEFAULT_SITE_URL = "https://rbmarket.app"
+
+function getSiteUrl(): string {
+  const candidate = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || DEFAULT_SITE_URL
+  try {
+    return new URL(candidate).toString().replace(/\/$/, "")
+  } catch {
+    return DEFAULT_SITE_URL
+  }
+}
+
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   try {
     // Await params since it's a Promise in Next.js 15+
@@ -23,7 +34,6 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
       },
     })
 
-    let listingType = "ITEM"
     let gameName = listing?.game?.displayName || "Roblox"
     let price = listing?.price || 0
     let category = "item"
@@ -48,7 +58,6 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
       if (currencyListing) {
         listing = currencyListing as any
-        listingType = "CURRENCY"
         gameName = currencyListing.game?.displayName || "Roblox"
         price = (currencyListing as any).ratePerPeso || 0
         category = "currency"
@@ -59,33 +68,54 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
       return {
         title: "Listing Not Found - RB Marketplace",
         description: "The listing you're looking for doesn't exist.",
+        robots: {
+          index: false,
+          follow: false,
+        },
       }
     }
 
+    const siteUrl = getSiteUrl()
+    const listingStatus = String((listing as any).status || "").toLowerCase()
+    const isIndexable = listingStatus === "available"
     const formattedPrice = price.toLocaleString()
+    const rawDescription = (listing.description || "").trim()
+    const snippet = rawDescription ? `${rawDescription.slice(0, 120)}${rawDescription.length > 120 ? "..." : ""}` : "Trusted Roblox marketplace listing."
+    const description = `Buy ${listing.title} from ${listing.seller.username} for P${formattedPrice}. ${snippet}`
 
     return {
       title: `${listing.title} - Buy on RB Marketplace`,
-      description: `Buy ${listing.title} from ${listing.seller.username} for ₱${formattedPrice}. ${listing.description?.substring(0, 120)}...`,
+      description,
+      metadataBase: new URL(siteUrl),
+      alternates: {
+        canonical: `/listing/${id}`,
+      },
+      robots: {
+        index: isIndexable,
+        follow: isIndexable,
+      },
       keywords: [listing.title, gameName, category, "Roblox", "marketplace", "buy", "sell"],
       openGraph: {
         title: `${listing.title} - RB Marketplace`,
-        description: `Buy ${listing.title} for ₱${formattedPrice} on RB Marketplace`,
+        description,
         type: "website",
-        images: [
-          {
-            url: listing.image,
-            width: 1200,
-            height: 630,
-            alt: listing.title,
-          },
-        ],
+        url: `${siteUrl}/listing/${id}`,
+        images: listing.image
+          ? [
+              {
+                url: listing.image,
+                width: 1200,
+                height: 630,
+                alt: listing.title,
+              },
+            ]
+          : [],
       },
       twitter: {
         card: "summary_large_image",
         title: `${listing.title} - RB Marketplace`,
-        description: `Buy ${listing.title} for ₱${formattedPrice}`,
-        images: [listing.image],
+        description,
+        images: listing.image ? [listing.image] : [],
       },
     }
   } catch (error) {

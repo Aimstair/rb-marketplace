@@ -418,7 +418,7 @@ export default function CurrencyTradingPage() {
                       </div>
                       {trade.flags.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-2">
-                          {trade.flags.map((flag) => (
+                          {trade.flags.map((flag: string) => (
                             <Badge key={flag} variant="outline" className="text-xs">
                               {flag}
                             </Badge>
@@ -507,7 +507,7 @@ export default function CurrencyTradingPage() {
                       <p className="text-sm text-muted-foreground mb-2">{selectedTrade.dispute.reason}</p>
                       <p className="text-xs text-muted-foreground">Filed by: {selectedTrade.dispute.filedBy}</p>
                       <div className="flex flex-wrap gap-1 mt-2">
-                        {selectedTrade.dispute.evidence.map((e, i) => (
+                        {selectedTrade.dispute.evidence.map((e: string, i: number) => (
                           <Badge key={i} variant="outline" className="text-xs">
                             {e}
                           </Badge>
@@ -681,7 +681,7 @@ export default function CurrencyTradingPage() {
               <div className="p-4 border rounded-lg">
                 <p className="font-medium mb-3">Chat History</p>
                 <div className="space-y-3 max-h-[200px] overflow-y-auto">
-                  {reviewingTrade.chatHistory.map((msg, i) => (
+                  {reviewingTrade.chatHistory.map((msg: any, i: number) => (
                     <div key={i} className={`flex ${msg.sender === "buyer" ? "justify-end" : "justify-start"}`}>
                       <div
                         className={`max-w-[70%] p-3 rounded-lg ${msg.sender === "buyer" ? "bg-primary text-primary-foreground" : "bg-muted"}`}
@@ -699,7 +699,7 @@ export default function CurrencyTradingPage() {
                 <div className="p-4 border border-red-500/20 bg-red-500/5 rounded-lg">
                   <p className="font-medium mb-2 text-red-500">Flags</p>
                   <div className="flex flex-wrap gap-2">
-                    {reviewingTrade.flags.map((flag) => (
+                    {reviewingTrade.flags.map((flag: string) => (
                       <Badge key={flag} variant="destructive">
                         {flag}
                       </Badge>
@@ -715,7 +715,7 @@ export default function CurrencyTradingPage() {
                   <p className="text-sm mb-2">{reviewingTrade.dispute.reason}</p>
                   <p className="text-xs text-muted-foreground">Filed by: {reviewingTrade.dispute.filedBy}</p>
                   <div className="flex gap-2 mt-2">
-                    {reviewingTrade.dispute.evidence.map((e, i) => (
+                    {reviewingTrade.dispute.evidence.map((e: string, i: number) => (
                       <Badge key={i} variant="outline">
                         {e}
                       </Badge>

@@ -11,13 +11,41 @@ const { PrismaClient } = require("@prisma/client")
 
 const prisma = new PrismaClient()
 
-async function listPendingPayments() {
+function parseCliArgs(args) {
+  const options = {
+    provider: null,
+    paymentId: null,
+  }
+
+  for (const arg of args) {
+    if (arg.startsWith("--provider=")) {
+      options.provider = arg.split("=")[1]?.trim().toLowerCase() || null
+      continue
+    }
+
+    if (arg === "--paymongo-only") {
+      options.provider = "paymongo"
+      continue
+    }
+
+    if (!options.paymentId) {
+      options.paymentId = arg
+    }
+  }
+
+  return options
+}
+
+async function listPendingPayments(provider = null) {
   console.log("\n📋 Fetching all pending payments...\n")
+
+  const where = {
+    status: "pending",
+    ...(provider ? { provider } : {}),
+  }
   
   const payments = await prisma.payment.findMany({
-    where: {
-      status: "pending",
-    },
+    where,
     include: {
       user: {
         select: {
@@ -38,12 +66,23 @@ async function listPendingPayments() {
     return
   }
 
+  const byProvider = payments.reduce((acc, payment) => {
+    const key = payment.provider || "unknown"
+    acc[key] = (acc[key] || 0) + 1
+    return acc
+  }, {})
+
   console.log(`Found ${payments.length} pending payment(s):\n`)
+  if (!provider) {
+    console.log(`By provider: ${Object.entries(byProvider).map(([key, count]) => `${key}=${count}`).join(", ")}`)
+    console.log("")
+  }
   
   payments.forEach((payment, index) => {
     const metadata = payment.metadata
     console.log(`${index + 1}. Payment ID: ${payment.id}`)
     console.log(`   User: ${payment.user.username} (${payment.user.email})`)
+    console.log(`   Provider: ${payment.provider}`)
     console.log(`   Amount: ₱${payment.amount}`)
     console.log(`   Type: ${payment.type}`)
     console.log(`   Tier: ${metadata?.tier || 'N/A'}`)
@@ -154,15 +193,16 @@ async function processPayment(paymentId) {
 
 async function main() {
   const args = process.argv.slice(2)
+  const options = parseCliArgs(args)
 
-  if (args.length === 0) {
+  if (!options.paymentId) {
     // No arguments - list all pending payments
-    await listPendingPayments()
+    await listPendingPayments(options.provider)
     console.log("💡 To process a payment, run: node fix-pending-payment.js <payment-id>")
+    console.log("💡 To filter provider, run: node fix-pending-payment.js --provider=paymongo")
   } else {
     // Process specific payment
-    const paymentId = args[0]
-    await processPayment(paymentId)
+    await processPayment(options.paymentId)
   }
 
   await prisma.$disconnect()

@@ -2,6 +2,42 @@
 
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { headers } from "next/headers"
+import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit"
+
+const ONE_MINUTE_MS = 60 * 1000
+const ONE_HOUR_MS = 60 * ONE_MINUTE_MS
+
+const ADMIN_MONETIZATION_RATE_LIMITS = {
+  read: { maxRequests: 90, windowMs: ONE_MINUTE_MS },
+  heavyRead: { maxRequests: 30, windowMs: ONE_MINUTE_MS },
+  mutate: { maxRequests: 40, windowMs: ONE_HOUR_MS },
+} as const
+
+async function enforceAdminMonetizationRateLimit(params: {
+  namespace: string
+  maxRequests: number
+  windowMs: number
+  fallback: string
+  message: string
+}): Promise<{ success: true } | { success: false; error: string }> {
+  const requestHeaders = await headers()
+  const rate = await checkRateLimit(
+    getRateLimitIdentifier({ headers: requestHeaders, fallback: params.fallback }),
+    params.maxRequests,
+    params.windowMs,
+    { namespace: params.namespace }
+  )
+
+  if (rate.allowed) {
+    return { success: true }
+  }
+
+  return {
+    success: false,
+    error: `${params.message} Please try again in ${rate.retryAfterSeconds} seconds.`,
+  }
+}
 
 // Check if user is admin
 async function isAdmin() {
@@ -25,6 +61,18 @@ function getDateRange(months: number = 6) {
  */
 export async function getMonetizationOverview() {
   try {
+    const overviewRate = await enforceAdminMonetizationRateLimit({
+      namespace: "admin-monetization-overview",
+      maxRequests: ADMIN_MONETIZATION_RATE_LIMITS.read.maxRequests,
+      windowMs: ADMIN_MONETIZATION_RATE_LIMITS.read.windowMs,
+      fallback: "admin-monetization-overview",
+      message: "Too many monetization overview requests.",
+    })
+
+    if (!overviewRate.success) {
+      return { success: false, error: overviewRate.error }
+    }
+
     if (!(await isAdmin())) {
       return { success: false, error: "Unauthorized" }
     }
@@ -95,6 +143,18 @@ export async function getMonetizationOverview() {
  */
 export async function getSubscriptionPlanStats() {
   try {
+    const planStatsRate = await enforceAdminMonetizationRateLimit({
+      namespace: "admin-monetization-plan-stats",
+      maxRequests: ADMIN_MONETIZATION_RATE_LIMITS.read.maxRequests,
+      windowMs: ADMIN_MONETIZATION_RATE_LIMITS.read.windowMs,
+      fallback: "admin-monetization-plan-stats",
+      message: "Too many plan statistic requests.",
+    })
+
+    if (!planStatsRate.success) {
+      return { success: false, error: planStatsRate.error }
+    }
+
     if (!(await isAdmin())) {
       return { success: false, error: "Unauthorized" }
     }
@@ -145,6 +205,18 @@ export async function getSubscriptionPlanStats() {
  */
 export async function getRevenueChartData() {
   try {
+    const revenueChartRate = await enforceAdminMonetizationRateLimit({
+      namespace: "admin-monetization-revenue-chart",
+      maxRequests: ADMIN_MONETIZATION_RATE_LIMITS.heavyRead.maxRequests,
+      windowMs: ADMIN_MONETIZATION_RATE_LIMITS.heavyRead.windowMs,
+      fallback: "admin-monetization-revenue-chart",
+      message: "Too many revenue chart requests.",
+    })
+
+    if (!revenueChartRate.success) {
+      return { success: false, error: revenueChartRate.error }
+    }
+
     if (!(await isAdmin())) {
       return { success: false, error: "Unauthorized" }
     }
@@ -183,6 +255,18 @@ export async function getRevenueChartData() {
  */
 export async function getDailyRevenueData() {
   try {
+    const dailyRevenueRate = await enforceAdminMonetizationRateLimit({
+      namespace: "admin-monetization-daily-revenue",
+      maxRequests: ADMIN_MONETIZATION_RATE_LIMITS.heavyRead.maxRequests,
+      windowMs: ADMIN_MONETIZATION_RATE_LIMITS.heavyRead.windowMs,
+      fallback: "admin-monetization-daily-revenue",
+      message: "Too many daily revenue requests.",
+    })
+
+    if (!dailyRevenueRate.success) {
+      return { success: false, error: dailyRevenueRate.error }
+    }
+
     if (!(await isAdmin())) {
       return { success: false, error: "Unauthorized" }
     }
@@ -223,6 +307,18 @@ export async function getUserSubscriptions(filters?: {
   status?: string
 }) {
   try {
+    const subscriptionsRate = await enforceAdminMonetizationRateLimit({
+      namespace: "admin-monetization-user-subscriptions",
+      maxRequests: ADMIN_MONETIZATION_RATE_LIMITS.read.maxRequests,
+      windowMs: ADMIN_MONETIZATION_RATE_LIMITS.read.windowMs,
+      fallback: "admin-monetization-user-subscriptions",
+      message: "Too many subscription list requests.",
+    })
+
+    if (!subscriptionsRate.success) {
+      return { success: false, error: subscriptionsRate.error }
+    }
+
     if (!(await isAdmin())) {
       return { success: false, error: "Unauthorized" }
     }
@@ -318,6 +414,18 @@ export async function getUserSubscriptions(filters?: {
  */
 export async function extendSubscription(userId: string, days: number) {
   try {
+    const extendRate = await enforceAdminMonetizationRateLimit({
+      namespace: "admin-monetization-extend-subscription",
+      maxRequests: ADMIN_MONETIZATION_RATE_LIMITS.mutate.maxRequests,
+      windowMs: ADMIN_MONETIZATION_RATE_LIMITS.mutate.windowMs,
+      fallback: "admin-monetization-extend-subscription",
+      message: "Too many extend subscription attempts.",
+    })
+
+    if (!extendRate.success) {
+      return { success: false, error: extendRate.error }
+    }
+
     if (!(await isAdmin())) {
       return { success: false, error: "Unauthorized" }
     }
@@ -371,6 +479,18 @@ export async function extendSubscription(userId: string, days: number) {
  */
 export async function upgradeUserPlan(userId: string, newPlan: "PRO" | "ELITE") {
   try {
+    const upgradePlanRate = await enforceAdminMonetizationRateLimit({
+      namespace: "admin-monetization-upgrade-user-plan",
+      maxRequests: ADMIN_MONETIZATION_RATE_LIMITS.mutate.maxRequests,
+      windowMs: ADMIN_MONETIZATION_RATE_LIMITS.mutate.windowMs,
+      fallback: "admin-monetization-upgrade-user-plan",
+      message: "Too many plan upgrade attempts.",
+    })
+
+    if (!upgradePlanRate.success) {
+      return { success: false, error: upgradePlanRate.error }
+    }
+
     if (!(await isAdmin())) {
       return { success: false, error: "Unauthorized" }
     }
@@ -423,6 +543,18 @@ export async function upgradeUserPlan(userId: string, newPlan: "PRO" | "ELITE") 
  */
 export async function cancelUserSubscription(userId: string) {
   try {
+    const cancelPlanRate = await enforceAdminMonetizationRateLimit({
+      namespace: "admin-monetization-cancel-subscription",
+      maxRequests: ADMIN_MONETIZATION_RATE_LIMITS.mutate.maxRequests,
+      windowMs: ADMIN_MONETIZATION_RATE_LIMITS.mutate.windowMs,
+      fallback: "admin-monetization-cancel-subscription",
+      message: "Too many cancel subscription attempts.",
+    })
+
+    if (!cancelPlanRate.success) {
+      return { success: false, error: cancelPlanRate.error }
+    }
+
     if (!(await isAdmin())) {
       return { success: false, error: "Unauthorized" }
     }
@@ -474,6 +606,18 @@ export async function cancelUserSubscription(userId: string) {
  */
 export async function issueRefund(userId: string, amount: number, reason: string) {
   try {
+    const refundRate = await enforceAdminMonetizationRateLimit({
+      namespace: "admin-monetization-issue-refund",
+      maxRequests: ADMIN_MONETIZATION_RATE_LIMITS.mutate.maxRequests,
+      windowMs: ADMIN_MONETIZATION_RATE_LIMITS.mutate.windowMs,
+      fallback: "admin-monetization-issue-refund",
+      message: "Too many refund requests.",
+    })
+
+    if (!refundRate.success) {
+      return { success: false, error: refundRate.error }
+    }
+
     if (!(await isAdmin())) {
       return { success: false, error: "Unauthorized" }
     }

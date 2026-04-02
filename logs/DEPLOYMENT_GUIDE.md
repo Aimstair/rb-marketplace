@@ -210,9 +210,17 @@ Copy the output and use it for `NEXTAUTH_SECRET`
 
 ### Migrations Fail:
 ```bash
-# Access console and run:
-npx prisma migrate reset --force
+# Never run reset in production.
+# 1) Take or verify a backup snapshot first.
+# 2) Check migration status.
+npx prisma migrate status
+
+# 3) Apply pending migrations.
 npx prisma migrate deploy
+
+# 4) If a migration is bad, restore backup and redeploy,
+#    or mark migration as rolled back after reviewing SQL:
+# npx prisma migrate resolve --rolled-back <migration_name>
 ```
 
 ## Next Steps

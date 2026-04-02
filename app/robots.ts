@@ -1,6 +1,8 @@
 import { MetadataRoute } from "next"
 
 export default function robots(): MetadataRoute.Robots {
+  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || "https://rbmarket.app").replace(/\/$/, "")
+
   return {
     rules: [
       {
@@ -13,6 +15,8 @@ export default function robots(): MetadataRoute.Robots {
           "/*.json$",
           "/*?*sort=",
           "/*?*filter=",
+          "/*?*page=",
+          "/*?*view=",
           "/messages",
           "/my-listings",
           "/my-transactions",
@@ -32,6 +36,6 @@ export default function robots(): MetadataRoute.Robots {
         crawlDelay: 1,
       },
     ],
-    sitemap: `${process.env.NEXTAUTH_URL || "https://rbmarket.app"}/sitemap.xml`,
+    sitemap: `${baseUrl}/sitemap.xml`,
   }
 }

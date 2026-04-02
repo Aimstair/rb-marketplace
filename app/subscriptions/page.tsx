@@ -51,7 +51,7 @@ export default function SubscriptionsPage() {
       setUpgrading(tier)
       setProcessingPayment(true)
 
-      // Create payment via PayMongo
+      // Create payment checkout via active subscription provider
       const result = await createSubscriptionPayment(tier)
 
       if (result.success && result.checkoutUrl && result.paymentId) {
@@ -60,7 +60,7 @@ export default function SubscriptionsPage() {
           description: "Please complete your payment in the new tab.",
         })
 
-        // Open PayMongo checkout in new tab
+        // Open provider checkout in a new tab
         const paymentWindow = window.open(result.checkoutUrl, "_blank")
 
         // Poll for payment status

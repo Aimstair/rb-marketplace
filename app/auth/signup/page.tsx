@@ -1,5 +1,6 @@
 "use client"
 
+import type React from "react"
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -27,7 +28,7 @@ export default function SignupPage() {
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
 
-  const handleChange = (e) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target
     setFormData({
       ...formData,
@@ -35,7 +36,7 @@ export default function SignupPage() {
     })
   }
 
-  const handleSellerChange = (e) => {
+  const handleSellerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target
     setSellerData({
       ...sellerData,
@@ -63,7 +64,7 @@ export default function SignupPage() {
     return true
   }
 
-  const handleNext = async (e) => {
+  const handleNext = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setError("")
 
@@ -96,7 +97,7 @@ export default function SignupPage() {
     }
   }
 
-  const handleBecomeSeller = (e) => {
+  const handleBecomeSeller = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (sellerData.acceptSellerTerms) {
       setStep("seller")
@@ -105,7 +106,7 @@ export default function SignupPage() {
     }
   }
 
-  const handleComplete = async (e) => {
+  const handleComplete = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setLoading(true)
 
@@ -124,12 +125,12 @@ export default function SignupPage() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <Link href="/" className="flex items-center justify-center mb-8">
-          <div className="text-3xl font-bold text-primary">RobloxTrade</div>
+          <div className="text-3xl font-bold text-primary">RbMarket</div>
         </Link>
 
         {/* Signup Card */}
         <Card className="p-8">
-          <h1 className="text-3xl font-bold mb-2 text-center">Join RobloxTrade</h1>
+          <h1 className="text-3xl font-bold mb-2 text-center">Join RbMarket</h1>
           <p className="text-center text-muted-foreground mb-8">
             {step === "account" && "Create your account"}
             {step === "email-verify" && "Verify your email"}
@@ -156,7 +157,7 @@ export default function SignupPage() {
                   placeholder="Choose your username"
                   value={formData.username}
                   onChange={handleChange}
-                  maxLength="20"
+                  maxLength={20}
                 />
                 <p className="text-xs text-muted-foreground mt-1">{formData.username.length}/20 characters</p>
               </div>

@@ -50,6 +50,7 @@ import { createReport } from "@/app/actions/admin"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
+import { PersonJsonLd } from "@/components/json-ld"
 
 export default function ProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
@@ -256,10 +257,25 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
     dismissed: profile?.reports?.filter((r: any) => r.status === "DISMISSED").length || 0,
   }
 
+  const socialUrls = Object.values(profile?.socialLinks || {})
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => value.trim())
+    .filter((value) => /^https?:\/\//i.test(value))
+
   const subscriptionBadge = getSubBadge(profile?.subscriptionTier || "FREE")
 
   return (
     <main className="min-h-screen bg-background">
+      <PersonJsonLd
+        name={profile.username}
+        profilePath={`/profile/${profile.id}`}
+        description={profile.bio || `${profile.username}'s RbMarket trading profile.`}
+        image={profile.avatar}
+        sameAs={socialUrls}
+        isVerified={profile.isVerified}
+        reviewCount={profile.vouchCount}
+        ratingValue={profile.averageRating}
+      />
       <Navigation />
 
       {/* Profile Banner */}

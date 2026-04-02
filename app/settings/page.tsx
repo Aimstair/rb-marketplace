@@ -913,7 +913,7 @@ export default function SettingsPage() {
             {activeTab === "appearance" && (
               <Card className="p-6 space-y-6">
                 <h2 className="text-2xl font-bold">Appearance</h2>
-                <p className="text-muted-foreground">Customize how RobloxTrade looks on your device</p>
+                <p className="text-muted-foreground">Customize how RbMarket looks on your device</p>
 
                 <div className="space-y-4">
                   <h3 className="font-semibold">Theme</h3>

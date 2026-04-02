@@ -9,8 +9,6 @@ import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
-import { Metadata } from "next"
-import { notFound } from "next/navigation"
 import { JsonLd } from "@/components/json-ld"
 import { getListing, toggleListingVote, reportListing, getListingViewers, nudgeViewer } from "@/app/actions/listings"
 import {
@@ -338,7 +336,8 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
           variant: "destructive",
         })
         if (result.canNudgeAgainAt) {
-          setNudgeCooldowns(prev => ({ ...prev, [viewerId]: result.canNudgeAgainAt }))
+          const nextNudgeTime = result.canNudgeAgainAt
+          setNudgeCooldowns(prev => ({ ...prev, [viewerId]: nextNudgeTime }))
         }
       }
     } catch (error) {
@@ -402,6 +401,23 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
 
         {listing && (
         <>
+        <JsonLd
+          listing={{
+            id: listing.id,
+            title: listing.title,
+            image: listing.image,
+            description: listing.description,
+            price: listing.price,
+            stock: listing.stock,
+            listingType: listing.listingType || "ITEM",
+            sellerName: listing.seller?.username || null,
+            sellerUrl: listing.seller?.id ? `/profile/${listing.seller.id}` : null,
+            reviewCount: listing.seller?.vouchCount || null,
+            ratingValue: listing.seller?.vouchCount ? 5 : null,
+            priceCurrency: "PHP",
+          }}
+          urlPath={`/listing/${listing.id}`}
+        />
         {/* Listing Title */}
         <h1 className="text-3xl font-bold mb-6">{listing.title}</h1>
         

@@ -43,7 +43,7 @@ export function FileUpload({ endpoint, value, onChange, onRemove }: FileUploadPr
 
   return (
     <div className="w-full">
-      <UploadDropzone<OurFileRouter>
+      <UploadDropzone<OurFileRouter, keyof OurFileRouter>
         endpoint={endpoint}
         onClientUploadComplete={(res) => {
           if (res && res.length > 0) {

@@ -57,7 +57,7 @@ export default function ForgotPasswordPage() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <Link href="/" className="flex items-center justify-center mb-8">
-          <div className="text-3xl font-bold text-primary">RobloxTrade</div>
+          <div className="text-3xl font-bold text-primary">RbMarket</div>
         </Link>
 
         <Card className="p-8">

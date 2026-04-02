@@ -18,6 +18,8 @@ import {
   Settings,
   HelpCircle,
   Gavel,
+  Gift,
+  AlertCircle,
   ChevronLeft,
   ChevronRight,
   LogOut,
@@ -47,6 +49,7 @@ const sidebarSections = [
       { label: "Vouches", href: "/admin/vouches", icon: Award },
       { label: "Currency Trades", href: "/admin/currency", icon: DollarSign },
       { label: "Disputes", href: "/admin/disputes", icon: Gavel },
+      { label: "Hall of Shame", href: "/admin/hall-of-shame", icon: AlertCircle },
     ],
   },
   {
@@ -54,6 +57,7 @@ const sidebarSections = [
     items: [
       { label: "Analytics", href: "/admin/analytics", icon: BarChart3 },
       { label: "Monetization", href: "/admin/monetization", icon: CreditCard },
+      { label: "Giveaways", href: "/admin/giveaways", icon: Gift },
       { label: "Announcements", href: "/admin/announcements", icon: Megaphone },
       { label: "Support Tickets", href: "/admin/support", icon: HelpCircle },
     ],
@@ -97,7 +101,7 @@ export default function AdminSidebar() {
           {!collapsed && (
             <div>
               <h1 className="font-bold text-lg text-primary">Admin Panel</h1>
-              <p className="text-xs text-muted-foreground">RobloxTrade</p>
+              <p className="text-xs text-muted-foreground">RbMarket</p>
             </div>
           )}
           <Button variant="ghost" size="icon" onClick={() => setCollapsed(!collapsed)} className="h-8 w-8">

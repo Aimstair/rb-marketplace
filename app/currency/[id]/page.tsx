@@ -22,6 +22,7 @@ import { useAuth } from "@/lib/auth-context"
 import { getListing, toggleListingVote, reportListing, getListingViewers, nudgeViewer } from "@/app/actions/listings"
 import { useToast } from "@/hooks/use-toast"
 import { Textarea } from "@/components/ui/textarea"
+import { JsonLd } from "@/components/json-ld"
 
 interface ParsedCurrency {
   currencyType: string
@@ -428,7 +429,8 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
           variant: "destructive",
         })
         if (result.canNudgeAgainAt) {
-          setNudgeCooldowns(prev => ({ ...prev, [viewerId]: result.canNudgeAgainAt }))
+          const nextNudgeTime = result.canNudgeAgainAt
+          setNudgeCooldowns(prev => ({ ...prev, [viewerId]: nextNudgeTime }))
         }
       }
     } catch (error) {
@@ -474,6 +476,23 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
   return (
     <main className="min-h-screen bg-background">
       <Navigation />
+      <JsonLd
+        listing={{
+          id: listing.id,
+          title: listing.title,
+          image: listing.image,
+          description: currencyData.notes || listing.description,
+          ratePerPeso: currencyData.ratePerPeso,
+          stock: currencyData.stock,
+          listingType: "CURRENCY",
+          sellerName: listing.seller?.username || null,
+          sellerUrl: listing.seller?.id ? `/profile/${listing.seller.id}` : null,
+          reviewCount: listing.seller?.vouchCount || null,
+          ratingValue: listing.seller?.vouchCount ? 5 : null,
+          priceCurrency: "PHP",
+        }}
+        urlPath={`/currency/${listing.id}`}
+      />
 
       <div className="container max-w-[1920px] mx-auto px-6 py-8">
         {/* Banned Warning Banner */}

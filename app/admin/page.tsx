@@ -10,6 +10,8 @@ import {
   DollarSign,
   MessageSquare,
   Flag,
+  Gift,
+  AlertCircle,
   ArrowUpRight,
   ArrowDownRight,
   Loader2,
@@ -62,9 +64,10 @@ export default function AdminDashboard() {
   const calculateChange = (current: number, previous: number) => {
     if (previous === 0) return { percent: "N/A", trend: "neutral" as const }
     const change = ((current - previous) / previous) * 100
+    const trend: "up" | "down" | "neutral" = change > 0 ? "up" : change < 0 ? "down" : "neutral"
     return {
       percent: `${change > 0 ? "+" : ""}${change.toFixed(1)}%`,
-      trend: (change > 0 ? "up" : change < 0 ? "down" : "neutral") as const
+      trend,
     }
   }
 
@@ -116,7 +119,7 @@ export default function AdminDashboard() {
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold">Dashboard Overview</h1>
-        <p className="text-muted-foreground">Welcome back, here's what's happening with RobloxTrade today.</p>
+        <p className="text-muted-foreground">Welcome back, here's what's happening with RbMarket today.</p>
       </div>
 
       {/* Loading state */}
@@ -333,11 +336,17 @@ export default function AdminDashboard() {
               <CardDescription>Common moderation tasks</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <Link href="/admin/reports">
                   <Button variant="outline" className="w-full h-20 flex flex-col gap-2 bg-transparent">
                     <Flag className="h-5 w-5" />
                     <span>Review Reports</span>
+                  </Button>
+                </Link>
+                <Link href="/admin/hall-of-shame">
+                  <Button variant="outline" className="w-full h-20 flex flex-col gap-2 bg-transparent">
+                    <AlertCircle className="h-5 w-5" />
+                    <span>Hall of Shame</span>
                   </Button>
                 </Link>
                 <Link href="/admin/users">
@@ -356,6 +365,12 @@ export default function AdminDashboard() {
                   <Button variant="outline" className="w-full h-20 flex flex-col gap-2 bg-transparent">
                     <MessageSquare className="h-5 w-5" />
                     <span>Send Announcement</span>
+                  </Button>
+                </Link>
+                <Link href="/admin/giveaways">
+                  <Button variant="outline" className="w-full h-20 flex flex-col gap-2 bg-transparent">
+                    <Gift className="h-5 w-5" />
+                    <span>Manage Giveaways</span>
                   </Button>
                 </Link>
               </div>

@@ -15,6 +15,43 @@ import {
   type GetListingsResult,
   type CreateListingResult,
 } from "@/lib/schemas"
+import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit"
+
+const LISTING_RATE_LIMITS = {
+  read: { maxRequests: 100, windowMs: 60 * 1000 },
+  create: { maxRequests: 20, windowMs: 60 * 60 * 1000 },
+  vote: { maxRequests: 100, windowMs: 60 * 60 * 1000 },
+  report: { maxRequests: 15, windowMs: 60 * 60 * 1000 },
+} as const
+
+async function enforceListingRateLimit(params: {
+  namespace: string
+  maxRequests: number
+  windowMs: number
+  userId?: string | null
+  email?: string | null
+  message: string
+}): Promise<{ success: true } | { success: false; error: string }> {
+  const requestHeaders = await headers()
+  const identifier = getRateLimitIdentifier({
+    headers: requestHeaders,
+    userId: params.userId,
+    email: params.email,
+  })
+
+  const rate = await checkRateLimit(identifier, params.maxRequests, params.windowMs, {
+    namespace: params.namespace,
+  })
+
+  if (rate.allowed) {
+    return { success: true }
+  }
+
+  return {
+    success: false,
+    error: `${params.message} Please try again in ${rate.retryAfterSeconds} seconds.`,
+  }
+}
 
 export async function getListing(id: string, currentUserId?: string): Promise<{
   success: boolean
@@ -110,6 +147,9 @@ export async function getListing(id: string, currentUserId?: string): Promise<{
             joinDate: true,
             lastActive: true,
             vouchesReceived: {
+              where: {
+                status: "VALID",
+              },
               select: { id: true },
             },
             _count: {
@@ -164,6 +204,9 @@ export async function getListing(id: string, currentUserId?: string): Promise<{
               joinDate: true,
               lastActive: true,
               vouchesReceived: {
+                where: {
+                  status: "VALID",
+                },
                 select: { id: true },
               },
               _count: {
@@ -343,7 +386,26 @@ export async function getListings(
     includeSold = false,
   } = filters
 
+  const safeItemsPerPage = Math.min(Math.max(itemsPerPage, 1), 50)
+  const safePage = Math.max(page, 1)
+
   try {
+    const readRateLimit = await enforceListingRateLimit({
+      namespace: "listings-read",
+      maxRequests: LISTING_RATE_LIMITS.read.maxRequests,
+      windowMs: LISTING_RATE_LIMITS.read.windowMs,
+      message: "Too many listing requests.",
+    })
+
+    if (!readRateLimit.success) {
+      return {
+        listings: [],
+        total: 0,
+        totalPages: 0,
+        currentPage: safePage,
+      }
+    }
+
     // Build where clause for ItemListing
     const where: any = {}
 
@@ -445,6 +507,8 @@ export async function getListings(
 
     // Get total count
     const total = await prisma.itemListing.count({ where })
+    const totalPages = Math.ceil(total / safeItemsPerPage)
+    const queryPage = totalPages > 0 ? Math.min(safePage, totalPages) : 1
 
     // Get paginated listings
     const listings = await prisma.itemListing.findMany({
@@ -477,8 +541,8 @@ export async function getListings(
         },
       },
       orderBy,
-      skip: (page - 1) * itemsPerPage,
-      take: itemsPerPage,
+      skip: (queryPage - 1) * safeItemsPerPage,
+      take: safeItemsPerPage,
     })
 
     // Auto-update listings with insufficient stock to SOLD
@@ -536,13 +600,11 @@ export async function getListings(
       }
     })
 
-    const totalPages = Math.ceil(total / itemsPerPage)
-
     return {
       listings: transformedListings,
       total,
       totalPages,
-      currentPage: page,
+      currentPage: queryPage,
     }
   } catch (error) {
     console.error("Error fetching listings:", error)
@@ -559,6 +621,9 @@ export async function getUserListings(
   itemsPerPage: number = 10
 ): Promise<GetListingsResult> {
   try {
+    const safeItemsPerPage = Math.min(Math.max(itemsPerPage, 1), 50)
+    const safePage = Math.max(page, 1)
+
     // Fetch item listings
     const itemListings = await prisma.itemListing.findMany({
       where: { sellerId },
@@ -608,15 +673,30 @@ export async function getUserListings(
       orderBy: { createdAt: "desc" },
     })
 
-    // Combine and transform
-    const allListings: ListingResponse[] = await Promise.all([
-      ...itemListings.map(async (listing: any) => {
-        const inquiriesCount = await prisma.conversation.count({
+    const allListingIds = [...itemListings.map((listing: any) => listing.id), ...currencyListings.map((listing: any) => listing.id)]
+    const groupedConversationCounts = allListingIds.length
+      ? await prisma.conversation.groupBy({
+          by: ["listingId", "listingType"],
           where: {
-            listingId: listing.id,
-            listingType: "ITEM",
+            listingId: {
+              in: allListingIds,
+            },
+          },
+          _count: {
+            _all: true,
           },
         })
+      : []
+
+    const inquiriesCountMap = new Map<string, number>()
+    for (const row of groupedConversationCounts) {
+      inquiriesCountMap.set(`${row.listingType}:${row.listingId}`, row._count._all)
+    }
+
+    // Combine and transform
+    const allListings: ListingResponse[] = [
+      ...itemListings.map((listing: any) => {
+        const inquiriesCount = inquiriesCountMap.get(`ITEM:${listing.id}`) || 0
         return {
           id: listing.id,
           title: listing.title,
@@ -640,13 +720,8 @@ export async function getUserListings(
           listingType: listing.listingType,
         }
       }),
-      ...currencyListings.map(async (listing: any) => {
-        const inquiriesCount = await prisma.conversation.count({
-          where: {
-            listingId: listing.id,
-            listingType: "CURRENCY",
-          },
-        })
+      ...currencyListings.map((listing: any) => {
+        const inquiriesCount = inquiriesCountMap.get(`CURRENCY:${listing.id}`) || 0
         return {
           id: listing.id,
           title: listing.title,
@@ -670,19 +745,20 @@ export async function getUserListings(
           listingType: listing.listingType,
         }
       }),
-    ])
+    ]
 
     // Apply pagination
     const total = allListings.length
-    const totalPages = Math.ceil(total / itemsPerPage)
-    const startIndex = (page - 1) * itemsPerPage
-    const paginatedListings = allListings.slice(startIndex, startIndex + itemsPerPage)
+    const totalPages = Math.ceil(total / safeItemsPerPage)
+    const queryPage = totalPages > 0 ? Math.min(safePage, totalPages) : 1
+    const startIndex = (queryPage - 1) * safeItemsPerPage
+    const paginatedListings = allListings.slice(startIndex, startIndex + safeItemsPerPage)
 
     return {
       listings: paginatedListings,
       total,
       totalPages,
-      currentPage: page,
+      currentPage: queryPage,
     }
   } catch (error) {
     console.error("Error fetching user listings:", error)
@@ -776,6 +852,9 @@ export async function getCurrencyListings(): Promise<CurrencyListing[]> {
             id: true,
             username: true,
             vouchesReceived: {
+              where: {
+                status: "VALID",
+              },
               select: { id: true },
             },
           },
@@ -862,6 +941,22 @@ export async function createListing(input: CreateItemListingInput): Promise<Crea
       return {
         success: false,
         error: "User account not found",
+      }
+    }
+
+    const createRateLimit = await enforceListingRateLimit({
+      namespace: "listings-create-item",
+      maxRequests: LISTING_RATE_LIMITS.create.maxRequests,
+      windowMs: LISTING_RATE_LIMITS.create.windowMs,
+      userId: seller.id,
+      email: session.user.email,
+      message: "You have reached the listing creation rate limit.",
+    })
+
+    if (!createRateLimit.success) {
+      return {
+        success: false,
+        error: createRateLimit.error,
       }
     }
 
@@ -1024,6 +1119,19 @@ export async function toggleListingVote(
 
     if (!currentUser) {
       return { success: false, error: "User not found" }
+    }
+
+    const voteRateLimit = await enforceListingRateLimit({
+      namespace: "listings-vote",
+      maxRequests: LISTING_RATE_LIMITS.vote.maxRequests,
+      windowMs: LISTING_RATE_LIMITS.vote.windowMs,
+      userId: currentUser.id,
+      email: session.user.email,
+      message: "You are voting too frequently.",
+    })
+
+    if (!voteRateLimit.success) {
+      return { success: false, error: voteRateLimit.error }
     }
 
     // Verify listing exists in the correct table
@@ -1226,6 +1334,19 @@ export async function reportListing(
       return { success: false, error: "User not found" }
     }
 
+    const reportRateLimit = await enforceListingRateLimit({
+      namespace: "listings-report",
+      maxRequests: LISTING_RATE_LIMITS.report.maxRequests,
+      windowMs: LISTING_RATE_LIMITS.report.windowMs,
+      userId: reporter.id,
+      email: session.user.email,
+      message: "You are reporting too frequently.",
+    })
+
+    if (!reportRateLimit.success) {
+      return { success: false, error: reportRateLimit.error }
+    }
+
     // Verify listing exists in the correct table
     let listing: { id: string; sellerId: string } | null = null
     if (listingType === "ITEM") {
@@ -1372,6 +1493,9 @@ export async function getNewCurrencyListings(): Promise<{
             id: true,
             username: true,
             vouchesReceived: {
+              where: {
+                status: "VALID",
+              },
               select: { id: true },
             },
           },
@@ -1446,6 +1570,22 @@ export async function createNewCurrencyListing(input: CreateCurrencyListingInput
       return {
         success: false,
         error: "User account not found",
+      }
+    }
+
+    const createRateLimit = await enforceListingRateLimit({
+      namespace: "listings-create-currency",
+      maxRequests: LISTING_RATE_LIMITS.create.maxRequests,
+      windowMs: LISTING_RATE_LIMITS.create.windowMs,
+      userId: seller.id,
+      email: session.user.email,
+      message: "You have reached the listing creation rate limit.",
+    })
+
+    if (!createRateLimit.success) {
+      return {
+        success: false,
+        error: createRateLimit.error,
       }
     }
 
@@ -1538,6 +1678,7 @@ export async function getListingViewers(
     username: string
     profilePicture: string | null
     viewedAt: Date
+    lastNudgedAt: Date | null
   }>
   error?: string
   requiresUpgrade?: boolean

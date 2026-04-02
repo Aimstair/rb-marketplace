@@ -10,9 +10,17 @@
     "build": "prisma generate && next build",
     "dev": "next dev",
     "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "start": "next start",
     "postinstall": "prisma generate",
-    "prisma:migrate:deploy": "prisma migrate deploy"
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "prisma:migrate:status": "prisma migrate status",
+    "phase6:qa:audit": "node scripts/phase6-qa-audit.js",
+    "validate:rollout": "node scripts/phase6-rollout-check.js",
+    "phase6:rollout:check": "node scripts/phase6-rollout-check.js",
+    "phase6:retire:paymongo": "node scripts/paymongo-retirement-gate.js",
+    "phase6:reconcile:paymongo": "node scripts/reconcile-stale-paymongo-pending.js"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
@@ -62,15 +70,15 @@
     "embla-carousel-react": "latest",
     "input-otp": "latest",
     "lucide-react": "^0.454.0",
-    "next": "16.0.3",
+    "next": "16.1.1",
     "next-auth": "^5.0.0-beta.30",
     "next-themes": "latest",
     "prisma": "^5.22.0",
     "pusher": "^5.2.0",
     "pusher-js": "^8.4.0",
-    "react": "19.2.0",
+    "react": "19.2.3",
     "react-day-picker": "latest",
-    "react-dom": "19.2.0",
+    "react-dom": "19.2.3",
     "react-hook-form": "latest",
     "react-resizable-panels": "latest",
     "recharts": "latest",
@@ -90,7 +98,8 @@
     "@types/bcrypt": "^6.0.0",
     "@types/bcryptjs": "^3.0.0",
     "dotenv": "^17.2.3",
-    "postcss": "^8.5"
+    "postcss": "^8.5",
+    "vitest": "^4.1.2"
   },
   "prisma": {
     "seed": "node --import tsx prisma/seed-minimal.ts"

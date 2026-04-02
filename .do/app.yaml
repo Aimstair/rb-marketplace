@@ -35,6 +35,38 @@ services:
       - key: PAYMONGO_PUBLIC_KEY
         scope: RUN_AND_BUILD_TIME
         type: SECRET
+      - key: PAYPAL_CLIENT_ID
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+      - key: PAYPAL_CLIENT_SECRET
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+      - key: PAYPAL_WEBHOOK_ID
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+      - key: ACTIVE_SUBSCRIPTION_PAYMENT_PROVIDER
+        value: paypal
+        - key: PAYPAL_SUBSCRIPTION_PENDING_TTL_MINUTES
+          value: "60"
+        - key: PAYMENT_CLEANUP_CRON_SECRET
+          scope: RUN_AND_BUILD_TIME
+          type: SECRET
+        - key: DELETE_EXPIRED_PAYPAL_PENDING_SUBSCRIPTIONS
+          value: "false"
+      - key: ENABLED_SUBSCRIPTION_PAYMENT_PROVIDERS
+        value: paypal
+      - key: ENABLE_GIVEAWAY_FEATURE
+        value: "true"
+      - key: ENABLE_EMAIL_NOTIFICATIONS_FEATURE
+        value: "true"
+      - key: ENABLE_PAYMONGO_WEBHOOK
+        value: "false"
+      - key: GIVEAWAY_CRON_SECRET
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+      - key: EMAIL_DIGEST_CRON_SECRET
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
     
     http_port: 3000
     

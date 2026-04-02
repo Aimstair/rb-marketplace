@@ -5,7 +5,27 @@ import { X, Star } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 
-export default function VouchModal({ seller, listing, onClose, onSubmit }) {
+interface VouchModalProps {
+  seller: {
+    username: string
+    [key: string]: any
+  }
+  listing: {
+    title: string
+    image?: string | null
+    price: number
+    [key: string]: any
+  }
+  onClose: () => void
+  onSubmit: (payload: {
+    rating: number
+    comment: string
+    seller: any
+    listing: any
+  }) => void
+}
+
+export default function VouchModal({ seller, listing, onClose, onSubmit }: VouchModalProps) {
   const [rating, setRating] = useState(5)
   const [comment, setComment] = useState("")
   const [hoveredRating, setHoveredRating] = useState(0)

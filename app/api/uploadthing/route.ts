@@ -1,4 +1,5 @@
 import { createRouteHandler } from "uploadthing/next"
+import { NextRequest } from "next/server"
 import { ourFileRouter } from "./core"
 
 const handlers = createRouteHandler({
@@ -7,7 +8,7 @@ const handlers = createRouteHandler({
 
 export const GET = handlers.GET
 
-export const POST = async (req: Request) => {
+export const POST = async (req: NextRequest) => {
   try {
     return await handlers.POST(req)
   } catch (error) {

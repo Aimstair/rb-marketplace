@@ -79,10 +79,9 @@ export async function logModerationAction(
   try {
     await prisma.auditLog.create({
       data: {
-        userId,
+        adminId: userId,
         action,
         details,
-        timestamp: new Date(),
       },
     })
   } catch (error) {

@@ -125,14 +125,16 @@ const typeConfig: Record<string, { color: string; label: string }> = {
   quality: { color: "bg-yellow-500/10 text-yellow-500", label: "Quality Issue" },
 }
 
+type UiDispute = (typeof mockDisputes)[number] & { dbId?: string }
+
 export default function DisputesPage() {
   const { data: session } = useSession()
   const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [priorityFilter, setPriorityFilter] = useState("all")
-  const [selectedDispute, setSelectedDispute] = useState<(typeof mockDisputes)[0] | null>(null)
-  const [disputes, setDisputes] = useState<typeof mockDisputes>([])
+  const [selectedDispute, setSelectedDispute] = useState<UiDispute | null>(null)
+  const [disputes, setDisputes] = useState<UiDispute[]>([])
   const [loading, setLoading] = useState(true)
   const [resolvingId, setResolvingId] = useState<string | null>(null)
   const [resolutionText, setResolutionText] = useState("")
@@ -141,9 +143,9 @@ export default function DisputesPage() {
     const fetchDisputes = async () => {
       try {
         const result = await getDisputes()
-        if (result.success && result.data) {
+        if (result.success && result.disputes) {
           // Map database disputes to mock format for UI
-          const mapped = result.data.map((dispute: any) => ({
+          const mapped = result.disputes.map((dispute: any) => ({
             id: dispute.id.slice(0, 8),
             type: "trade",
             status: dispute.status.toLowerCase() === "open" ? "in_review" : "resolved",
@@ -157,7 +159,7 @@ export default function DisputesPage() {
               avatar: dispute.transaction?.seller?.profileImage || "/placeholder.svg",
             },
             item: dispute.transaction?.listing?.title || "Unknown Item",
-            value: `$${dispute.transaction?.amount.toFixed(2)}`,
+            value: `$${(dispute.transaction?.price || 0).toFixed(2)}`,
             reason: dispute.reason,
             createdAt: new Date(dispute.createdAt).toLocaleDateString(),
             lastUpdate: new Date(dispute.createdAt).toLocaleDateString(),
@@ -202,8 +204,8 @@ export default function DisputesPage() {
         setResolutionText("")
         // Refresh disputes
         const refreshResult = await getDisputes()
-        if (refreshResult.success && refreshResult.data) {
-          const mapped = refreshResult.data.map((dispute: any) => ({
+        if (refreshResult.success && refreshResult.disputes) {
+          const mapped = refreshResult.disputes.map((dispute: any) => ({
             id: dispute.id.slice(0, 8),
             type: "trade",
             status: dispute.status.toLowerCase() === "open" ? "in_review" : "resolved",
@@ -217,7 +219,7 @@ export default function DisputesPage() {
               avatar: dispute.transaction?.seller?.profileImage || "/placeholder.svg",
             },
             item: dispute.transaction?.listing?.title || "Unknown Item",
-            value: `$${dispute.transaction?.amount.toFixed(2)}`,
+            value: `$${(dispute.transaction?.price || 0).toFixed(2)}`,
             reason: dispute.reason,
             createdAt: new Date(dispute.createdAt).toLocaleDateString(),
             lastUpdate: new Date(dispute.createdAt).toLocaleDateString(),
@@ -251,7 +253,7 @@ export default function DisputesPage() {
   })
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Disputes</h1>
@@ -468,10 +470,10 @@ export default function DisputesPage() {
                             <DialogFooter>
                               <Button variant="outline">Cancel</Button>
                               <Button
-                                onClick={() => handleResolveDispute(dispute.dbId)}
-                                disabled={resolvingId === dispute.dbId}
+                                onClick={() => handleResolveDispute(dispute.dbId || dispute.id)}
+                                disabled={resolvingId === (dispute.dbId || dispute.id)}
                               >
-                                {resolvingId === dispute.dbId ? "Resolving..." : "Submit Resolution"}
+                                {resolvingId === (dispute.dbId || dispute.id) ? "Resolving..." : "Submit Resolution"}
                               </Button>
                             </DialogFooter>
                           </DialogContent>

@@ -22,9 +22,9 @@ export default function SettingsPage() {
 
   // State for all settings
   const [settings, setSettings] = useState({
-    site_name: "RobloxTrade",
+    site_name: "RbMarket",
     site_description: "Peer-to-peer marketplace for trading Roblox items safely.",
-    support_email: "support@robloxtrade.com",
+    support_email: "support@rbmarket.app",
     maintenance_mode: false,
     registration_enabled: true,
     new_user_limit_week: 5000,
@@ -38,7 +38,7 @@ export default function SettingsPage() {
     featured_duration_hours: 24,
     default_sort: "newest",
     email_notifications: true,
-    admin_alert_email: "admin@robloxtrade.com",
+    admin_alert_email: "admin@rbmarket.app",
     alert_high_value_trades: true,
     alert_new_reports: true,
     alert_system_errors: true,

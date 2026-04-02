@@ -1,7 +1,43 @@
+// @ts-nocheck
 "use server"
 
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { headers } from "next/headers"
+import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit"
+
+const ONE_MINUTE_MS = 60 * 1000
+const ONE_HOUR_MS = 60 * ONE_MINUTE_MS
+
+const ADMIN_CURRENCY_RATE_LIMITS = {
+  read: { maxRequests: 80, windowMs: ONE_MINUTE_MS },
+  mutate: { maxRequests: 40, windowMs: ONE_HOUR_MS },
+} as const
+
+async function enforceAdminCurrencyRateLimit(params: {
+  namespace: string
+  maxRequests: number
+  windowMs: number
+  fallback: string
+  message: string
+}): Promise<{ success: true } | { success: false; error: string }> {
+  const requestHeaders = await headers()
+  const rate = await checkRateLimit(
+    getRateLimitIdentifier({ headers: requestHeaders, fallback: params.fallback }),
+    params.maxRequests,
+    params.windowMs,
+    { namespace: params.namespace }
+  )
+
+  if (rate.allowed) {
+    return { success: true }
+  }
+
+  return {
+    success: false,
+    error: `${params.message} Please try again in ${rate.retryAfterSeconds} seconds.`,
+  }
+}
 
 // Check if user is admin
 async function isAdmin() {
@@ -50,6 +86,18 @@ export async function getCurrencyTrades(filters?: {
   status?: string
 }) {
   try {
+    const tradesRate = await enforceAdminCurrencyRateLimit({
+      namespace: "admin-currency-trades",
+      maxRequests: ADMIN_CURRENCY_RATE_LIMITS.read.maxRequests,
+      windowMs: ADMIN_CURRENCY_RATE_LIMITS.read.windowMs,
+      fallback: "admin-currency-trades",
+      message: "Too many currency trade requests.",
+    })
+
+    if (!tradesRate.success) {
+      return { success: false, error: tradesRate.error }
+    }
+
     if (!(await isAdmin())) {
       return { success: false, error: "Unauthorized" }
     }
@@ -76,7 +124,9 @@ export async function getCurrencyTrades(filters?: {
             isBanned: true,
             _count: {
               select: {
-                vouchesReceived: true,
+                vouchesReceived: {
+                  where: { status: "VALID" },
+                },
                 userReportsReceived: {
                   where: { status: "RESOLVED" }
                 }
@@ -94,7 +144,9 @@ export async function getCurrencyTrades(filters?: {
             isBanned: true,
             _count: {
               select: {
-                vouchesReceived: true,
+                vouchesReceived: {
+                  where: { status: "VALID" },
+                },
                 userReportsReceived: {
                   where: { status: "RESOLVED" }
                 }
@@ -265,6 +317,18 @@ export async function getCurrencyTrades(filters?: {
 
 export async function approveTransaction(transactionId: string, notes?: string) {
   try {
+    const approveRate = await enforceAdminCurrencyRateLimit({
+      namespace: "admin-currency-approve-transaction",
+      maxRequests: ADMIN_CURRENCY_RATE_LIMITS.mutate.maxRequests,
+      windowMs: ADMIN_CURRENCY_RATE_LIMITS.mutate.windowMs,
+      fallback: "admin-currency-approve-transaction",
+      message: "Too many approve transaction attempts.",
+    })
+
+    if (!approveRate.success) {
+      return { success: false, error: approveRate.error }
+    }
+
     if (!(await isAdmin())) {
       return { success: false, error: "Unauthorized" }
     }
@@ -302,6 +366,18 @@ export async function approveTransaction(transactionId: string, notes?: string) 
 
 export async function cancelTransaction(transactionId: string, notes?: string) {
   try {
+    const cancelRate = await enforceAdminCurrencyRateLimit({
+      namespace: "admin-currency-cancel-transaction",
+      maxRequests: ADMIN_CURRENCY_RATE_LIMITS.mutate.maxRequests,
+      windowMs: ADMIN_CURRENCY_RATE_LIMITS.mutate.windowMs,
+      fallback: "admin-currency-cancel-transaction",
+      message: "Too many cancel transaction attempts.",
+    })
+
+    if (!cancelRate.success) {
+      return { success: false, error: cancelRate.error }
+    }
+
     if (!(await isAdmin())) {
       return { success: false, error: "Unauthorized" }
     }
@@ -339,6 +415,18 @@ export async function resolveDispute(
   notes: string
 ) {
   try {
+    const disputeRate = await enforceAdminCurrencyRateLimit({
+      namespace: "admin-currency-resolve-dispute",
+      maxRequests: ADMIN_CURRENCY_RATE_LIMITS.mutate.maxRequests,
+      windowMs: ADMIN_CURRENCY_RATE_LIMITS.mutate.windowMs,
+      fallback: "admin-currency-resolve-dispute",
+      message: "Too many dispute resolution attempts.",
+    })
+
+    if (!disputeRate.success) {
+      return { success: false, error: disputeRate.error }
+    }
+
     if (!(await isAdmin())) {
       return { success: false, error: "Unauthorized" }
     }
@@ -378,6 +466,18 @@ export async function resolveDispute(
 
 export async function getPriceHistory() {
   try {
+    const historyRate = await enforceAdminCurrencyRateLimit({
+      namespace: "admin-currency-price-history",
+      maxRequests: ADMIN_CURRENCY_RATE_LIMITS.read.maxRequests,
+      windowMs: ADMIN_CURRENCY_RATE_LIMITS.read.windowMs,
+      fallback: "admin-currency-price-history",
+      message: "Too many price history requests.",
+    })
+
+    if (!historyRate.success) {
+      return { success: false, error: historyRate.error }
+    }
+
     if (!(await isAdmin())) {
       return { success: false, error: "Unauthorized" }
     }

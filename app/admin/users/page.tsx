@@ -93,7 +93,7 @@ export default function UsersPage() {
             )
           )
           // Update the selected user to reflect the change in the details panel
-          setSelectedUser(prev => prev ? { ...prev, isBanned: true } : null)
+          setSelectedUser((prev: any) => prev ? { ...prev, isBanned: true } : null)
         } else {
           toast({ title: "Error", description: result.error || "Failed to ban user", variant: "destructive" })
         }
@@ -108,7 +108,7 @@ export default function UsersPage() {
             )
           )
           // Update the selected user to reflect the change in the details panel
-          setSelectedUser(prev => prev ? { ...prev, isBanned: false } : null)
+          setSelectedUser((prev: any) => prev ? { ...prev, isBanned: false } : null)
         } else {
           toast({ title: "Error", description: result.error || "Failed to unban user", variant: "destructive" })
         }

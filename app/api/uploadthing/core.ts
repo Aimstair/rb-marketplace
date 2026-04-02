@@ -1,13 +1,43 @@
 import { createUploadthing, type FileRouter } from "uploadthing/next"
 import { UploadThingError } from "uploadthing/server"
 import { auth } from "@/auth"
+import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit"
 
 const f = createUploadthing()
+const ONE_HOUR_MS = 60 * 60 * 1000
+
+const UPLOAD_RATE_LIMITS = {
+  listingImage: { maxRequests: 20, windowMs: ONE_HOUR_MS },
+  userAvatar: { maxRequests: 10, windowMs: ONE_HOUR_MS },
+  chatAttachment: { maxRequests: 60, windowMs: ONE_HOUR_MS },
+  hallOfShameEvidence: { maxRequests: 30, windowMs: ONE_HOUR_MS },
+  giveawayImage: { maxRequests: 20, windowMs: ONE_HOUR_MS },
+} as const
 
 // Debug helper
 function debugLog(endpoint: string, message: string, data?: any) {
   const timestamp = new Date().toISOString()
   console.log(`[UploadThing ${endpoint} ${timestamp}] ${message}`, data || "")
+}
+
+async function enforceUploadRateLimit(
+  req: Request,
+  userId: string,
+  namespace: keyof typeof UPLOAD_RATE_LIMITS
+) {
+  const config = UPLOAD_RATE_LIMITS[namespace]
+  const rate = await checkRateLimit(
+    getRateLimitIdentifier({ headers: req.headers, userId }),
+    config.maxRequests,
+    config.windowMs,
+    { namespace: `upload-${namespace}` }
+  )
+
+  if (!rate.allowed) {
+    throw new UploadThingError(
+      `Too many upload attempts. Try again in ${rate.retryAfterSeconds} seconds.`
+    )
+  }
 }
 
 export const ourFileRouter = {
@@ -29,11 +59,12 @@ export const ourFileRouter = {
           userId: session?.user?.id,
         })
 
-        // DEBUG: If no session, return debug user instead of throwing
         if (!session?.user?.id) {
-          debugLog("listingImage", "⚠️ WARNING: No session found, using debug-user")
-          return { userId: "debug-user" }
+          debugLog("listingImage", "❌ Unauthorized: no active session")
+          throw new UploadThingError("Unauthorized")
         }
+
+        await enforceUploadRateLimit(req, session.user.id, "listingImage")
 
         debugLog("listingImage", "✅ Auth successful", { userId: session.user.id })
         return { userId: session.user.id }
@@ -80,9 +111,11 @@ export const ourFileRouter = {
         })
 
         if (!session?.user?.id) {
-          debugLog("userAvatar", "⚠️ WARNING: No session found, using debug-user")
-          return { userId: "debug-user" }
+          debugLog("userAvatar", "❌ Unauthorized: no active session")
+          throw new UploadThingError("Unauthorized")
         }
+
+        await enforceUploadRateLimit(req, session.user.id, "userAvatar")
 
         debugLog("userAvatar", "✅ Auth successful", { userId: session.user.id })
         return { userId: session.user.id }
@@ -129,9 +162,11 @@ export const ourFileRouter = {
         })
 
         if (!session?.user?.id) {
-          debugLog("chatAttachment", "⚠️ WARNING: No session found, using debug-user")
-          return { userId: "debug-user" }
+          debugLog("chatAttachment", "❌ Unauthorized: no active session")
+          throw new UploadThingError("Unauthorized")
         }
+
+        await enforceUploadRateLimit(req, session.user.id, "chatAttachment")
 
         debugLog("chatAttachment", "✅ Auth successful", { userId: session.user.id })
         return { userId: session.user.id }
@@ -160,6 +195,107 @@ export const ourFileRouter = {
         return { uploadedBy: metadata.userId }
       }
     }),
+
+  hallOfShameEvidence: f({ image: { maxFileSize: "8MB", maxFileCount: 8 } })
+    .middleware(async ({ req }) => {
+      try {
+        debugLog("hallOfShameEvidence", "Middleware started")
+
+        const secretStatus = process.env.UPLOADTHING_SECRET ? "Secret Present" : "Secret Missing"
+        debugLog("hallOfShameEvidence", secretStatus)
+
+        debugLog("hallOfShameEvidence", "Calling auth()...")
+        const session = await auth()
+        debugLog("hallOfShameEvidence", "Auth returned", {
+          hasSession: !!session,
+          hasUser: !!session?.user,
+          userId: session?.user?.id,
+        })
+
+        if (!session?.user?.id) {
+          debugLog("hallOfShameEvidence", "❌ Unauthorized: no active session")
+          throw new UploadThingError("Unauthorized")
+        }
+
+        await enforceUploadRateLimit(req, session.user.id, "hallOfShameEvidence")
+
+        debugLog("hallOfShameEvidence", "✅ Auth successful", { userId: session.user.id })
+        return { userId: session.user.id }
+      } catch (error) {
+        debugLog("hallOfShameEvidence", "❌ Middleware error", {
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        })
+        throw error
+      }
+    })
+    .onUploadComplete(async ({ metadata, file }) => {
+      try {
+        debugLog("hallOfShameEvidence", "🚀 onUploadComplete START")
+        debugLog("hallOfShameEvidence", "✅ Upload complete", {
+          userId: metadata.userId,
+          fileUrl: file.url,
+          fileName: file.name,
+        })
+        return { uploadedBy: metadata.userId }
+      } catch (error) {
+        debugLog("hallOfShameEvidence", "❌ onUploadComplete caught error", {
+          error: error instanceof Error ? error.message : String(error),
+        })
+        return { uploadedBy: metadata.userId }
+      }
+    }),
+
+  giveawayImage: f({ image: { maxFileSize: "4MB", maxFileCount: 1 } })
+    .middleware(async ({ req }) => {
+      try {
+        debugLog("giveawayImage", "Middleware started")
+
+        const secretStatus = process.env.UPLOADTHING_SECRET ? "Secret Present" : "Secret Missing"
+        debugLog("giveawayImage", secretStatus)
+
+        debugLog("giveawayImage", "Calling auth()...")
+        const session = await auth()
+        debugLog("giveawayImage", "Auth returned", {
+          hasSession: !!session,
+          hasUser: !!session?.user,
+          userId: session?.user?.id,
+        })
+
+        if (!session?.user?.id) {
+          debugLog("giveawayImage", "❌ Unauthorized: no active session")
+          throw new UploadThingError("Unauthorized")
+        }
+
+        await enforceUploadRateLimit(req, session.user.id, "giveawayImage")
+
+        debugLog("giveawayImage", "✅ Auth successful", { userId: session.user.id })
+        return { userId: session.user.id }
+      } catch (error) {
+        debugLog("giveawayImage", "❌ Middleware error", {
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        })
+        throw error
+      }
+    })
+    .onUploadComplete(async ({ metadata, file }) => {
+      try {
+        debugLog("giveawayImage", "🚀 onUploadComplete START")
+        debugLog("giveawayImage", "✅ Upload complete", {
+          userId: metadata.userId,
+          fileUrl: file.url,
+          fileName: file.name,
+        })
+        return { uploadedBy: metadata.userId }
+      } catch (error) {
+        debugLog("giveawayImage", "❌ onUploadComplete caught error", {
+          error: error instanceof Error ? error.message : String(error),
+        })
+        return { uploadedBy: metadata.userId }
+      }
+    }),
+
 } satisfies FileRouter
 
 export type OurFileRouter = typeof ourFileRouter

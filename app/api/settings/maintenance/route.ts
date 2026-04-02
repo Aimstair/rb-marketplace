@@ -1,11 +1,26 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit"
 
 // Force the route to fetch fresh data every time (no caching)
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   try {
+    const rate = await checkRateLimit(
+      getRateLimitIdentifier({ headers: request.headers, fallback: "api-maintenance" }),
+      120,
+      60 * 1000,
+      { namespace: "api-maintenance" }
+    )
+
+    if (!rate.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests", retryAfterSeconds: rate.retryAfterSeconds },
+        { status: 429 }
+      )
+    }
+
     const maintenanceSetting = await prisma.systemSettings.findUnique({
       where: { key: "maintenance_mode" },
     })
