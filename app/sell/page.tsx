@@ -629,6 +629,7 @@ export default function SellPage() {
                         <label className="text-sm font-semibold mb-2 block">Item Image *</label>
                         <FileUpload
                           endpoint="listingImage"
+                          cropPreset="listing"
                           value={itemFormData.image}
                           onChange={(url) => {
                             setItemFormData((prev) => ({
@@ -854,6 +855,7 @@ export default function SellPage() {
                         <label className="text-sm font-semibold mb-2 block">Currency Image *</label>
                         <FileUpload
                           endpoint="listingImage"
+                          cropPreset="listing"
                           value={currencyFormData.image}
                           onChange={(url) => {
                             setCurrencyFormData((prev) => ({

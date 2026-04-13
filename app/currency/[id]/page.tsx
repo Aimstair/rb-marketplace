@@ -546,7 +546,7 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
                 <img
                   src={selectedImage || "/placeholder.svg"}
                   alt={`${currencyData.currencyType}`}
-                  className="w-full h-96 object-cover"
+                  className="w-full aspect-video object-cover"
                 />
                 <Badge className="absolute top-4 left-4 bg-primary text-primary-foreground">{listing?.condition || "New"}</Badge>
               </div>

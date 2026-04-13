@@ -1,5 +1,6 @@
 import { Metadata } from "next"
 import { prisma } from "@/lib/prisma"
+import { notFound } from "next/navigation"
 
 const DEFAULT_SITE_URL = "https://rbmarket.app"
 
@@ -10,6 +11,19 @@ function getSiteUrl(): string {
   } catch {
     return DEFAULT_SITE_URL
   }
+}
+
+function isNotFoundMetadataError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) {
+    return false
+  }
+
+  if (!("digest" in error)) {
+    return false
+  }
+
+  const digest = (error as { digest?: unknown }).digest
+  return typeof digest === "string" && digest.startsWith("NEXT_HTTP_ERROR_FALLBACK;404")
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
@@ -27,10 +41,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     })
 
     if (!user) {
-      return {
-        title: "Profile Not Found - RB Marketplace",
-        description: "The user profile you're looking for doesn't exist.",
-      }
+      notFound()
     }
 
     return {
@@ -69,6 +80,10 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
       },
     }
   } catch (error) {
+    if (isNotFoundMetadataError(error)) {
+      throw error
+    }
+
     console.error("Error generating profile metadata:", error)
     return {
       title: "Profile - RB Marketplace",

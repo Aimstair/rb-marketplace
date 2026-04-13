@@ -416,7 +416,7 @@ export default function HomePage() {
                     <div className="space-y-2 mt-2 overflow-y-auto max-h-[220px] pr-1">
                       {giveawayData.queued.slice(0, 1).map((queued) => (
                         <div key={queued.id} className="p-2 border rounded-md text-sm space-y-2 bg-background/80">
-                          <div className="relative h-20 w-full overflow-hidden rounded border bg-muted">
+                          <div className="relative aspect-video w-full overflow-hidden rounded border bg-muted">
                             {queued.rewardImageUrl ? (
                               <Image
                                 src={queued.rewardImageUrl}
@@ -451,7 +451,7 @@ export default function HomePage() {
                       {giveawayData.history.slice(0, 2).map((item) => (
                         <div key={item.id} className="p-2 border rounded-md text-sm space-y-2 bg-background/80">
                           {item.rewardImageUrl && (
-                            <div className="relative h-16 w-full overflow-hidden rounded border bg-muted">
+                            <div className="relative aspect-video w-full overflow-hidden rounded border bg-muted">
                               <Image
                                 src={item.rewardImageUrl}
                                 alt={item.title}

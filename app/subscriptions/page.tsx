@@ -24,7 +24,7 @@ export default function SubscriptionsPage() {
   // Load current subscription on mount
   useEffect(() => {
     if (!user) {
-      router.push("/auth/login")
+      setLoading(false)
       return
     }
 
@@ -45,7 +45,10 @@ export default function SubscriptionsPage() {
   }, [user, router])
 
   const handleUpgrade = async (tier: "PRO" | "ELITE") => {
-    if (!user) return
+    if (!user) {
+      router.push(`/auth/login?redirect=${encodeURIComponent("/subscriptions")}`)
+      return
+    }
 
     try {
       setUpgrading(tier)
@@ -160,8 +163,6 @@ export default function SubscriptionsPage() {
     }
   }
 
-  if (!user) return null
-
   return (
     <>
       <Navigation />
@@ -187,11 +188,11 @@ export default function SubscriptionsPage() {
                     </p>
                   </div>
                   <Button
-                    variant={currentPlan === "free" ? "secondary" : "outline"}
+                    variant={!user ? "default" : currentPlan === "free" ? "secondary" : "outline"}
                     className="w-full mb-6"
-                    disabled={currentPlan === "free"}
+                    disabled={!!user && currentPlan === "free"}
                   >
-                    {currentPlan === "free" ? "Current Plan" : "Downgrade"}
+                    {!user ? "Sign In to Get Started" : currentPlan === "free" ? "Current Plan" : "Downgrade"}
                   </Button>
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
@@ -225,11 +226,13 @@ export default function SubscriptionsPage() {
                   </div>
                   <Button
                     className="w-full mb-6"
-                    variant={currentPlan === "pro" ? "secondary" : "default"}
-                    disabled={currentPlan === "pro" || upgrading === "PRO" || processingPayment}
+                    variant={!!user && currentPlan === "pro" ? "secondary" : "default"}
+                    disabled={!!user && (currentPlan === "pro" || upgrading === "PRO" || processingPayment)}
                     onClick={() => handleUpgrade("PRO")}
                   >
-                    {upgrading === "PRO" ? (
+                    {!user ? (
+                      "Sign In to Upgrade"
+                    ) : upgrading === "PRO" ? (
                       <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                         Redirecting to payment...
@@ -269,7 +272,7 @@ export default function SubscriptionsPage() {
                 </Card>
 
                 {/* Elite Plan */}
-                <Card className="p-6 relative bg-gradient-to-b from-amber-500/5 to-transparent border-amber-500/30">
+                <Card className="p-6 relative bg-linear-to-b from-amber-500/5 to-transparent border-amber-500/30">
                   <Badge className="absolute -top-3 left-6 bg-amber-500 text-white">Best Value</Badge>
                   <h2 className="text-2xl font-bold mb-2">Elite</h2>
                   <p className="text-muted-foreground mb-6">For professional sellers</p>
@@ -279,12 +282,14 @@ export default function SubscriptionsPage() {
                     </p>
                   </div>
                   <Button
-                    variant={currentPlan === "elite" ? "secondary" : "outline"}
+                    variant={!!user && currentPlan === "elite" ? "secondary" : "outline"}
                     className="w-full mb-6"
-                    disabled={currentPlan === "elite" || upgrading === "ELITE" || processingPayment}
+                    disabled={!!user && (currentPlan === "elite" || upgrading === "ELITE" || processingPayment)}
                     onClick={() => handleUpgrade("ELITE")}
                   >
-                    {upgrading === "ELITE" ? (
+                    {!user ? (
+                      "Sign In to Upgrade"
+                    ) : upgrading === "ELITE" ? (
                       <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                         Redirecting to payment...

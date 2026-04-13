@@ -65,7 +65,7 @@ export default function FeaturedListings() {
         <Link key={listing.id} href={`/listing/${listing.id}`}>
           <Card className="overflow-hidden hover:shadow-lg transition-all duration-300 cursor-pointer group h-full">
             {/* Image */}
-            <div className="relative h-48 bg-muted overflow-hidden">
+            <div className="relative aspect-video bg-muted overflow-hidden">
               <img
                 src={listing.image || "/placeholder.svg"}
                 alt={listing.title}

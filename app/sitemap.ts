@@ -99,12 +99,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: new Date(),
     },
     {
-      url: `${baseUrl}/sell`,
-      changeFrequency: "monthly",
-      priority: 0.8,
-      lastModified: new Date(),
-    },
-    {
       url: `${baseUrl}/trends`,
       changeFrequency: "daily",
       priority: 0.8,
@@ -120,18 +114,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       url: `${baseUrl}/subscriptions`,
       changeFrequency: "monthly",
       priority: 0.7,
-      lastModified: new Date(),
-    },
-    {
-      url: `${baseUrl}/auth/login`,
-      changeFrequency: "never",
-      priority: 0.6,
-      lastModified: new Date(),
-    },
-    {
-      url: `${baseUrl}/auth/signup`,
-      changeFrequency: "never",
-      priority: 0.6,
       lastModified: new Date(),
     },
   ]

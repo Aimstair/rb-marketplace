@@ -14,14 +14,19 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
   AreaChart,
   Area,
   LineChart,
   Line,
 } from "recharts"
+import {
+  ChartConfig,
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart"
 import { TrendingUp, TrendingDown, Flame, Eye, MessageSquare, Users, Activity, Coins, Search, Loader2, ArrowUpDown, ShoppingBag, Wallet, BarChart3, FileText } from "lucide-react"
 import {
   dispatchRetentionWatchlistAlerts,
@@ -54,6 +59,37 @@ const RANGE_LABEL: Record<TimeRangeKey, string> = {
   "30d": "Last 30 days",
   "90d": "Last 90 days",
 }
+
+const marketVolumeChartConfig = {
+  avgPrice: { label: "Avg Price", color: "hsl(var(--chart-1))" },
+  transactions: { label: "Transactions", color: "hsl(var(--chart-2))" },
+} satisfies ChartConfig
+
+const popularGamesChartConfig = {
+  listings: { label: "Active Listings", color: "hsl(var(--chart-1))" },
+  totalViews: { label: "Total Views", color: "hsl(var(--chart-2))" },
+} satisfies ChartConfig
+
+const currencyTrendChartConfig = {
+  avgRate: { label: "Avg Rate", color: "hsl(var(--chart-3))" },
+  listings: { label: "Listings", color: "hsl(var(--chart-4))" },
+} satisfies ChartConfig
+
+const compactNumber = new Intl.NumberFormat("en-US", {
+  notation: "compact",
+  maximumFractionDigits: 1,
+})
+
+const formatCompact = (value: number) => compactNumber.format(value)
+
+const formatShortDate = (value: string) => {
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return value
+  return parsed.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+}
+
+const truncateAxisLabel = (value: string, max = 14) =>
+  value.length > max ? `${value.slice(0, max - 1)}...` : value
 
 interface TrendsOverviewMetrics {
   activeListings: { value: number; change: number }
@@ -1101,41 +1137,91 @@ export default function TrendsPage() {
                 </CardHeader>
                 <CardContent>
                   {marketTrends.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={400}>
-                      <AreaChart data={marketTrends}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="date" />
-                        <YAxis yAxisId="left" />
-                        <YAxis yAxisId="right" orientation="right" />
-                        <Tooltip
-                          formatter={(value: number, name: string) => {
-                            if (name === "Transactions") {
-                              return value.toLocaleString()
-                            }
-                            return `₱${value.toLocaleString()}`
-                          }}
+                    <ChartContainer
+                      config={marketVolumeChartConfig}
+                      className="h-[400px] w-full rounded-xl border border-border/40 bg-linear-to-b from-primary/5 via-background to-background p-2"
+                    >
+                      <AreaChart data={marketTrends} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="avgPriceFill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="var(--color-avgPrice)" stopOpacity={0.35} />
+                            <stop offset="95%" stopColor="var(--color-avgPrice)" stopOpacity={0.02} />
+                          </linearGradient>
+                          <linearGradient id="transactionsFill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="var(--color-transactions)" stopOpacity={0.3} />
+                            <stop offset="95%" stopColor="var(--color-transactions)" stopOpacity={0.02} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid vertical={false} strokeDasharray="4 4" />
+                        <XAxis
+                          dataKey="date"
+                          tickFormatter={(value: string) => formatShortDate(value)}
+                          tickLine={false}
+                          axisLine={false}
+                          tickMargin={10}
                         />
-                        <Legend />
+                        <YAxis
+                          yAxisId="left"
+                          tickFormatter={(value: number) => `P${formatCompact(value)}`}
+                          tickLine={false}
+                          axisLine={false}
+                          width={84}
+                        />
+                        <YAxis
+                          yAxisId="right"
+                          orientation="right"
+                          tickFormatter={(value: number) => formatCompact(value)}
+                          tickLine={false}
+                          axisLine={false}
+                          width={66}
+                        />
+                        <ChartTooltip
+                          content={
+                            <ChartTooltipContent
+                              indicator="line"
+                              labelFormatter={(label) => formatShortDate(String(label))}
+                              formatter={(value, name) => {
+                                if (String(name) === "avgPrice") {
+                                  return (
+                                    <div className="flex w-full items-center justify-between gap-3">
+                                      <span className="text-muted-foreground">Avg Price</span>
+                                      <span className="font-mono font-semibold">P{Number(value).toLocaleString()}</span>
+                                    </div>
+                                  )
+                                }
+                                return (
+                                  <div className="flex w-full items-center justify-between gap-3">
+                                    <span className="text-muted-foreground">Transactions</span>
+                                    <span className="font-mono font-semibold">{Number(value).toLocaleString()}</span>
+                                  </div>
+                                )
+                              }}
+                            />
+                          }
+                        />
+                        <ChartLegend content={<ChartLegendContent />} />
                         <Area
                           yAxisId="left"
                           type="monotone"
                           dataKey="avgPrice"
-                          stroke="#3b82f6"
-                          fill="#3b82f6"
-                          fillOpacity={0.2}
-                          name="Avg Price"
+                          stroke="var(--color-avgPrice)"
+                          fill="url(#avgPriceFill)"
+                          strokeWidth={3}
+                          dot={false}
+                          activeDot={{ r: 4 }}
                         />
                         <Area
                           yAxisId="right"
                           type="monotone"
                           dataKey="transactions"
-                          stroke="#10b981"
-                          fill="#10b981"
-                          fillOpacity={0.2}
-                          name="Transactions"
+                          stroke="var(--color-transactions)"
+                          fill="url(#transactionsFill)"
+                          strokeWidth={2.5}
+                          dot={false}
+                          activeDot={{ r: 4 }}
                         />
                       </AreaChart>
-                    </ResponsiveContainer>
+                    </ChartContainer>
                   ) : (
                     <div className="text-center py-12">
                       <p className="text-muted-foreground">No data available yet</p>
@@ -1295,17 +1381,35 @@ export default function TrendsPage() {
                 </CardHeader>
                 <CardContent>
                   {filteredGames.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart data={filteredGames}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="game" angle={-45} textAnchor="end" height={100} interval={0} />
-                        <YAxis />
-                        <Tooltip />
-                        <Legend />
-                        <Bar dataKey="listings" fill="#3b82f6" name="Active Listings" />
-                        <Bar dataKey="totalViews" fill="#10b981" name="Total Views" />
+                    <ChartContainer
+                      config={popularGamesChartConfig}
+                      className="h-80 w-full rounded-xl border border-border/40 bg-linear-to-b from-muted/30 to-background p-2"
+                    >
+                      <BarChart data={filteredGames} margin={{ top: 10, right: 10, left: 10, bottom: 10 }} barGap={10}>
+                        <CartesianGrid vertical={false} strokeDasharray="4 4" />
+                        <XAxis
+                          dataKey="game"
+                          tickFormatter={(value: string) => truncateAxisLabel(value, 16)}
+                          tickLine={false}
+                          axisLine={false}
+                          tickMargin={10}
+                          angle={-20}
+                          textAnchor="end"
+                          height={70}
+                          interval={0}
+                        />
+                        <YAxis
+                          tickFormatter={(value: number) => formatCompact(value)}
+                          tickLine={false}
+                          axisLine={false}
+                          width={56}
+                        />
+                        <ChartTooltip content={<ChartTooltipContent />} />
+                        <ChartLegend content={<ChartLegendContent />} />
+                        <Bar dataKey="listings" fill="var(--color-listings)" radius={[8, 8, 0, 0]} maxBarSize={30} />
+                        <Bar dataKey="totalViews" fill="var(--color-totalViews)" radius={[8, 8, 0, 0]} maxBarSize={30} />
                       </BarChart>
-                    </ResponsiveContainer>
+                    </ChartContainer>
                   ) : (
                     <div className="text-center py-12">
                       <p className="text-muted-foreground">
@@ -1377,18 +1481,64 @@ export default function TrendsPage() {
                     </CardHeader>
                     <CardContent>
                       {currencyOverview.trends.length > 0 ? (
-                        <ResponsiveContainer width="100%" height={320}>
-                          <LineChart data={currencyOverview.trends}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="date" />
-                            <YAxis yAxisId="left" />
-                            <YAxis yAxisId="right" orientation="right" />
-                            <Tooltip />
-                            <Legend />
-                            <Line yAxisId="left" type="monotone" dataKey="avgRate" stroke="#3b82f6" strokeWidth={2} name="Avg Rate" />
-                            <Line yAxisId="right" type="monotone" dataKey="listings" stroke="#10b981" strokeWidth={2} name="Listings" />
+                        <ChartContainer
+                          config={currencyTrendChartConfig}
+                          className="h-80 w-full rounded-xl border border-border/40 bg-linear-to-b from-primary/5 via-background to-background p-2"
+                        >
+                          <LineChart data={currencyOverview.trends} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                            <CartesianGrid vertical={false} strokeDasharray="4 4" />
+                            <XAxis
+                              dataKey="date"
+                              tickFormatter={(value: string) => formatShortDate(value)}
+                              tickLine={false}
+                              axisLine={false}
+                              tickMargin={10}
+                            />
+                            <YAxis
+                              yAxisId="left"
+                              tickFormatter={(value: number) => value.toLocaleString()}
+                              tickLine={false}
+                              axisLine={false}
+                              width={64}
+                            />
+                            <YAxis
+                              yAxisId="right"
+                              orientation="right"
+                              tickFormatter={(value: number) => formatCompact(value)}
+                              tickLine={false}
+                              axisLine={false}
+                              width={56}
+                            />
+                            <ChartTooltip
+                              content={
+                                <ChartTooltipContent
+                                  indicator="dot"
+                                  labelFormatter={(label) => formatShortDate(String(label))}
+                                />
+                              }
+                            />
+                            <ChartLegend content={<ChartLegendContent />} />
+                            <Line
+                              yAxisId="left"
+                              type="monotone"
+                              dataKey="avgRate"
+                              stroke="var(--color-avgRate)"
+                              strokeWidth={3}
+                              dot={{ r: 2, fill: "var(--color-avgRate)" }}
+                              activeDot={{ r: 5 }}
+                            />
+                            <Line
+                              yAxisId="right"
+                              type="monotone"
+                              dataKey="listings"
+                              stroke="var(--color-listings)"
+                              strokeWidth={2.5}
+                              strokeDasharray="6 4"
+                              dot={false}
+                              activeDot={{ r: 4 }}
+                            />
                           </LineChart>
-                        </ResponsiveContainer>
+                        </ChartContainer>
                       ) : (
                         <div className="text-center py-10 text-muted-foreground">No recent currency listing data available</div>
                       )}

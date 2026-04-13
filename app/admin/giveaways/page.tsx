@@ -388,15 +388,16 @@ export default function AdminGiveawaysPage() {
                   <Label>Reward image</Label>
                   <FileUpload
                     endpoint="giveawayImage"
+                    cropPreset="giveaway"
                     value={form.rewardImageUrl || null}
                     onChange={(url) => setForm((prev) => ({ ...prev, rewardImageUrl: url || "" }))}
                   />
                   <div className="rounded-md border p-3 text-sm text-muted-foreground">
                     <p className="font-medium text-foreground mb-2">Preview</p>
                     {form.rewardImageUrl ? (
-                      <img src={form.rewardImageUrl} alt="Giveaway reward preview" className="h-40 w-full rounded-md border object-cover" />
+                      <img src={form.rewardImageUrl} alt="Giveaway reward preview" className="aspect-video w-full rounded-md border object-cover" />
                     ) : (
-                      <div className="flex h-40 items-center justify-center rounded-md border bg-muted">No image selected</div>
+                      <div className="flex aspect-video w-full items-center justify-center rounded-md border bg-muted">No image selected</div>
                     )}
                   </div>
                 </div>
@@ -425,7 +426,7 @@ export default function AdminGiveawaysPage() {
                             isSelected ? "border-primary bg-primary/5" : "hover:border-primary/50"
                           }`}
                         >
-                          <div className="h-28 bg-muted">
+                          <div className="aspect-video bg-muted">
                             {entry.rewardImageUrl ? (
                               <img src={entry.rewardImageUrl} alt="Reward" className="h-full w-full object-cover" />
                             ) : (
@@ -465,7 +466,7 @@ export default function AdminGiveawaysPage() {
                     </div>
 
                     {selectedDetail.rewardImageUrl && (
-                        <img src={selectedDetail.rewardImageUrl} alt="Reward" className="h-40 w-full rounded-md border object-cover" />
+            <img src={selectedDetail.rewardImageUrl} alt="Reward" className="aspect-video w-full rounded-md border object-cover" />
                     )}
 
                     <div className="grid grid-cols-2 gap-3 text-sm">

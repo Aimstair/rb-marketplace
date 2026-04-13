@@ -471,7 +471,7 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
                 <img
                   src={selectedImage || listing.image || "/placeholder.jpg"}
                   alt={listing.title}
-                  className="w-full h-96 object-cover"
+                  className="w-full aspect-video object-cover"
                   onError={(e) => {
                     ;(e.target as HTMLImageElement).src = "/placeholder.jpg"
                   }}
