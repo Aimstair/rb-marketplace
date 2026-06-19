@@ -61,6 +61,7 @@
     "@uploadthing/react": "^7.3.3",
     "@uploadthing/shared": "^7.1.10",
     "@vercel/analytics": "latest",
+    "@vercel/speed-insights": "latest",
     "autoprefixer": "^10.4.20",
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
