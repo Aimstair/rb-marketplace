@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Search, Loader2 } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
 import { getTransactions } from "@/app/actions/transactions"
 import type { TransactionData } from "@/app/actions/transactions"
 import { TransactionCard } from "@/components/transaction-card"
@@ -84,8 +85,10 @@ export default function MyTransactionsPage() {
       <>
         <Navigation />
         <main className="container max-w-[1920px] mx-auto px-6 py-8">
-          <div className="flex items-center justify-center h-96">
-            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+          <div className="space-y-4 mt-12">
+            {[1, 2, 3, 4].map(i => (
+              <Skeleton key={i} className="w-full h-32 rounded-lg" />
+            ))}
           </div>
         </main>
       </>
@@ -127,8 +130,10 @@ export default function MyTransactionsPage() {
           {/* Buying Tab */}
           <TabsContent value="buying" className="space-y-4 mt-6">
             {loading ? (
-              <div className="flex items-center justify-center h-96">
-                <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+              <div className="space-y-4">
+                {[1, 2, 3, 4].map(i => (
+                  <Skeleton key={i} className="w-full h-32 rounded-lg" />
+                ))}
               </div>
             ) : paginatedBuying.length === 0 ? (
               <div className="text-center py-12">
@@ -197,8 +202,10 @@ export default function MyTransactionsPage() {
           {/* Selling Tab */}
           <TabsContent value="selling" className="space-y-4 mt-6">
             {loading ? (
-              <div className="flex items-center justify-center h-96">
-                <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+              <div className="space-y-4">
+                {[1, 2, 3, 4].map(i => (
+                  <Skeleton key={i} className="w-full h-32 rounded-lg" />
+                ))}
               </div>
             ) : paginatedSelling.length === 0 ? (
               <div className="text-center py-12">

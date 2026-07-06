@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import { z } from "zod"
 import { headers } from "next/headers"
+import { unstable_cache } from "next/cache"
 import { moderateContent, logModerationAction } from "@/lib/moderation"
 import {
   createItemListingSchema,
@@ -53,6 +54,114 @@ async function enforceListingRateLimit(params: {
   }
 }
 
+function getCachedListingDetails(id: string) {
+  return unstable_cache(
+    async () => {
+      let listing: any = await prisma.itemListing.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          price: true,
+          stock: true,
+          image: true,
+          condition: true,
+          status: true,
+          views: true,
+          pricingMode: true,
+          upvotes: true,
+          downvotes: true,
+          createdAt: true,
+          game: {
+            select: { name: true, displayName: true },
+          },
+          gameItem: {
+            select: { displayName: true, category: true, itemType: true },
+          },
+          seller: {
+            select: {
+              id: true,
+              username: true,
+              profilePicture: true,
+              role: true,
+              isVerified: true,
+              joinDate: true,
+              lastActive: true,
+              vouchesReceived: {
+                where: { status: "VALID" },
+                select: { id: true },
+              },
+              _count: {
+                select: { itemListings: true },
+              },
+            },
+          },
+        },
+      })
+
+      let listingType: "ITEM" | "CURRENCY" = "ITEM"
+      let minOrder: number | undefined
+      let maxOrder: number | undefined
+
+      if (!listing) {
+        listing = await prisma.currencyListing.findUnique({
+          where: { id },
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            ratePerPeso: true,
+            stock: true,
+            image: true,
+            status: true,
+            views: true,
+            pricingMode: true,
+            upvotes: true,
+            downvotes: true,
+            minOrder: true,
+            maxOrder: true,
+            createdAt: true,
+            game: {
+              select: { name: true, displayName: true },
+            },
+            gameCurrency: {
+              select: { displayName: true },
+            },
+            seller: {
+              select: {
+                id: true,
+                username: true,
+                profilePicture: true,
+                role: true,
+                isVerified: true,
+                joinDate: true,
+                lastActive: true,
+                vouchesReceived: {
+                  where: { status: "VALID" },
+                  select: { id: true },
+                },
+                _count: {
+                  select: { currencyListings: true },
+                },
+              },
+            },
+          },
+        })
+        
+        if (listing) {
+          listingType = "CURRENCY"
+          minOrder = listing.minOrder
+          maxOrder = listing.maxOrder
+        }
+      }
+      return { listing, listingType, minOrder, maxOrder }
+    },
+    [`listing-details-${id}`],
+    { revalidate: 30 }
+  )()
+}
+
 export async function getListing(id: string, currentUserId?: string): Promise<{
   success: boolean
   listing?: {
@@ -94,135 +203,26 @@ export async function getListing(id: string, currentUserId?: string): Promise<{
       return { success: false, error: "Listing ID is required" }
     }
 
-    // If no currentUserId provided, try to get from session
-    let userId = currentUserId
-    if (!userId) {
+    // Start auth and listing fetch concurrently
+    const authPromise = (async () => {
+      if (currentUserId) return currentUserId
       const session = await auth()
       if (session?.user?.email) {
         const user = await prisma.user.findUnique({
           where: { email: session.user.email },
           select: { id: true },
         })
-        userId = user?.id
+        return user?.id
       }
-    }
+      return undefined
+    })()
 
-    // Try ItemListing first
-    let listing: any = await prisma.itemListing.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        price: true,
-        stock: true,
-        image: true,
-        condition: true,
-        status: true,
-        views: true,
-        pricingMode: true,
-        upvotes: true,
-        downvotes: true,
-        createdAt: true,
-        game: {
-          select: {
-            name: true,
-            displayName: true,
-          },
-        },
-        gameItem: {
-          select: {
-            displayName: true,
-            category: true,
-            itemType: true,
-          },
-        },
-        seller: {
-          select: {
-            id: true,
-            username: true,
-            profilePicture: true,
-            role: true,
-            isVerified: true,
-            joinDate: true,
-            lastActive: true,
-            vouchesReceived: {
-              where: {
-                status: "VALID",
-              },
-              select: { id: true },
-            },
-            _count: {
-              select: { itemListings: true },
-            },
-          },
-        },
-      },
-    })
-
-    let listingType: "ITEM" | "CURRENCY" = "ITEM"
-    let minOrder: number | undefined
-    let maxOrder: number | undefined
-
-    // If not found, try CurrencyListing
-    if (!listing) {
-      listing = await prisma.currencyListing.findUnique({
-        where: { id },
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          ratePerPeso: true,
-          stock: true,
-          image: true,
-          status: true,
-          views: true,
-          pricingMode: true,
-          upvotes: true,
-          downvotes: true,
-          minOrder: true,
-          maxOrder: true,
-          createdAt: true,
-          game: {
-            select: {
-              name: true,
-              displayName: true,
-            },
-          },
-          gameCurrency: {
-            select: {
-              displayName: true,
-            },
-          },
-          seller: {
-            select: {
-              id: true,
-              username: true,
-              profilePicture: true,
-              role: true,
-              isVerified: true,
-              joinDate: true,
-              lastActive: true,
-              vouchesReceived: {
-                where: {
-                  status: "VALID",
-                },
-                select: { id: true },
-              },
-              _count: {
-                select: { currencyListings: true },
-              },
-            },
-          },
-        },
-      })
-      
-      if (listing) {
-        listingType = "CURRENCY"
-        minOrder = listing.minOrder
-        maxOrder = listing.maxOrder
-      }
-    }
+    const detailsPromise = getCachedListingDetails(id)
+    
+    const [userId, { listing, listingType, minOrder, maxOrder }] = await Promise.all([
+      authPromise,
+      detailsPromise
+    ])
 
     if (!listing) {
       return { success: false, error: "Listing not found" }

@@ -22,6 +22,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import { useToast } from "@/hooks/use-toast"
+import { Skeleton } from "@/components/ui/skeleton"
 
 interface ListingDetailPageProps {
   params: Promise<{ id: string }>
@@ -358,8 +359,23 @@ export default function ListingDetailPage({ params }: ListingDetailPageProps) {
 
       <div className="container max-w-[1920px] mx-auto px-6 py-8">
         {loading && (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground">Loading listing...</p>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+            <div className="space-y-4">
+              <Skeleton className="aspect-square w-full rounded-lg" />
+              <div className="flex gap-4">
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} className="h-20 w-20 rounded-md" />
+                ))}
+              </div>
+            </div>
+            <div className="space-y-6">
+              <Skeleton className="h-10 w-3/4" />
+              <Skeleton className="h-6 w-1/4" />
+              <div className="pt-4 space-y-4">
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-32 w-full" />
+              </div>
+            </div>
           </div>
         )}
 

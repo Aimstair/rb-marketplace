@@ -126,14 +126,14 @@ async function buildCroppedFile({
 
         resolve(result)
       },
-      "image/jpeg",
-      0.92
+      "image/webp",
+      0.80
     )
   })
 
-  const normalizedName = `${getFileBaseName(sourceFile.name)}-cropped.jpg`
+  const normalizedName = `${getFileBaseName(sourceFile.name)}-cropped.webp`
   return new File([blob], normalizedName, {
-    type: "image/jpeg",
+    type: "image/webp",
     lastModified: Date.now(),
   })
 }

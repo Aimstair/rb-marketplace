@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/dialog"
 import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
 import { Textarea } from "@/components/ui/textarea"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -870,13 +871,36 @@ export default function MessagesPage() {
         <Navigation />
         <main className="container max-w-[1920px] mx-auto px-6 py-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-[700px]">
-            <div className="md:col-span-1 border rounded-lg bg-card overflow-hidden flex flex-col items-center justify-center">
-              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-              <p className="text-muted-foreground mt-4">Loading...</p>
+            {/* Conversations List Skeleton */}
+            <div className="md:col-span-1 border rounded-lg bg-card overflow-hidden flex flex-col p-4 space-y-4">
+              <Skeleton className="h-10 w-full mb-4" />
+              {[1, 2, 3, 4, 5, 6].map(i => (
+                <div key={i} className="flex gap-4 items-center">
+                  <Skeleton className="w-12 h-12 rounded-full flex-shrink-0" />
+                  <div className="space-y-2 flex-1">
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-3 w-1/2" />
+                  </div>
+                </div>
+              ))}
             </div>
-            <div className="md:col-span-2 border rounded-lg bg-card overflow-hidden flex flex-col items-center justify-center">
-              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-              <p className="text-muted-foreground mt-4">Loading...</p>
+            
+            {/* Chat Area Skeleton */}
+            <div className="md:col-span-2 border rounded-lg bg-card overflow-hidden flex flex-col">
+              <div className="p-4 border-b flex justify-between items-center">
+                <Skeleton className="h-6 w-1/3" />
+                <Skeleton className="h-8 w-24" />
+              </div>
+              <div className="flex-1 p-4 flex flex-col justify-end space-y-4">
+                {[1, 2].map((i) => (
+                  <div key={i} className={`flex ${i % 2 === 0 ? 'justify-end' : 'justify-start'}`}>
+                    <Skeleton className="h-16 w-64 rounded-lg" />
+                  </div>
+                ))}
+              </div>
+              <div className="p-4 border-t mt-auto">
+                <Skeleton className="h-12 w-full rounded-md" />
+              </div>
             </div>
           </div>
         </main>
@@ -1692,11 +1716,16 @@ export default function MessagesPage() {
               className="flex-1 overflow-y-auto"
             >
               {loadingConversations ? (
-                <div className="p-4 text-center text-muted-foreground flex items-center justify-center h-full">
-                  <div>
-                    <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-                    <p>Loading conversations...</p>
-                  </div>
+                <div className="p-4 flex flex-col gap-4">
+                  {[1, 2, 3, 4, 5, 6].map(i => (
+                    <div key={i} className="flex gap-4 items-center">
+                      <Skeleton className="w-12 h-12 rounded-full flex-shrink-0" />
+                      <div className="space-y-2 flex-1">
+                        <Skeleton className="h-4 w-3/4" />
+                        <Skeleton className="h-3 w-1/2" />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : filteredContacts.length === 0 ? (
                 <div className="p-4 text-center text-muted-foreground">
@@ -2023,11 +2052,12 @@ export default function MessagesPage() {
                   className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 chat-scrollbar"
                 >
                   {loadingMessages ? (
-                    <div className="flex items-center justify-center h-full">
-                      <div className="text-center text-muted-foreground">
-                        <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-                        <p>Loading messages...</p>
-                      </div>
+                    <div className="flex flex-col space-y-6 h-full justify-end pb-8">
+                      {[1, 2, 3].map((i) => (
+                        <div key={i} className={`flex ${i % 2 === 0 ? 'justify-end' : 'justify-start'}`}>
+                          <Skeleton className="h-16 w-[70%] max-w-[300px] rounded-lg" />
+                        </div>
+                      ))}
                     </div>
                   ) : selectedContact.blocked ? (
                     <div className="h-full flex items-center justify-center text-muted-foreground">

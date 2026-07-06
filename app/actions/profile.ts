@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import bcrypt from "bcryptjs"
 import { headers } from "next/headers"
+import { unstable_cache } from "next/cache"
 import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit"
 
 const ONE_HOUR_MS = 60 * 60 * 1000
@@ -93,25 +94,23 @@ export interface ToggleFollowResult {
   error?: string
 }
 
-/**
- * Fetch a user's public profile with all related data
- */
-export async function getProfile(usernameOrId: string): Promise<GetProfileResult> {
-  try {
-    const user = await prisma.user.findFirst({
-      where: {
-        OR: [{ id: usernameOrId }, { username: usernameOrId }],
-      },
-      include: {
-        itemListings: {
-          where: { status: "available" },
-          include: {
-            game: {
-              select: { displayName: true }
-            }
-          },
-          take: 20,
-          orderBy: { createdAt: "desc" }
+const getCachedProfileDetails = unstable_cache(
+  async (usernameOrId: string): Promise<GetProfileResult> => {
+    try {
+      const user = await prisma.user.findFirst({
+        where: {
+          OR: [{ id: usernameOrId }, { username: usernameOrId }],
+        },
+        include: {
+          itemListings: {
+            where: { status: "available" },
+            include: {
+              game: {
+                select: { displayName: true }
+              }
+            },
+            take: 20,
+            orderBy: { createdAt: "desc" }
         },
         currencyListings: {
           where: { status: "available" },
@@ -426,6 +425,57 @@ export async function getProfile(usernameOrId: string): Promise<GetProfileResult
   } catch (err) {
     console.error("Failed to get profile:", err)
     return { success: false, error: "Failed to load profile" }
+  }
+}, ["user-profile-details"], { revalidate: 30 })
+
+/**
+ * Fetch a user's public profile with all related data
+ */
+export async function getProfile(usernameOrId: string): Promise<GetProfileResult> {
+  const result = await getCachedProfileDetails(usernameOrId)
+  
+  if (!result.success || !result.data) {
+    return result
+  }
+
+  let isFollowing = false
+  let isOwnProfile = false
+  
+  try {
+    const session = await auth()
+    if (session?.user?.email) {
+      const currentUser = await prisma.user.findUnique({
+        where: { email: session.user.email },
+        select: { id: true }
+      })
+      
+      if (currentUser) {
+        isOwnProfile = currentUser.id === result.data.id
+        
+        if (!isOwnProfile) {
+          const followRecord = await prisma.follow.findUnique({
+            where: {
+              followerId_followingId: {
+                followerId: currentUser.id,
+                followingId: result.data.id,
+              },
+            },
+          })
+          isFollowing = !!followRecord
+        }
+      }
+    }
+  } catch (e) {
+    // Ignore auth errors
+  }
+
+  return {
+    success: true,
+    data: {
+      ...result.data,
+      isFollowing,
+      isOwnProfile
+    }
   }
 }
 

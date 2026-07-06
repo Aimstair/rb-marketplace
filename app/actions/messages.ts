@@ -223,6 +223,7 @@ export async function getConversations(): Promise<GetConversationsResult> {
         },
       },
       orderBy: { updatedAt: "desc" },
+      take: 50,
     }) as any[]
 
     const itemListingIds = new Set<string>()
@@ -372,24 +373,24 @@ export async function getConversations(): Promise<GetConversationsResult> {
  */
 export async function getMessages(conversationId: string): Promise<GetMessagesResult> {
   try {
-    unstable_noStore()
-
-    if (!conversationId) {
-      return {
-        success: false,
-        error: "Conversation ID is required",
-      }
+    const session = await auth()
+    if (!session?.user?.email) {
+      return { success: false, error: "Unauthorized" }
     }
 
     const messages = await prisma.message.findMany({
       where: { conversationId },
       include: {
         sender: {
-          select: { id: true, username: true, profilePicture: true },
+          select: { username: true, profilePicture: true },
         },
       },
-      orderBy: { createdAt: "asc" },
-    }) as any[]
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    })
+
+    // Messages are fetched descending for pagination limit, so reverse them for chronological display
+    messages.reverse() as any[]
 
     // Transform messages to response format
     const transformedMessages: MessageData[] = messages.map((msg) => ({

@@ -4,7 +4,8 @@ import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
-import { Star, MessageCircle, Loader2 } from "lucide-react"
+import { TrendingUp, Flame, Star, Crown, ChevronRight, Loader2, MessageCircle } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
 import { getTrendingListings } from "@/app/actions/trends"
 
 interface TrendingListing {
@@ -45,8 +46,10 @@ export default function FeaturedListings() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 py-4">
+        {[1, 2, 3, 4].map(i => (
+          <Skeleton key={i} className="w-full h-80 rounded-xl" />
+        ))}
       </div>
     )
   }

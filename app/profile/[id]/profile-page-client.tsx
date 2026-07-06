@@ -28,6 +28,8 @@ import {
 } from "lucide-react"
 import Navigation from "@/components/navigation"
 import { Button } from "@/components/ui/button"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -181,11 +183,34 @@ export default function ProfilePageClient({ profileId }: { profileId: string }) 
   // Loading state
   if (loading) {
     return (
-      <main className="min-h-screen bg-background flex items-center justify-center">
+      <main className="min-h-screen bg-background">
         <Navigation />
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
-          <p className="text-muted-foreground">Loading profile...</p>
+        <div className="relative">
+          {/* Banner Skeleton */}
+          <Skeleton className="h-48 md:h-64 lg:h-80 w-full" />
+          
+          <div className="container max-w-[1920px] mx-auto px-6">
+            <div className="relative -mt-16 sm:-mt-24 mb-6">
+              <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 items-start sm:items-end">
+                <Skeleton className="w-32 h-32 sm:w-40 sm:h-40 lg:w-48 lg:h-48 rounded-full border-4 border-background" />
+                <div className="flex-1 w-full space-y-2 pb-4">
+                  <Skeleton className="h-8 w-48" />
+                  <Skeleton className="h-4 w-32" />
+                </div>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="lg:col-span-1 space-y-6">
+                <Skeleton className="h-48 w-full rounded-xl" />
+                <Skeleton className="h-48 w-full rounded-xl" />
+              </div>
+              <div className="lg:col-span-2">
+                <Skeleton className="h-10 w-full mb-6" />
+                <Skeleton className="h-64 w-full rounded-xl" />
+              </div>
+            </div>
+          </div>
         </div>
       </main>
     )

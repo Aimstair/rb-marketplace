@@ -82,6 +82,9 @@ model User {
   // User preferences
   preferences UserPreferences?
 
+  // Blog
+  blogPosts BlogPost[]
+
   // Custom role relation
   customRoleId String?
   customRole   Role?   @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
@@ -340,6 +343,7 @@ model Conversation {
   @@index([buyerId])
   @@index([sellerId])
   @@index([listingId])
+  @@index([updatedAt])
   @@map("conversations")
 }
 
@@ -371,6 +375,7 @@ model Message {
 
   @@index([conversationId])
   @@index([senderId])
+  @@index([createdAt])
   @@map("messages")
 }
 
@@ -421,6 +426,7 @@ model Transaction {
   @@index([listingId])
   @@index([listingType])
   @@index([conversationId])
+  @@index([createdAt])
   @@map("transactions")
 }
 
@@ -1039,4 +1045,22 @@ model HallOfShameComment {
   @@index([authorId])
   @@index([createdAt])
   @@map("hall_of_shame_comments")
+}
+
+model BlogPost {
+  id        String   @id @default(cuid())
+  title     String
+  slug      String   @unique
+  content   String   @db.Text
+  excerpt   String   @db.Text
+  image     String?
+  published Boolean  @default(false)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([slug])
+  @@index([createdAt])
+  @@map("blog_posts")
 }

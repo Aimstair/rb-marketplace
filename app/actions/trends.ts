@@ -878,6 +878,114 @@ function getPercentChange(current: number, previous: number): number {
   return ((current - previous) / previous) * 100
 }
 
+const getCachedTrendsOverviewMetrics = unstable_cache(
+  async (days: number): Promise<{
+    success: boolean
+    data?: {
+      activeListings: { value: number; change: number }
+      activeTraders: { value: number; change: number }
+      completedTransactions: { value: number; change: number }
+      tradeVolume: { value: number; change: number }
+      averagePrice: { value: number; change: number }
+    }
+    error?: string
+  }> => {
+    try {
+      const currentStart = getWindowStart(days)
+      const previousStart = getWindowStart(days * 2)
+  
+      const [
+        currentItemListings,
+        currentCurrencyListings,
+        previousItemListings,
+        previousCurrencyListings,
+        currentTransactions,
+        previousTransactions,
+        currentVolume,
+        previousVolume,
+      ] = await Promise.all([
+        prisma.itemListing.count({ where: { createdAt: { gte: currentStart } } }),
+        prisma.currencyListing.count({ where: { createdAt: { gte: currentStart } } }),
+        prisma.itemListing.count({ where: { createdAt: { gte: previousStart, lt: currentStart } } }),
+        prisma.currencyListing.count({ where: { createdAt: { gte: previousStart, lt: currentStart } } }),
+        prisma.transaction.findMany({
+          where: { status: "COMPLETED", updatedAt: { gte: currentStart } },
+          select: { buyerId: true, sellerId: true, price: true },
+        }),
+        prisma.transaction.findMany({
+          where: { status: "COMPLETED", updatedAt: { gte: previousStart, lt: currentStart } },
+          select: { buyerId: true, sellerId: true, price: true },
+        }),
+        prisma.transaction.aggregate({
+          where: { status: "COMPLETED", updatedAt: { gte: currentStart } },
+          _sum: { price: true },
+        }),
+        prisma.transaction.aggregate({
+          where: { status: "COMPLETED", updatedAt: { gte: previousStart, lt: currentStart } },
+          _sum: { price: true },
+        }),
+      ])
+  
+      const currentListings = currentItemListings + currentCurrencyListings
+      const previousListings = previousItemListings + previousCurrencyListings
+  
+      const currentTraderIds = new Set<string>()
+      for (const tx of currentTransactions) {
+        currentTraderIds.add(tx.buyerId)
+        currentTraderIds.add(tx.sellerId)
+      }
+  
+      const previousTraderIds = new Set<string>()
+      for (const tx of previousTransactions) {
+        previousTraderIds.add(tx.buyerId)
+        previousTraderIds.add(tx.sellerId)
+      }
+  
+      const currentCompletedTransactions = currentTransactions.length
+      const previousCompletedTransactions = previousTransactions.length
+      const currentTradeVolume = currentVolume._sum.price || 0
+      const previousTradeVolume = previousVolume._sum.price || 0
+      const currentAveragePrice = currentCompletedTransactions > 0
+        ? Math.round(currentTradeVolume / currentCompletedTransactions)
+        : 0
+      const previousAveragePrice = previousCompletedTransactions > 0
+        ? Math.round(previousTradeVolume / previousCompletedTransactions)
+        : 0
+  
+      return {
+        success: true,
+        data: {
+          activeListings: {
+            value: currentListings,
+            change: getPercentChange(currentListings, previousListings),
+          },
+          activeTraders: {
+            value: currentTraderIds.size,
+            change: getPercentChange(currentTraderIds.size, previousTraderIds.size),
+          },
+          completedTransactions: {
+            value: currentCompletedTransactions,
+            change: getPercentChange(currentCompletedTransactions, previousCompletedTransactions),
+          },
+          tradeVolume: {
+            value: currentTradeVolume,
+            change: getPercentChange(currentTradeVolume, previousTradeVolume),
+          },
+          averagePrice: {
+            value: currentAveragePrice,
+            change: getPercentChange(currentAveragePrice, previousAveragePrice),
+          },
+        },
+      }
+    } catch (error) {
+      console.error("Failed to get trends overview metrics:", error)
+      return { success: false, error: "Failed to load trends overview metrics" }
+    }
+  },
+  ["trends-overview-metrics-v2"],
+  { revalidate: 300 } // 5 mins
+)
+
 export async function getTrendsOverviewMetrics(
   days: number = 30,
 ): Promise<{
@@ -891,98 +999,187 @@ export async function getTrendsOverviewMetrics(
   }
   error?: string
 }> {
-  try {
-    const currentStart = getWindowStart(days)
-    const previousStart = getWindowStart(days * 2)
-
-    const [
-      currentItemListings,
-      currentCurrencyListings,
-      previousItemListings,
-      previousCurrencyListings,
-      currentTransactions,
-      previousTransactions,
-      currentVolume,
-      previousVolume,
-    ] = await Promise.all([
-      prisma.itemListing.count({ where: { createdAt: { gte: currentStart } } }),
-      prisma.currencyListing.count({ where: { createdAt: { gte: currentStart } } }),
-      prisma.itemListing.count({ where: { createdAt: { gte: previousStart, lt: currentStart } } }),
-      prisma.currencyListing.count({ where: { createdAt: { gte: previousStart, lt: currentStart } } }),
-      prisma.transaction.findMany({
-        where: { status: "COMPLETED", updatedAt: { gte: currentStart } },
-        select: { buyerId: true, sellerId: true, price: true },
-      }),
-      prisma.transaction.findMany({
-        where: { status: "COMPLETED", updatedAt: { gte: previousStart, lt: currentStart } },
-        select: { buyerId: true, sellerId: true, price: true },
-      }),
-      prisma.transaction.aggregate({
-        where: { status: "COMPLETED", updatedAt: { gte: currentStart } },
-        _sum: { price: true },
-      }),
-      prisma.transaction.aggregate({
-        where: { status: "COMPLETED", updatedAt: { gte: previousStart, lt: currentStart } },
-        _sum: { price: true },
-      }),
-    ])
-
-    const currentListings = currentItemListings + currentCurrencyListings
-    const previousListings = previousItemListings + previousCurrencyListings
-
-    const currentTraderIds = new Set<string>()
-    for (const tx of currentTransactions) {
-      currentTraderIds.add(tx.buyerId)
-      currentTraderIds.add(tx.sellerId)
-    }
-
-    const previousTraderIds = new Set<string>()
-    for (const tx of previousTransactions) {
-      previousTraderIds.add(tx.buyerId)
-      previousTraderIds.add(tx.sellerId)
-    }
-
-    const currentCompletedTransactions = currentTransactions.length
-    const previousCompletedTransactions = previousTransactions.length
-    const currentTradeVolume = currentVolume._sum.price || 0
-    const previousTradeVolume = previousVolume._sum.price || 0
-    const currentAveragePrice = currentCompletedTransactions > 0
-      ? Math.round(currentTradeVolume / currentCompletedTransactions)
-      : 0
-    const previousAveragePrice = previousCompletedTransactions > 0
-      ? Math.round(previousTradeVolume / previousCompletedTransactions)
-      : 0
-
-    return {
-      success: true,
-      data: {
-        activeListings: {
-          value: currentListings,
-          change: getPercentChange(currentListings, previousListings),
-        },
-        activeTraders: {
-          value: currentTraderIds.size,
-          change: getPercentChange(currentTraderIds.size, previousTraderIds.size),
-        },
-        completedTransactions: {
-          value: currentCompletedTransactions,
-          change: getPercentChange(currentCompletedTransactions, previousCompletedTransactions),
-        },
-        tradeVolume: {
-          value: currentTradeVolume,
-          change: getPercentChange(currentTradeVolume, previousTradeVolume),
-        },
-        averagePrice: {
-          value: currentAveragePrice,
-          change: getPercentChange(currentAveragePrice, previousAveragePrice),
-        },
-      },
-    }
-  } catch (error) {
-    console.error("Failed to get trends overview metrics:", error)
-    return { success: false, error: "Failed to load trends overview metrics" }
-  }
+  return getCachedTrendsOverviewMetrics(days)
 }
+
+const getCachedCurrencyMarketTrends = unstable_cache(
+  async (days: number, limit: number): Promise<{
+    success: boolean
+    data?: {
+      summary: {
+        activeListings: number
+        avgRate: number
+        totalStock: number
+        completedTrades: number
+        tradedUnits: number
+        tradedValue: number
+      }
+      trends: Array<{
+        date: string
+        avgRate: number
+        listings: number
+      }>
+      topCurrencies: Array<{
+        currencyId: string
+        currency: string
+        game: string
+        listings: number
+        avgRate: number
+        minRate: number
+        maxRate: number
+        stock: number
+        views: number
+      }>
+    }
+    error?: string
+  }> => {
+    try {
+      const startDate = getWindowStart(days)
+      const [activeListings, recentListings, completedTrades, completedTradeAgg] = await Promise.all([
+        prisma.currencyListing.findMany({
+          where: { status: "available" },
+          select: {
+            id: true,
+            createdAt: true,
+            ratePerPeso: true,
+            stock: true,
+            views: true,
+            gameId: true,
+            gameCurrencyId: true,
+            game: { select: { displayName: true } },
+            gameCurrency: { select: { displayName: true } },
+          },
+        }),
+        prisma.currencyListing.findMany({
+          where: { createdAt: { gte: startDate } },
+          select: {
+            createdAt: true,
+            ratePerPeso: true,
+          },
+        }),
+        prisma.transaction.count({
+          where: {
+            status: "COMPLETED",
+            listingType: "CURRENCY",
+            updatedAt: { gte: startDate },
+          },
+        }),
+        prisma.transaction.aggregate({
+          where: {
+            status: "COMPLETED",
+            listingType: "CURRENCY",
+            updatedAt: { gte: startDate },
+          },
+          _sum: {
+            amount: true,
+            price: true,
+          },
+        }),
+      ])
+  
+      const summary = {
+        activeListings: activeListings.length,
+        avgRate:
+          activeListings.length > 0
+            ? Number(
+                (
+                  activeListings.reduce((sum, listing) => sum + listing.ratePerPeso, 0) /
+                  activeListings.length
+                ).toFixed(2)
+              )
+            : 0,
+        totalStock: activeListings.reduce((sum, listing) => sum + listing.stock, 0),
+        completedTrades,
+        tradedUnits: completedTradeAgg._sum.amount || 0,
+        tradedValue: completedTradeAgg._sum.price || 0,
+      }
+  
+      const trendMap = new Map<string, { totalRate: number; count: number }>()
+      for (const listing of recentListings) {
+        const date = listing.createdAt.toISOString().split("T")[0]
+        const prev = trendMap.get(date) || { totalRate: 0, count: 0 }
+        prev.totalRate += listing.ratePerPeso
+        prev.count += 1
+        trendMap.set(date, prev)
+      }
+  
+      const trends = Array.from(trendMap.entries())
+        .map(([date, entry]) => ({
+          date,
+          avgRate: Number((entry.totalRate / entry.count).toFixed(2)),
+          listings: entry.count,
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date))
+  
+      const currencyMap = new Map<
+        string,
+        {
+          currencyId: string
+          currency: string
+          game: string
+          listings: number
+          totalRate: number
+          minRate: number
+          maxRate: number
+          stock: number
+          views: number
+        }
+      >()
+  
+      for (const listing of activeListings) {
+        const key = `${listing.gameCurrencyId}:${listing.gameId}`
+        const prev = currencyMap.get(key) || {
+          currencyId: listing.gameCurrencyId,
+          currency: listing.gameCurrency.displayName,
+          game: listing.game.displayName,
+          listings: 0,
+          totalRate: 0,
+          minRate: listing.ratePerPeso,
+          maxRate: listing.ratePerPeso,
+          stock: 0,
+          views: 0,
+        }
+  
+        prev.listings += 1
+        prev.totalRate += listing.ratePerPeso
+        prev.minRate = Math.min(prev.minRate, listing.ratePerPeso)
+        prev.maxRate = Math.max(prev.maxRate, listing.ratePerPeso)
+        prev.stock += listing.stock
+        prev.views += listing.views
+        currencyMap.set(key, prev)
+      }
+  
+      const topCurrencies = Array.from(currencyMap.values())
+        .map((entry) => ({
+          currencyId: entry.currencyId,
+          currency: entry.currency,
+          game: entry.game,
+          listings: entry.listings,
+          avgRate: Number((entry.totalRate / entry.listings).toFixed(2)),
+          minRate: entry.minRate,
+          maxRate: entry.maxRate,
+          stock: entry.stock,
+          views: entry.views,
+        }))
+        .sort((a, b) => b.listings - a.listings)
+        .slice(0, limit)
+  
+      return {
+        success: true,
+        data: {
+          summary,
+          trends,
+          topCurrencies,
+        },
+      }
+    } catch (error) {
+      console.error("Failed to get currency market trends:", error)
+      return { success: false, error: "Failed to load currency market trends" }
+    }
+  },
+  ["currency-market-trends-v2"],
+  { revalidate: 300 }
+)
 
 export async function getCurrencyMarketTrends(
   days: number = 30,
@@ -1017,149 +1214,7 @@ export async function getCurrencyMarketTrends(
   }
   error?: string
 }> {
-  try {
-    const startDate = getWindowStart(days)
-    const [activeListings, recentListings, completedTrades, completedTradeAgg] = await Promise.all([
-      prisma.currencyListing.findMany({
-        where: { status: "available" },
-        select: {
-          id: true,
-          createdAt: true,
-          ratePerPeso: true,
-          stock: true,
-          views: true,
-          gameId: true,
-          gameCurrencyId: true,
-          game: { select: { displayName: true } },
-          gameCurrency: { select: { displayName: true } },
-        },
-      }),
-      prisma.currencyListing.findMany({
-        where: { createdAt: { gte: startDate } },
-        select: {
-          createdAt: true,
-          ratePerPeso: true,
-        },
-      }),
-      prisma.transaction.count({
-        where: {
-          status: "COMPLETED",
-          listingType: "CURRENCY",
-          updatedAt: { gte: startDate },
-        },
-      }),
-      prisma.transaction.aggregate({
-        where: {
-          status: "COMPLETED",
-          listingType: "CURRENCY",
-          updatedAt: { gte: startDate },
-        },
-        _sum: {
-          amount: true,
-          price: true,
-        },
-      }),
-    ])
-
-    const summary = {
-      activeListings: activeListings.length,
-      avgRate:
-        activeListings.length > 0
-          ? Number(
-              (
-                activeListings.reduce((sum, listing) => sum + listing.ratePerPeso, 0) /
-                activeListings.length
-              ).toFixed(2)
-            )
-          : 0,
-      totalStock: activeListings.reduce((sum, listing) => sum + listing.stock, 0),
-      completedTrades,
-      tradedUnits: completedTradeAgg._sum.amount || 0,
-      tradedValue: completedTradeAgg._sum.price || 0,
-    }
-
-    const trendMap = new Map<string, { totalRate: number; count: number }>()
-    for (const listing of recentListings) {
-      const date = listing.createdAt.toISOString().split("T")[0]
-      const prev = trendMap.get(date) || { totalRate: 0, count: 0 }
-      prev.totalRate += listing.ratePerPeso
-      prev.count += 1
-      trendMap.set(date, prev)
-    }
-
-    const trends = Array.from(trendMap.entries())
-      .map(([date, entry]) => ({
-        date,
-        avgRate: Number((entry.totalRate / entry.count).toFixed(2)),
-        listings: entry.count,
-      }))
-      .sort((a, b) => a.date.localeCompare(b.date))
-
-    const currencyMap = new Map<
-      string,
-      {
-        currencyId: string
-        currency: string
-        game: string
-        listings: number
-        totalRate: number
-        minRate: number
-        maxRate: number
-        stock: number
-        views: number
-      }
-    >()
-
-    for (const listing of activeListings) {
-      const key = `${listing.gameCurrencyId}:${listing.gameId}`
-      const prev = currencyMap.get(key) || {
-        currencyId: listing.gameCurrencyId,
-        currency: listing.gameCurrency.displayName,
-        game: listing.game.displayName,
-        listings: 0,
-        totalRate: 0,
-        minRate: listing.ratePerPeso,
-        maxRate: listing.ratePerPeso,
-        stock: 0,
-        views: 0,
-      }
-
-      prev.listings += 1
-      prev.totalRate += listing.ratePerPeso
-      prev.minRate = Math.min(prev.minRate, listing.ratePerPeso)
-      prev.maxRate = Math.max(prev.maxRate, listing.ratePerPeso)
-      prev.stock += listing.stock
-      prev.views += listing.views
-      currencyMap.set(key, prev)
-    }
-
-    const topCurrencies = Array.from(currencyMap.values())
-      .map((entry) => ({
-        currencyId: entry.currencyId,
-        currency: entry.currency,
-        game: entry.game,
-        listings: entry.listings,
-        avgRate: Number((entry.totalRate / entry.listings).toFixed(2)),
-        minRate: entry.minRate,
-        maxRate: entry.maxRate,
-        stock: entry.stock,
-        views: entry.views,
-      }))
-      .sort((a, b) => b.listings - a.listings)
-      .slice(0, limit)
-
-    return {
-      success: true,
-      data: {
-        summary,
-        trends,
-        topCurrencies,
-      },
-    }
-  } catch (error) {
-    console.error("Failed to get currency market trends:", error)
-    return { success: false, error: "Failed to load currency market trends" }
-  }
+  return getCachedCurrencyMarketTrends(days, limit)
 }
 
 export async function getRetentionWatchlist(

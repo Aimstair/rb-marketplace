@@ -22,6 +22,7 @@ import { useAuth } from "@/lib/auth-context"
 import { getListing, toggleListingVote, reportListing, getListingViewers, nudgeViewer } from "@/app/actions/listings"
 import { useToast } from "@/hooks/use-toast"
 import { Textarea } from "@/components/ui/textarea"
+import { Skeleton } from "@/components/ui/skeleton"
 import { JsonLd } from "@/components/json-ld"
 
 interface ParsedCurrency {
@@ -449,10 +450,24 @@ function CurrencyListingDetailContent({ params }: CurrencyListingDetailContentPr
     return (
       <main className="min-h-screen bg-background">
         <Navigation />
-        <div className="container max-w-[1920px] mx-auto px-6 py-8 flex items-center justify-center h-[600px]">
-          <div className="flex flex-col items-center gap-4">
-            <Loader2 className="w-12 h-12 animate-spin text-primary" />
-            <p className="text-muted-foreground">Loading listing...</p>
+        <div className="container max-w-[1920px] mx-auto px-6 py-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+            <div className="space-y-4">
+              <Skeleton className="aspect-square w-full rounded-lg" />
+              <div className="flex gap-4">
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} className="h-20 w-20 rounded-md" />
+                ))}
+              </div>
+            </div>
+            <div className="space-y-6">
+              <Skeleton className="h-10 w-3/4" />
+              <Skeleton className="h-6 w-1/4" />
+              <div className="pt-4 space-y-4">
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-32 w-full" />
+              </div>
+            </div>
           </div>
         </div>
       </main>

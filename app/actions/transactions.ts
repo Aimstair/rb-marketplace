@@ -306,6 +306,7 @@ export async function getTransactions(
         },
       },
       orderBy: { createdAt: "desc" },
+      take: 50,
     })
 
     const itemListingIds: string[] = Array.from(

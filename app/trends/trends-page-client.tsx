@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   BarChart,
   Bar,
@@ -843,10 +844,26 @@ export default function TrendsPage() {
         <Navigation />
         <main className="min-h-screen bg-background py-8">
           <div className="container max-w-[1920px] mx-auto px-6">
-            <div className="flex items-center justify-center h-[600px]">
-              <div className="text-center">
-                <Loader2 className="w-12 h-12 animate-spin mx-auto mb-4 text-primary" />
-                <p className="text-muted-foreground">Loading market trends...</p>
+            <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div>
+                <Skeleton className="h-10 w-64 mb-2" />
+                <Skeleton className="h-5 w-96" />
+              </div>
+              <Skeleton className="h-10 w-[200px]" />
+            </div>
+            
+            <Skeleton className="h-10 w-full md:w-3/4 lg:w-1/2 mb-6" />
+
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                {[1, 2, 3, 4].map((i) => (
+                  <Skeleton key={i} className="h-32 w-full" />
+                ))}
+              </div>
+              
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Skeleton className="h-[400px] w-full" />
+                <Skeleton className="h-[400px] w-full" />
               </div>
             </div>
           </div>
