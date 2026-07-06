@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
+import { unstable_cache } from "next/cache"
 
 interface LandingStats {
   totalUsers: number
@@ -41,6 +42,79 @@ interface PopularGame {
   totalViews: number
 }
 
+const getCachedLandingStats = unstable_cache(
+  async (): Promise<{
+    success: boolean
+    data?: LandingStats
+    error?: string
+  }> => {
+    try {
+      // Total users (excluding banned or deactivated)
+      const totalUsers = await prisma.user.count({
+        where: {
+          isBanned: false,
+        },
+      })
+
+      // Active listings: count from both ItemListing and CurrencyListing
+      const itemListingsCount = await prisma.itemListing.count({
+        where: {
+          status: "available",
+        },
+      })
+      const currencyListingsCount = await prisma.currencyListing.count({
+        where: {
+          status: "available",
+        },
+      })
+      const totalListings = itemListingsCount + currencyListingsCount
+
+      // Total volume from completed transactions only
+      const volumeResult = await (prisma.transaction as any).aggregate({
+        _sum: {
+          price: true,
+        },
+        where: {
+          status: "COMPLETED",
+        },
+      })
+      const totalVolume = volumeResult._sum.price || 0
+
+      // Active traders (users with at least one listing)
+      const itemTraders = await prisma.user.findMany({
+        where: {
+          itemListings: { some: { status: "available" } },
+        },
+        select: { id: true },
+      })
+      const currencyTraders = await prisma.user.findMany({
+        where: {
+          currencyListings: { some: { status: "available" } },
+        },
+        select: { id: true },
+      })
+      // Combine and deduplicate
+      const uniqueTraderIds = new Set([...itemTraders.map(t => t.id), ...currencyTraders.map(t => t.id)])
+      const activeTraders = uniqueTraderIds.size
+
+      return {
+        success: true,
+        data: {
+          totalUsers,
+          totalListings,
+          totalVolume,
+          activeTraders,
+        },
+      }
+    } catch (err) {
+      console.error("Failed to get landing stats:", err)
+      return { success: false, error: "Failed to load marketplace statistics" }
+    }
+  },
+  ["trends-landing-stats-v2"],
+  { revalidate: 300 } // cache for 5 minutes
+)
+
 /**
  * Get landing page statistics
  * Returns key metrics for the homepage
@@ -50,68 +124,7 @@ export async function getLandingStats(): Promise<{
   data?: LandingStats
   error?: string
 }> {
-  try {
-    // Total users (excluding banned or deactivated)
-    const totalUsers = await prisma.user.count({
-      where: {
-        isBanned: false,
-      },
-    })
-
-    // Active listings: count from both ItemListing and CurrencyListing
-    const itemListingsCount = await prisma.itemListing.count({
-      where: {
-        status: "available",
-      },
-    })
-    const currencyListingsCount = await prisma.currencyListing.count({
-      where: {
-        status: "available",
-      },
-    })
-    const totalListings = itemListingsCount + currencyListingsCount
-
-    // Total volume from completed transactions only
-    const volumeResult = await (prisma.transaction as any).aggregate({
-      _sum: {
-        price: true,
-      },
-      where: {
-        status: "COMPLETED",
-      },
-    })
-    const totalVolume = volumeResult._sum.price || 0
-
-    // Active traders (users with at least one listing)
-    const itemTraders = await prisma.user.findMany({
-      where: {
-        itemListings: { some: { status: "available" } },
-      },
-      select: { id: true },
-    })
-    const currencyTraders = await prisma.user.findMany({
-      where: {
-        currencyListings: { some: { status: "available" } },
-      },
-      select: { id: true },
-    })
-    // Combine and deduplicate
-    const uniqueTraderIds = new Set([...itemTraders.map(t => t.id), ...currencyTraders.map(t => t.id)])
-    const activeTraders = uniqueTraderIds.size
-
-    return {
-      success: true,
-      data: {
-        totalUsers,
-        totalListings,
-        totalVolume,
-        activeTraders,
-      },
-    }
-  } catch (err) {
-    console.error("Failed to get landing stats:", err)
-    return { success: false, error: "Failed to load marketplace statistics" }
-  }
+  return getCachedLandingStats()
 }
 
 /**
@@ -177,6 +190,150 @@ export async function getLandingPageStats(): Promise<{
   }
 }
 
+const getCachedTrendingListings = unstable_cache(
+  async (limit: number): Promise<{
+    success: boolean
+    data?: TrendingListing[]
+    error?: string
+  }> => {
+    try {
+      // Fetch from ItemListing
+      const itemListings = await prisma.itemListing.findMany({
+        where: { status: "available" },
+        select: {
+          id: true,
+          title: true,
+          price: true,
+          image: true,
+          views: true,
+          upvotes: true,
+          game: {
+            select: { displayName: true },
+          },
+          seller: {
+            select: {
+              id: true,
+              username: true,
+              vouchesReceived: {
+                where: { status: "VALID" },
+                select: { id: true },
+              },
+            },
+          },
+        },
+        orderBy: { views: "desc" },
+        take: limit,
+      })
+
+      // Fetch from CurrencyListing
+      const currencyListings = await prisma.currencyListing.findMany({
+        where: { status: "available" },
+        select: {
+          id: true,
+          title: true,
+          ratePerPeso: true,
+          image: true,
+          views: true,
+          upvotes: true,
+          game: {
+            select: { displayName: true },
+          },
+          seller: {
+            select: {
+              id: true,
+              username: true,
+              vouchesReceived: {
+                where: { status: "VALID" },
+                select: { id: true },
+              },
+            },
+          },
+        },
+        orderBy: { views: "desc" },
+        take: limit,
+      })
+
+      const itemListingIds = itemListings.map((listing) => listing.id)
+      const currencyListingIds = currencyListings.map((listing) => listing.id)
+
+      const inquiryCounts =
+        itemListingIds.length > 0 || currencyListingIds.length > 0
+          ? await prisma.conversation.groupBy({
+              by: ["listingId", "listingType"],
+              where: {
+                OR: [
+                  ...(itemListingIds.length > 0
+                    ? [{ listingType: "ITEM", listingId: { in: itemListingIds } }]
+                    : []),
+                  ...(currencyListingIds.length > 0
+                    ? [{ listingType: "CURRENCY", listingId: { in: currencyListingIds } }]
+                    : []),
+                ],
+              },
+              _count: {
+                _all: true,
+              },
+            })
+          : []
+
+      const inquiryMap = new Map(
+        inquiryCounts.map((group) => [
+          `${group.listingType}:${group.listingId}`,
+          group._count._all,
+        ])
+      )
+
+      // Combine and format
+      const allListings = [
+        ...itemListings.map((listing) => ({
+          id: listing.id,
+          title: listing.title,
+          game: listing.game.displayName,
+          price: listing.price,
+          image: listing.image,
+          listingType: "ITEM" as const,
+          seller: {
+            id: listing.seller.id,
+            username: listing.seller.username,
+            vouch: listing.seller.vouchesReceived.length,
+          },
+          views: listing.views,
+          vouchCount: listing.upvotes,
+          inquiries: inquiryMap.get(`ITEM:${listing.id}`) || 0,
+        })),
+        ...currencyListings.map((listing) => ({
+          id: listing.id,
+          title: listing.title,
+          game: listing.game.displayName,
+          price: listing.ratePerPeso,
+          image: listing.image,
+          listingType: "CURRENCY" as const,
+          seller: {
+            id: listing.seller.id,
+            username: listing.seller.username,
+            vouch: listing.seller.vouchesReceived.length,
+          },
+          views: listing.views,
+          vouchCount: listing.upvotes,
+          inquiries: inquiryMap.get(`CURRENCY:${listing.id}`) || 0,
+        })),
+      ]
+
+      // Sort by views and take limit
+      const formatted = allListings
+        .sort((a, b) => b.views - a.views)
+        .slice(0, limit)
+
+      return { success: true, data: formatted }
+    } catch (err) {
+      console.error("Failed to get trending listings:", err)
+      return { success: false, error: "Failed to load trending listings" }
+    }
+  },
+  ["trends-trending-listings-v2"],
+  { revalidate: 300 }
+)
+
 /**
  * Get trending listings by views and vouch count
  * Used for the featured listings carousel
@@ -188,139 +345,7 @@ export async function getTrendingListings(
   data?: TrendingListing[]
   error?: string
 }> {
-  try {
-    // Fetch from ItemListing
-    const itemListings = await prisma.itemListing.findMany({
-      where: { status: "available" },
-      select: {
-        id: true,
-        title: true,
-        price: true,
-        image: true,
-        views: true,
-        upvotes: true,
-        game: {
-          select: { displayName: true },
-        },
-        seller: {
-          select: {
-            id: true,
-            username: true,
-            vouchesReceived: {
-              where: { status: "VALID" },
-              select: { id: true },
-            },
-          },
-        },
-      },
-      orderBy: { views: "desc" },
-      take: limit,
-    })
-
-    // Fetch from CurrencyListing
-    const currencyListings = await prisma.currencyListing.findMany({
-      where: { status: "available" },
-      select: {
-        id: true,
-        title: true,
-        ratePerPeso: true,
-        image: true,
-        views: true,
-        upvotes: true,
-        game: {
-          select: { displayName: true },
-        },
-        seller: {
-          select: {
-            id: true,
-            username: true,
-            vouchesReceived: {
-              where: { status: "VALID" },
-              select: { id: true },
-            },
-          },
-        },
-      },
-      orderBy: { views: "desc" },
-      take: limit,
-    })
-
-    const itemListingIds = itemListings.map((listing) => listing.id)
-    const currencyListingIds = currencyListings.map((listing) => listing.id)
-
-    const inquiryCounts =
-      itemListingIds.length > 0 || currencyListingIds.length > 0
-        ? await prisma.conversation.groupBy({
-            by: ["listingId", "listingType"],
-            where: {
-              OR: [
-                ...(itemListingIds.length > 0
-                  ? [{ listingType: "ITEM", listingId: { in: itemListingIds } }]
-                  : []),
-                ...(currencyListingIds.length > 0
-                  ? [{ listingType: "CURRENCY", listingId: { in: currencyListingIds } }]
-                  : []),
-              ],
-            },
-            _count: {
-              _all: true,
-            },
-          })
-        : []
-
-    const inquiryMap = new Map(
-      inquiryCounts.map((group) => [
-        `${group.listingType}:${group.listingId}`,
-        group._count._all,
-      ])
-    )
-
-    // Combine and format
-    const allListings = [
-      ...itemListings.map((listing) => ({
-        id: listing.id,
-        title: listing.title,
-        game: listing.game.displayName,
-        price: listing.price,
-        image: listing.image,
-        listingType: "ITEM" as const,
-        seller: {
-          id: listing.seller.id,
-          username: listing.seller.username,
-          vouch: listing.seller.vouchesReceived.length,
-        },
-        views: listing.views,
-        vouchCount: listing.upvotes,
-        inquiries: inquiryMap.get(`ITEM:${listing.id}`) || 0,
-      })),
-      ...currencyListings.map((listing) => ({
-        id: listing.id,
-        title: listing.title,
-        game: listing.game.displayName,
-        price: listing.ratePerPeso,
-        image: listing.image,
-        listingType: "CURRENCY" as const,
-        seller: {
-          id: listing.seller.id,
-          username: listing.seller.username,
-          vouch: listing.seller.vouchesReceived.length,
-        },
-        views: listing.views,
-        vouchCount: listing.upvotes,
-        inquiries: inquiryMap.get(`CURRENCY:${listing.id}`) || 0,
-      })),
-    ]
-
-    // Sort by views and take limit
-    const formatted = allListings
-      .sort((a, b) => b.views - a.views)
-      .slice(0, limit)
-
-    return { success: true, data: formatted }
-  } catch (err) {
-    console.error("Failed to get trending listings:", err)
-    return { success: false, error: "Failed to load trending listings" }
-  }
+  return getCachedTrendingListings(limit)
 }
 
 /**
@@ -389,6 +414,91 @@ export async function getMarketTrends(
   }
 }
 
+const getCachedPopularGames = unstable_cache(
+  async (limit: number): Promise<{
+    success: boolean
+    data?: PopularGame[]
+    error?: string
+  }> => {
+    try {
+      // Get item listings with game info
+      const itemListings = await prisma.itemListing.findMany({
+        where: { status: "available" },
+        select: {
+          price: true,
+          views: true,
+          game: {
+            select: { displayName: true },
+          },
+        },
+      })
+
+      // Get currency listings with game info
+      const currencyListings = await prisma.currencyListing.findMany({
+        where: { status: "available" },
+        select: {
+          ratePerPeso: true,
+          views: true,
+          game: {
+            select: { displayName: true },
+          },
+        },
+      })
+
+      // Aggregate by game
+      const gameMap = new Map<string, { listings: number; totalPrice: number; totalViews: number }>()
+
+      itemListings.forEach((listing) => {
+        const gameName = listing.game.displayName
+        const existing = gameMap.get(gameName) || {
+          listings: 0,
+          totalPrice: 0,
+          totalViews: 0,
+        }
+
+        existing.listings += 1
+        existing.totalPrice += listing.price
+        existing.totalViews += listing.views
+
+        gameMap.set(gameName, existing)
+      })
+
+      currencyListings.forEach((listing) => {
+        const gameName = listing.game.displayName
+        const existing = gameMap.get(gameName) || {
+          listings: 0,
+          totalPrice: 0,
+          totalViews: 0,
+        }
+
+        existing.listings += 1
+        existing.totalPrice += listing.ratePerPeso
+        existing.totalViews += listing.views
+
+        gameMap.set(gameName, existing)
+      })
+
+      // Sort by listing count and format
+      const games = Array.from(gameMap.entries())
+        .map(([game, data]) => ({
+          game,
+          listings: data.listings,
+          avgPrice: Math.round(data.totalPrice / data.listings),
+          totalViews: data.totalViews,
+        }))
+        .sort((a, b) => b.listings - a.listings)
+        .slice(0, limit)
+
+      return { success: true, data: games }
+    } catch (err) {
+      console.error("Failed to get popular games:", err)
+      return { success: false, error: "Failed to load popular games" }
+    }
+  },
+  ["trends-popular-games-v2"],
+  { revalidate: 300 }
+)
+
 /**
  * Get most popular games on the marketplace
  * Aggregates listings by game name
@@ -398,80 +508,7 @@ export async function getPopularGames(limit: number = 10): Promise<{
   data?: PopularGame[]
   error?: string
 }> {
-  try {
-    // Get item listings with game info
-    const itemListings = await prisma.itemListing.findMany({
-      where: { status: "available" },
-      select: {
-        price: true,
-        views: true,
-        game: {
-          select: { displayName: true },
-        },
-      },
-    })
-
-    // Get currency listings with game info
-    const currencyListings = await prisma.currencyListing.findMany({
-      where: { status: "available" },
-      select: {
-        ratePerPeso: true,
-        views: true,
-        game: {
-          select: { displayName: true },
-        },
-      },
-    })
-
-    // Aggregate by game
-    const gameMap = new Map<string, { listings: number; totalPrice: number; totalViews: number }>()
-
-    itemListings.forEach((listing) => {
-      const gameName = listing.game.displayName
-      const existing = gameMap.get(gameName) || {
-        listings: 0,
-        totalPrice: 0,
-        totalViews: 0,
-      }
-
-      existing.listings += 1
-      existing.totalPrice += listing.price
-      existing.totalViews += listing.views
-
-      gameMap.set(gameName, existing)
-    })
-
-    currencyListings.forEach((listing) => {
-      const gameName = listing.game.displayName
-      const existing = gameMap.get(gameName) || {
-        listings: 0,
-        totalPrice: 0,
-        totalViews: 0,
-      }
-
-      existing.listings += 1
-      existing.totalPrice += listing.ratePerPeso
-      existing.totalViews += listing.views
-
-      gameMap.set(gameName, existing)
-    })
-
-    // Sort by listing count and format
-    const games = Array.from(gameMap.entries())
-      .map(([game, data]) => ({
-        game,
-        listings: data.listings,
-        avgPrice: Math.round(data.totalPrice / data.listings),
-        totalViews: data.totalViews,
-      }))
-      .sort((a, b) => b.listings - a.listings)
-      .slice(0, limit)
-
-    return { success: true, data: games }
-  } catch (err) {
-    console.error("Failed to get popular games:", err)
-    return { success: false, error: "Failed to load popular games" }
-  }
+  return getCachedPopularGames(limit)
 }
 
 /**
@@ -501,6 +538,99 @@ export async function getTopSellingItems(
   }
 }
 
+const getCachedTopTraders = unstable_cache(
+  async (limit: number): Promise<{
+    success: boolean
+    data?: Array<{
+      id: string
+      username: string
+      avatar: string | null
+      vouch: number
+      joinDate: Date
+      listings: number
+      verified: boolean
+      completedTrades: number
+      recentSaleAt: Date | null
+    }>
+    error?: string
+  }> => {
+    try {
+      const traders = await prisma.user.findMany({
+        select: {
+          id: true,
+          username: true,
+          profilePicture: true,
+          isVerified: true,
+          joinDate: true,
+          vouchesReceived: {
+            where: { status: "VALID" }, // Only count valid vouches
+            select: { id: true },
+          },
+          itemListings: {
+            where: { status: "available" },
+            select: { id: true },
+          },
+          currencyListings: {
+            where: { status: "available" },
+            select: { id: true },
+          },
+        },
+        orderBy: [
+          { vouchesReceived: { _count: "desc" } },
+          { joinDate: "asc" },
+        ],
+        take: limit,
+      })
+
+      const traderIds = traders.map((trader) => trader.id)
+      const salesByTrader = traderIds.length > 0
+        ? await prisma.transaction.groupBy({
+            by: ["sellerId"],
+            where: {
+              status: "COMPLETED",
+              sellerId: { in: traderIds },
+            },
+            _count: {
+              _all: true,
+            },
+            _max: {
+              updatedAt: true,
+            },
+          })
+        : []
+
+      const salesMap = new Map(
+        salesByTrader.map((entry) => [
+          entry.sellerId,
+          {
+            completedTrades: entry._count._all,
+            recentSaleAt: entry._max.updatedAt ?? null,
+          },
+        ])
+      )
+
+      const formatted = traders.map((trader) => ({
+        id: trader.id,
+        username: trader.username,
+        avatar: trader.profilePicture,
+        vouch: trader.vouchesReceived.length,
+        joinDate: trader.joinDate,
+        listings: trader.itemListings.length + trader.currencyListings.length,
+        verified: trader.isVerified,
+        completedTrades: salesMap.get(trader.id)?.completedTrades || 0,
+        recentSaleAt: salesMap.get(trader.id)?.recentSaleAt || null,
+      }))
+
+      return { success: true, data: formatted }
+    } catch (err) {
+      console.error("Failed to get top traders:", err)
+      return { success: false, error: "Failed to load top traders" }
+    }
+  },
+  ["trends-top-traders-v2"],
+  { revalidate: 300 }
+)
+
 /**
  * Get top traders by vouch count
  * Returns users with highest reputation/vouch count
@@ -522,78 +652,7 @@ export async function getTopTraders(
   }>
   error?: string
 }> {
-  try {
-    const traders = await prisma.user.findMany({
-      select: {
-        id: true,
-        username: true,
-        profilePicture: true,
-        isVerified: true,
-        joinDate: true,
-        vouchesReceived: {
-          where: { status: "VALID" }, // Only count valid vouches
-          select: { id: true },
-        },
-        itemListings: {
-          where: { status: "available" },
-          select: { id: true },
-        },
-        currencyListings: {
-          where: { status: "available" },
-          select: { id: true },
-        },
-      },
-      orderBy: [
-        { vouchesReceived: { _count: "desc" } },
-        { joinDate: "asc" },
-      ],
-      take: limit,
-    })
-
-    const traderIds = traders.map((trader) => trader.id)
-    const salesByTrader = traderIds.length > 0
-      ? await prisma.transaction.groupBy({
-          by: ["sellerId"],
-          where: {
-            status: "COMPLETED",
-            sellerId: { in: traderIds },
-          },
-          _count: {
-            _all: true,
-          },
-          _max: {
-            updatedAt: true,
-          },
-        })
-      : []
-
-    const salesMap = new Map(
-      salesByTrader.map((entry) => [
-        entry.sellerId,
-        {
-          completedTrades: entry._count._all,
-          recentSaleAt: entry._max.updatedAt ?? null,
-        },
-      ])
-    )
-
-    const formatted = traders.map((trader) => ({
-      id: trader.id,
-      username: trader.username,
-      avatar: trader.profilePicture,
-      vouch: trader.vouchesReceived.length,
-      joinDate: trader.joinDate,
-      listings: trader.itemListings.length + trader.currencyListings.length,
-      verified: trader.isVerified,
-      completedTrades: salesMap.get(trader.id)?.completedTrades || 0,
-      recentSaleAt: salesMap.get(trader.id)?.recentSaleAt || null,
-    }))
-
-    return { success: true, data: formatted }
-  } catch (err) {
-    console.error("Failed to get top traders:", err)
-    return { success: false, error: "Failed to load top traders" }
-  }
+  return getCachedTopTraders(limit)
 }
 
 /**
