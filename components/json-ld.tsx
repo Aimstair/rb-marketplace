@@ -83,7 +83,7 @@ interface PersonJsonLdProps {
 
 export function OrganizationJsonLd({
   name = "RbMarket",
-  description = "Peer-to-peer Roblox marketplace for safer item and currency trading.",
+  description = "RbMarket is the trusted peer-to-peer Roblox marketplace to buy and sell Roblox pets, items, and in-game units for cash.",
   logoPath = "/logo.png",
   sameAs = [],
 }: OrganizationJsonLdProps) {
@@ -107,7 +107,7 @@ export function OrganizationJsonLd({
 
 export function WebsiteJsonLd({
   name = "RbMarket",
-  description = "Peer-to-peer Roblox marketplace for safer item and currency trading.",
+  description = "Buy and sell Roblox pets, game items, and in-game units for cash on RbMarket — the trusted Roblox marketplace.",
 }: WebsiteJsonLdProps) {
   const siteUrl = getSiteUrl()
   const jsonLd = {
@@ -117,6 +117,14 @@ export function WebsiteJsonLd({
     name,
     url: siteUrl,
     description,
+    potentialAction: {
+      "@type": "SearchAction",
+      target: {
+        "@type": "EntryPoint",
+        urlTemplate: `${siteUrl}/marketplace?search={search_term_string}`,
+      },
+      "query-input": "required name=search_term_string",
+    },
   }
 
   return <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
@@ -307,4 +315,35 @@ export function JsonLd({ listing, urlPath }: JsonLdProps) {
       dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
     />
   )
+}
+
+interface MarketplaceJsonLdProps {
+  itemCount?: number
+  path?: string
+}
+
+export function MarketplaceJsonLd({
+  itemCount,
+  path = "/marketplace",
+}: MarketplaceJsonLdProps) {
+  const siteUrl = getSiteUrl()
+  const pageUrl = `${siteUrl}${path}`
+  const jsonLd: Record<string, unknown> = {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    name: "Roblox Marketplace — Buy & Sell Roblox Pets, Items & Units",
+    description:
+      "Browse and buy Roblox pets, game items, and in-game currency units for cash. The trusted Roblox buy and sell marketplace.",
+    url: pageUrl,
+    mainEntityOfPage: pageUrl,
+    isPartOf: {
+      "@id": `${siteUrl}/#website`,
+    },
+  }
+
+  if (typeof itemCount === "number" && Number.isFinite(itemCount) && itemCount >= 0) {
+    jsonLd.numberOfItems = Math.floor(itemCount)
+  }
+
+  return <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 }

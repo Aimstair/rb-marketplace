@@ -81,10 +81,10 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     const formattedPrice = price.toLocaleString()
     const rawDescription = (listing.description || "").trim()
     const snippet = rawDescription ? `${rawDescription.slice(0, 120)}${rawDescription.length > 120 ? "..." : ""}` : "Trusted Roblox marketplace listing."
-    const description = `Buy ${listing.title} from ${listing.seller.username} for P${formattedPrice}. ${snippet}`
+    const description = `Buy ${listing.title} from ${listing.seller.username} for ₱${formattedPrice} on RbMarket — Roblox’s trusted buy and sell marketplace. ${snippet}`
 
     return {
-      title: `${listing.title} - Buy on RB Marketplace`,
+      title: `Buy ${listing.title} on Roblox Marketplace | RbMarket`,
       description,
       metadataBase: new URL(siteUrl),
       alternates: {
@@ -94,9 +94,21 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
         index: isIndexable,
         follow: isIndexable,
       },
-      keywords: [listing.title, gameName, category, "Roblox", "marketplace", "buy", "sell"],
+      keywords: [
+        listing.title,
+        gameName,
+        category,
+        "Roblox",
+        "Roblox marketplace",
+        "Roblox buy and sell",
+        "Roblox sell for cash",
+        ...(category === "item" ? ["Roblox sell pets", "sell Roblox items"] : ["Roblox sell units", "sell Roblox currency"]),
+        `buy ${listing.title}`,
+        `sell ${gameName} items`,
+        "RbMarket",
+      ],
       openGraph: {
-        title: `${listing.title} - RB Marketplace`,
+        title: `Buy ${listing.title} on Roblox Marketplace | RbMarket`,
         description,
         type: "website",
         url: `${siteUrl}/listing/${id}`,
@@ -113,7 +125,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
       },
       twitter: {
         card: "summary_large_image",
-        title: `${listing.title} - RB Marketplace`,
+        title: `Buy ${listing.title} on Roblox Marketplace | RbMarket`,
         description,
         images: listing.image ? [listing.image] : [],
       },

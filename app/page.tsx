@@ -15,9 +15,9 @@ function getSiteUrl(): string {
 
 export function generateMetadata(): Metadata {
   const siteUrl = getSiteUrl()
-  const title = "RbMarket | Roblox Items, Currency, and Trusted Traders"
+  const title = "RbMarket | Buy & Sell Roblox Pets, Items & Units for Cash"
   const description =
-    "Trade Roblox items and game currency on RbMarket with community trust signals, seller profiles, and safer peer-to-peer workflows."
+    "RbMarket is the trusted Roblox marketplace to buy and sell Roblox pets, game items, and in-game units for cash. Connect with verified traders and sell your Roblox items safely."
 
   return {
     metadataBase: new URL(siteUrl),
@@ -29,10 +29,15 @@ export function generateMetadata(): Metadata {
     keywords: [
       "RbMarket",
       "Roblox marketplace",
+      "Roblox buy and sell",
+      "Roblox sell for cash",
+      "Roblox sell pets",
+      "Roblox sell units",
       "Roblox item trading",
       "Roblox currency trading",
+      "Roblox pet marketplace",
       "trusted Roblox sellers",
-      "peer to peer marketplace",
+      "peer to peer Roblox marketplace",
     ],
     openGraph: {
       title,
@@ -45,7 +50,7 @@ export function generateMetadata(): Metadata {
           url: "/opengraph-image",
           width: 1200,
           height: 630,
-          alt: "RbMarket social preview",
+          alt: "RbMarket — Roblox buy and sell marketplace",
         },
       ],
     },
@@ -61,8 +66,12 @@ export function generateMetadata(): Metadata {
 export default function HomePage() {
   return (
     <>
-      <OrganizationJsonLd />
-      <WebsiteJsonLd />
+      <OrganizationJsonLd
+        description="RbMarket is the trusted peer-to-peer Roblox marketplace to buy and sell Roblox pets, items, and in-game units for cash."
+      />
+      <WebsiteJsonLd
+        description="Buy and sell Roblox pets, game items, and in-game units for cash on RbMarket — the trusted Roblox marketplace."
+      />
       <HomePageClient />
     </>
   )

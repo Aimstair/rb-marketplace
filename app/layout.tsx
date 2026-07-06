@@ -54,9 +54,14 @@ async function getMetadata(): Promise<Metadata> {
       keywords: [
         "RbMarket",
         "Roblox marketplace",
+        "Roblox buy and sell",
+        "Roblox sell for cash",
+        "Roblox sell pets",
+        "Roblox sell units",
         "buy Roblox items",
         "sell Roblox items",
         "Roblox currency",
+        "Roblox pet trading",
         "trusted Roblox trading",
       ],
       robots: {
@@ -110,15 +115,20 @@ async function getMetadata(): Promise<Metadata> {
     const siteUrl = getSiteUrl()
     return {
       metadataBase: new URL(siteUrl),
-      title: "RbMarket - Buy & Sell Roblox Items Safely",
-      description: "Peer-to-peer marketplace for trading Roblox items anonymously. Browse listings, connect with sellers, and build trust through our vouch system.",
+      title: "RbMarket — Roblox Marketplace | Buy & Sell Pets, Items & Units for Cash",
+      description: "The trusted Roblox marketplace to buy and sell Roblox pets, game items, and in-game units for cash. Connect with verified traders, list your pets, and sell for real cash on RbMarket.",
       applicationName: "RbMarket",
       keywords: [
         "RbMarket",
         "Roblox marketplace",
+        "Roblox buy and sell",
+        "Roblox sell for cash",
+        "Roblox sell pets",
+        "Roblox sell units",
         "buy Roblox items",
         "sell Roblox items",
         "Roblox currency",
+        "Roblox pet trading",
         "trusted Roblox trading",
       ],
       robots: {
@@ -136,16 +146,16 @@ async function getMetadata(): Promise<Metadata> {
         canonical: "/",
       },
       openGraph: {
-        title: "RbMarket - Buy & Sell Roblox Items Safely",
-        description: "Peer-to-peer marketplace for trading Roblox items anonymously. Browse listings, connect with sellers, and build trust through our vouch system.",
+        title: "RbMarket — Roblox Marketplace | Buy & Sell Pets, Items & Units for Cash",
+        description: "The trusted Roblox marketplace to buy and sell Roblox pets, game items, and in-game units for cash. Connect with verified traders, list your pets, and sell for real cash on RbMarket.",
         type: "website",
         siteName: "RbMarket",
         url: siteUrl,
       },
       twitter: {
         card: "summary_large_image",
-        title: "RbMarket - Buy & Sell Roblox Items Safely",
-        description: "Peer-to-peer marketplace for trading Roblox items anonymously. Browse listings, connect with sellers, and build trust through our vouch system.",
+        title: "RbMarket — Roblox Marketplace | Buy & Sell Pets, Items & Units for Cash",
+        description: "The trusted Roblox marketplace to buy and sell Roblox pets, game items, and in-game units for cash. Connect with verified traders, list your pets, and sell for real cash on RbMarket.",
       },
       generator: "Aerox Software",
       icons: {

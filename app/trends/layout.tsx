@@ -14,9 +14,9 @@ function getSiteUrl(): string {
 
 export function generateMetadata(): Metadata {
   const siteUrl = getSiteUrl()
-  const title = "Marketplace Trends and Pricing Insights | RbMarket"
+  const title = "Roblox Marketplace Price Trends — Pets, Items & Units | RbMarket"
   const description =
-    "Track listing demand, price movements, active traders, and market activity for Roblox items and currency on RbMarket."
+    "Track Roblox marketplace trends: pet prices, item demand, currency unit rates, and active trader activity across all major Roblox games on RbMarket."
 
   return {
     metadataBase: new URL(siteUrl),
@@ -27,9 +27,12 @@ export function generateMetadata(): Metadata {
     },
     keywords: [
       "RbMarket trends",
-      "Roblox market analytics",
+      "Roblox marketplace trends",
+      "Roblox sell pets price",
+      "Roblox sell units price",
       "Roblox item prices",
       "Roblox currency rates",
+      "Roblox buy and sell trends",
       "trading insights",
     ],
     openGraph: {
@@ -43,7 +46,7 @@ export function generateMetadata(): Metadata {
           url: "/trends/opengraph-image",
           width: 1200,
           height: 630,
-          alt: "RbMarket trends social preview",
+          alt: "RbMarket Roblox marketplace trends",
         },
       ],
     },
