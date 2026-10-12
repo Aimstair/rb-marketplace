@@ -10,6 +10,7 @@ import { Toaster } from "@/components/ui/toaster"
 import { prisma } from "@/lib/prisma"
 import { redirect } from "next/navigation" 
 import { headers } from "next/headers"
+import { unstable_cache } from "next/cache"
 import { auth } from "@/auth"
 import "./globals.css"
 
@@ -26,9 +27,17 @@ function getSiteUrl(): string {
   }
 }
 
+// Every page render reads these settings, so they are cached and invalidated
+// via the "system-settings" tag when an admin saves or resets settings.
+const getCachedSystemSetting = unstable_cache(
+  async (key: string) => prisma.systemSettings.findUnique({ where: { key } }),
+  ["layout-system-setting-v1"],
+  { revalidate: 300, tags: ["system-settings"] }
+)
+
 async function getSystemSetting(key: string) {
   try {
-    return await prisma.systemSettings.findUnique({ where: { key } })
+    return await getCachedSystemSetting(key)
   } catch (error) {
     console.error(`Error fetching system setting (${key}):`, error)
     return null

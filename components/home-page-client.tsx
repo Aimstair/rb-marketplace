@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
@@ -9,10 +9,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
 import Navigation from "@/components/navigation"
-import FeaturedListings from "@/components/featured-listings"
+import FeaturedListings, { type TrendingListing } from "@/components/featured-listings"
 import TrendingGames from "@/components/trending-games"
 import TopVouchedSellers from "@/components/top-vouched-sellers"
-import { getLandingStats, getPopularGames, getTopTraders } from "@/app/actions/trends"
 import { checkAndExpireSubscriptions } from "@/app/actions/subscriptions"
 import { getGiveawayHomeData, joinGiveaway } from "@/app/actions/giveaways"
 import { useSession } from "next-auth/react"
@@ -85,29 +84,52 @@ function truncateCopy(value: string | null | undefined, max = 120): string {
   return `${value.slice(0, max)}...`
 }
 
-export default function HomePage() {
+interface LandingStats {
+  totalUsers: number
+  totalListings: number
+  totalVolume: number
+  activeTraders: number
+}
+
+interface GiveawayHomeData {
+  active: GiveawayActiveData | null
+  queued: GiveawayQueuedData[]
+  history: GiveawayHistoryData[]
+  joined: boolean
+  eligibility: {
+    eligible: boolean
+    completedTransactionsCount: number
+    requiredCount: number
+  } | null
+}
+
+interface HomePageProps {
+  initialStats?: LandingStats
+  initialGames?: PopularGame[]
+  initialTraders?: TopTrader[]
+  initialGiveaway?: GiveawayHomeData
+  initialFeaturedListings?: TrendingListing[]
+}
+
+export default function HomePage({
+  initialStats,
+  initialGames,
+  initialTraders,
+  initialGiveaway,
+  initialFeaturedListings,
+}: HomePageProps) {
   const router = useRouter()
   const { data: session } = useSession()
   const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState("")
-  const [stats, setStats] = useState({ totalUsers: 0, totalListings: 0, totalVolume: 0, activeTraders: 0 })
-  const [games, setGames] = useState<PopularGame[]>([])
-  const [traders, setTraders] = useState<TopTrader[]>([])
-  const [gamesLoading, setGamesLoading] = useState(true)
-  const [tradersLoading, setTradersLoading] = useState(true)
-  const [giveawayLoading, setGiveawayLoading] = useState(true)
+  const stats = initialStats ?? { totalUsers: 0, totalListings: 0, totalVolume: 0, activeTraders: 0 }
+  const games = initialGames ?? []
+  const traders = initialTraders ?? []
+  const [giveawayLoading, setGiveawayLoading] = useState(!initialGiveaway)
   const [giveawayActionLoading, setGiveawayActionLoading] = useState(false)
-  const [giveawayData, setGiveawayData] = useState<{
-    active: GiveawayActiveData | null
-    queued: GiveawayQueuedData[]
-    history: GiveawayHistoryData[]
-    joined: boolean
-    eligibility: {
-      eligible: boolean
-      completedTransactionsCount: number
-      requiredCount: number
-    } | null
-  } | null>(null)
+  const [giveawayData, setGiveawayData] = useState<GiveawayHomeData | null>(initialGiveaway ?? null)
+  // The server already loaded giveaway data for this user; only refetch if the signed-in user changes.
+  const giveawayLoadedForUserId = useRef<string | undefined | null>(initialGiveaway ? session?.user?.id : null)
   const [nowMs, setNowMs] = useState(Date.now())
 
   // Avoid checking subscription expiry too often during quick route hops.
@@ -128,39 +150,12 @@ export default function HomePage() {
     }
   }, [session?.user?.id])
 
-  // Load homepage payload in one batch to reduce mount-time render churn.
   useEffect(() => {
-    const loadHomepageData = async () => {
-      try {
-        const [statsResult, gamesResult, tradersResult] = await Promise.all([
-          getLandingStats(),
-          getPopularGames(6),
-          getTopTraders(4),
-        ])
-
-        if (statsResult.success && statsResult.data) {
-          setStats(statsResult.data)
-        }
-
-        if (gamesResult.success && gamesResult.data) {
-          setGames(gamesResult.data)
-        }
-
-        if (tradersResult.success && tradersResult.data) {
-          setTraders(tradersResult.data)
-        }
-      } catch (err) {
-        console.error("Failed to load homepage data:", err)
-      } finally {
-        setGamesLoading(false)
-        setTradersLoading(false)
-      }
+    if (giveawayLoadedForUserId.current === session?.user?.id) {
+      return
     }
+    giveawayLoadedForUserId.current = session?.user?.id
 
-    loadHomepageData()
-  }, [])
-
-  useEffect(() => {
     const loadGiveaway = async () => {
       try {
         setGiveawayLoading(true)
@@ -491,7 +486,7 @@ export default function HomePage() {
               <Button variant="ghost">View All</Button>
             </Link>
           </div>
-          <FeaturedListings />
+          <FeaturedListings initialListings={initialFeaturedListings} />
         </div>
       </section>
 
@@ -505,7 +500,7 @@ export default function HomePage() {
             </h2>
             <p className="text-muted-foreground">Most popular items being traded</p>
           </div>
-          <TrendingGames games={games} isLoading={gamesLoading} />
+          <TrendingGames games={games} isLoading={false} />
         </div>
       </section>
 
@@ -519,7 +514,7 @@ export default function HomePage() {
             </h2>
             <p className="text-muted-foreground">Trusted community members</p>
           </div>
-          <TopVouchedSellers sellers={traders} isLoading={tradersLoading} />
+          <TopVouchedSellers sellers={traders} isLoading={false} />
         </div>
       </section>
 

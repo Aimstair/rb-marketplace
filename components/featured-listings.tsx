@@ -8,7 +8,7 @@ import { TrendingUp, Flame, Star, Crown, ChevronRight, Loader2, MessageCircle } 
 import { Skeleton } from "@/components/ui/skeleton"
 import { getTrendingListings } from "@/app/actions/trends"
 
-interface TrendingListing {
+export interface TrendingListing {
   id: string
   title: string
   game: string
@@ -22,12 +22,14 @@ interface TrendingListing {
   vouchCount: number
 }
 
-export default function FeaturedListings() {
-  const [listings, setListings] = useState<TrendingListing[]>([])
-  const [loading, setLoading] = useState(true)
+export default function FeaturedListings({ initialListings }: { initialListings?: TrendingListing[] }) {
+  const [listings, setListings] = useState<TrendingListing[]>(initialListings ?? [])
+  const [loading, setLoading] = useState(!initialListings)
 
-  // Load trending listings on mount
+  // Load trending listings on mount unless the server already provided them
   useEffect(() => {
+    if (initialListings) return
+
     const loadListings = async () => {
       try {
         const result = await getTrendingListings(4)
@@ -42,7 +44,7 @@ export default function FeaturedListings() {
     }
 
     loadListings()
-  }, [])
+  }, [initialListings])
 
   if (loading) {
     return (

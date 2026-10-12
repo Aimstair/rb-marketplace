@@ -1,6 +1,7 @@
 // @ts-nocheck
 "use server"
 
+import { updateTag } from "next/cache"
 import { prisma } from "@/lib/prisma"
 import { createNotification } from "@/app/actions/notifications"
 import { auth } from "@/auth"
@@ -3683,6 +3684,7 @@ export async function updateSystemSettings(
         })
       })
     )
+    updateTag("system-settings")
 
     // Create audit log
     await prisma.auditLog.create({
@@ -3728,6 +3730,7 @@ export async function resetSystemSettings(): Promise<AdminResult> {
 
     // Delete all settings (will use defaults)
     await prisma.systemSettings.deleteMany({})
+    updateTag("system-settings")
 
     // Create audit log
     await prisma.auditLog.create({

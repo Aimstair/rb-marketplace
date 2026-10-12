@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { revalidateTag } from "next/cache"
 import { prisma } from "@/lib/prisma"
 import { createNotification } from "@/app/actions/notifications"
 import { sendGiveawayAnnouncementCampaign } from "@/lib/engagement-email"
@@ -224,6 +225,10 @@ export async function POST(request: NextRequest) {
           })
         }
       }
+    }
+
+    if (!dryRun && (completedGiveawayIds.length > 0 || activatedGiveawayId)) {
+      revalidateTag("giveaways", { expire: 0 })
     }
 
     logInfo("giveaway.tick.completed", {

@@ -1,5 +1,7 @@
 import type { Metadata } from "next"
 import HomePageClient from "@/components/home-page-client"
+import { getLandingStats, getPopularGames, getTopTraders, getTrendingListings } from "@/app/actions/trends"
+import { getGiveawayHomeData } from "@/app/actions/giveaways"
 import { OrganizationJsonLd, WebsiteJsonLd } from "@/components/json-ld"
 
 const DEFAULT_SITE_URL = "https://rbmarket.app"
@@ -63,7 +65,18 @@ export function generateMetadata(): Metadata {
   }
 }
 
-export default function HomePage() {
+export default async function HomePage() {
+  // Fetched on the server (mostly from cache) so the stat cards and sections
+  // arrive with the HTML instead of waiting on client-side Server Actions,
+  // which Next.js runs one at a time after hydration.
+  const [statsResult, gamesResult, tradersResult, giveawayResult, featuredResult] = await Promise.all([
+    getLandingStats(),
+    getPopularGames(6),
+    getTopTraders(4),
+    getGiveawayHomeData(),
+    getTrendingListings(4),
+  ])
+
   return (
     <>
       <OrganizationJsonLd
@@ -72,7 +85,13 @@ export default function HomePage() {
       <WebsiteJsonLd
         description="Buy and sell Roblox pets, game items, and in-game units for cash on RbMarket — the trusted Roblox marketplace."
       />
-      <HomePageClient />
+      <HomePageClient
+        initialStats={statsResult.success ? statsResult.data : undefined}
+        initialGames={gamesResult.success ? gamesResult.data : undefined}
+        initialTraders={tradersResult.success ? tradersResult.data : undefined}
+        initialGiveaway={giveawayResult.success ? giveawayResult.data : undefined}
+        initialFeaturedListings={featuredResult.success ? featuredResult.data : undefined}
+      />
     </>
   )
 }
