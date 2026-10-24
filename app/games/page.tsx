@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import { Container, Section } from "@/components/site/container"
+import { GameIcon } from "@/components/site/game-icon"
 import { formatPeso } from "@/components/listing/listing-card"
 import { ItemListJsonLd, WebPageJsonLd } from "@/components/json-ld"
 import { getSeoGames } from "@/lib/games"
@@ -17,9 +18,6 @@ export const metadata: Metadata = {
   openGraph: { title, description, url: "/games", type: "website" },
   twitter: { card: "summary_large_image", title, description },
 }
-
-// Quiet, distinct hues for the game initial dots (same set as the home page chips)
-const DOT_HUES = ["#ff453a", "#ff9f0a", "#2997ff", "#30d158", "#bf5af2", "#64d2ff", "#ffd60a", "#ff375f"]
 
 export default async function GamesPage() {
   const games = await getSeoGames()
@@ -46,7 +44,7 @@ export default async function GamesPage() {
           </p>
 
           <ul className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {sorted.map((game, i) => {
+            {sorted.map((game) => {
               const live = game.itemCount + game.currencyCount
               return (
                 <li key={game.slug}>
@@ -54,13 +52,7 @@ export default async function GamesPage() {
                     href={gamePath(game.displayName)}
                     className="lift flex h-full items-start gap-4 rounded-[20px] bg-card p-5 hover:bg-[#232325]"
                   >
-                    <span
-                      className="grid size-11 shrink-0 place-items-center rounded-full text-[15px] font-semibold text-black"
-                      style={{ background: DOT_HUES[i % DOT_HUES.length] }}
-                      aria-hidden
-                    >
-                      {game.displayName.charAt(0)}
-                    </span>
+                    <GameIcon name={game.displayName} size={56} />
                     <span className="min-w-0">
                       <h2 className="text-[17px] font-semibold leading-snug">{game.displayName}</h2>
                       <span className="mt-1 block text-[13px] text-muted-foreground">

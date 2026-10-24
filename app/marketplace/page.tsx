@@ -5,6 +5,7 @@ import Link from "next/link"
 import { ItemListJsonLd, WebPageJsonLd } from "@/components/json-ld"
 import { Container, Section } from "@/components/site/container"
 import { FaqSection } from "@/components/seo/faq-section"
+import { GameIcon } from "@/components/site/game-icon"
 import { getSeoGames } from "@/lib/games"
 import { GENERAL_FAQ } from "@/lib/seo-content"
 import { gamePath } from "@/lib/seo"
@@ -115,8 +116,9 @@ export default async function MarketplacePage({
                 <li key={game.slug}>
                   <Link
                     href={gamePath(game.displayName)}
-                    className="inline-flex h-9 items-center gap-2 rounded-full bg-secondary px-4 text-sm font-medium transition-colors hover:bg-[#3a3a3c]"
+                    className="inline-flex h-9 items-center gap-2 rounded-full bg-secondary py-1 pl-1 pr-4 text-sm font-medium transition-colors hover:bg-[#3a3a3c]"
                   >
+                    <GameIcon name={game.displayName} size={28} />
                     {game.displayName} items
                   </Link>
                 </li>
