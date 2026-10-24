@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { isGiveawayFeatureEnabled } from "@/lib/feature-flags"
 import { createNotification } from "@/app/actions/notifications"
 import { sendGiveawayAnnouncementCampaign } from "@/lib/engagement-email"
-import { revalidatePath } from "next/cache"
+import { revalidatePath, unstable_cache, updateTag } from "next/cache"
 
 const REQUIRED_COMPLETED_TRADES = 3
 const ELIGIBILITY_WINDOW_DAYS = 7
@@ -150,47 +150,17 @@ function mapGiveawaySummary(giveaway: any) {
   }
 }
 
-export async function getGiveawayHomeData(): Promise<GiveawayActionResult<GiveawayHomeData>> {
-  try {
-    const user = await getCurrentUser()
+type GiveawayPublicData = Pick<GiveawayHomeData, "active" | "queued" | "history">
 
-    const completedTransactionsCount = user
-      ? await countCompletedTradesForEligibility(user.id)
-      : 0
+const EMPTY_GIVEAWAY_PUBLIC_DATA: GiveawayPublicData = { active: null, queued: [], history: [] }
 
-    const eligibility = user
-      ? {
-          eligible: completedTransactionsCount >= REQUIRED_COMPLETED_TRADES,
-          completedTransactionsCount,
-          requiredCount: REQUIRED_COMPLETED_TRADES,
-        }
-      : null
-
-    if (!isGiveawayFeatureEnabled()) {
-      return {
-        success: true,
-        data: {
-          active: null,
-          queued: [],
-          history: [],
-          joined: false,
-          eligibility,
-        },
-      }
-    }
-
+// Public giveaway data is the same for every visitor, so it is cached and
+// invalidated via the "giveaways" tag whenever a giveaway or entry changes.
+const getCachedGiveawayPublicData = unstable_cache(
+  async (): Promise<GiveawayPublicData> => {
     const storageReady = await isGiveawayStorageReady()
     if (!storageReady) {
-      return {
-        success: true,
-        data: {
-          active: null,
-          queued: [],
-          history: [],
-          joined: false,
-          eligibility,
-        },
-      }
+      return EMPTY_GIVEAWAY_PUBLIC_DATA
     }
 
     const [active, queued, history] = await Promise.all([
@@ -232,42 +202,68 @@ export async function getGiveawayHomeData(): Promise<GiveawayActionResult<Giveaw
       }),
     ])
 
-    let joined = false
-    if (user && active?.id) {
-      const existingEntry = await prismaAny.giveawayEntry.findUnique({
-        where: {
-          giveawayId_userId: {
-            giveawayId: active.id,
-            userId: user.id,
-          },
-        },
-        select: { id: true },
-      })
-      joined = Boolean(existingEntry)
+    return {
+      active: active ? mapGiveawaySummary(active) : null,
+      queued: queued.map(mapGiveawaySummary),
+      history: history.map((entry: any) => ({
+        id: entry.id,
+        title: entry.title,
+        description: entry.description || null,
+        rewardLabel: entry.rewardLabel || null,
+        rewardImageUrl: entry.rewardImageUrl || null,
+        joinedCount: entry?._count?.entries || 0,
+        endsAt: toIso(entry.endsAt),
+        winnerUser: entry.winnerUser
+          ? {
+              id: entry.winnerUser.id,
+              username: entry.winnerUser.username,
+              profilePicture: entry.winnerUser.profilePicture,
+            }
+          : null,
+      })),
     }
+  },
+  ["giveaway-home-public-v1"],
+  { revalidate: 60, tags: ["giveaways"] }
+)
+
+export async function getGiveawayHomeData(): Promise<GiveawayActionResult<GiveawayHomeData>> {
+  try {
+    const [user, publicData] = await Promise.all([
+      getCurrentUser(),
+      isGiveawayFeatureEnabled() ? getCachedGiveawayPublicData() : EMPTY_GIVEAWAY_PUBLIC_DATA,
+    ])
+
+    const [completedTransactionsCount, existingEntry] = user
+      ? await Promise.all([
+          countCompletedTradesForEligibility(user.id),
+          publicData.active?.id
+            ? prismaAny.giveawayEntry.findUnique({
+                where: {
+                  giveawayId_userId: {
+                    giveawayId: publicData.active.id,
+                    userId: user.id,
+                  },
+                },
+                select: { id: true },
+              })
+            : null,
+        ])
+      : [0, null]
+
+    const eligibility = user
+      ? {
+          eligible: completedTransactionsCount >= REQUIRED_COMPLETED_TRADES,
+          completedTransactionsCount,
+          requiredCount: REQUIRED_COMPLETED_TRADES,
+        }
+      : null
 
     return {
       success: true,
       data: {
-        active: active ? mapGiveawaySummary(active) : null,
-        queued: queued.map(mapGiveawaySummary),
-        history: history.map((entry: any) => ({
-          id: entry.id,
-          title: entry.title,
-          description: entry.description || null,
-          rewardLabel: entry.rewardLabel || null,
-          rewardImageUrl: entry.rewardImageUrl || null,
-          joinedCount: entry?._count?.entries || 0,
-          endsAt: toIso(entry.endsAt),
-          winnerUser: entry.winnerUser
-            ? {
-                id: entry.winnerUser.id,
-                username: entry.winnerUser.username,
-                profilePicture: entry.winnerUser.profilePicture,
-              }
-            : null,
-        })),
-        joined,
+        ...publicData,
+        joined: Boolean(existingEntry),
         eligibility,
       },
     }
@@ -372,6 +368,7 @@ export async function joinGiveaway(giveawayId: string): Promise<GiveawayActionRe
         id: true,
       },
     })
+    updateTag("giveaways")
 
     await createNotification(
       user.id,
@@ -593,6 +590,7 @@ export async function createAdminGiveaway(input: {
     })
 
     revalidatePath("/admin/giveaways")
+    updateTag("giveaways")
 
     return {
       success: true,
@@ -638,6 +636,7 @@ export async function updateAdminGiveaway(input: {
     })
 
     revalidatePath("/admin/giveaways")
+    updateTag("giveaways")
 
     return {
       success: true,
@@ -699,6 +698,7 @@ export async function setAdminGiveawayStatus(
     }
 
     revalidatePath("/admin/giveaways")
+    updateTag("giveaways")
 
     return {
       success: true,
@@ -782,6 +782,7 @@ export async function endAdminGiveawayEarly(
     )
 
     revalidatePath("/admin/giveaways")
+    updateTag("giveaways")
 
     return {
       success: true,
@@ -850,6 +851,7 @@ export async function removeAdminGiveawayParticipant(input: {
     })
 
     revalidatePath("/admin/giveaways")
+    updateTag("giveaways")
 
     return {
       success: true,

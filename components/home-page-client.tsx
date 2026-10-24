@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
@@ -95,14 +95,28 @@ function truncateCopy(value: string | null | undefined, max = 120): string {
   return `${value.slice(0, max)}...`
 }
 
+interface GiveawayHomeData {
+  active: GiveawayActiveData | null
+  queued: GiveawayQueuedData[]
+  history: GiveawayHistoryData[]
+  joined: boolean
+  eligibility: {
+    eligible: boolean
+    completedTransactionsCount: number
+    requiredCount: number
+  } | null
+}
+
 export interface HomeInitialData {
   stats: { totalUsers: number; totalListings: number; totalVolume: number; activeTraders: number }
   games: PopularGame[]
   traders: TopTrader[]
   trending: TrendingListing[]
+  giveaway?: GiveawayHomeData
 }
 
 export default function HomePage({ initialData }: { initialData?: HomeInitialData }) {
+  const initialGiveaway = initialData?.giveaway
   const router = useRouter()
   const { data: session } = useSession()
   const { toast } = useToast()
@@ -116,19 +130,11 @@ export default function HomePage({ initialData }: { initialData?: HomeInitialDat
   const [tradersLoading, setTradersLoading] = useState(!initialData)
   const [trending, setTrending] = useState<TrendingListing[]>(initialData?.trending ?? [])
   const [trendingLoading, setTrendingLoading] = useState(!initialData)
-  const [giveawayLoading, setGiveawayLoading] = useState(true)
+  const [giveawayLoading, setGiveawayLoading] = useState(!initialGiveaway)
   const [giveawayActionLoading, setGiveawayActionLoading] = useState(false)
-  const [giveawayData, setGiveawayData] = useState<{
-    active: GiveawayActiveData | null
-    queued: GiveawayQueuedData[]
-    history: GiveawayHistoryData[]
-    joined: boolean
-    eligibility: {
-      eligible: boolean
-      completedTransactionsCount: number
-      requiredCount: number
-    } | null
-  } | null>(null)
+  const [giveawayData, setGiveawayData] = useState<GiveawayHomeData | null>(initialGiveaway ?? null)
+  // The server already loaded giveaway data for this user; only refetch if the signed-in user changes.
+  const giveawayLoadedForUserId = useRef<string | undefined | null>(initialGiveaway ? session?.user?.id : null)
   const [nowMs, setNowMs] = useState(Date.now())
 
   // Avoid checking subscription expiry too often during quick route hops.
@@ -189,6 +195,11 @@ export default function HomePage({ initialData }: { initialData?: HomeInitialDat
   }, [])
 
   useEffect(() => {
+    if (giveawayLoadedForUserId.current === session?.user?.id) {
+      return
+    }
+    giveawayLoadedForUserId.current = session?.user?.id
+
     const loadGiveaway = async () => {
       try {
         setGiveawayLoading(true)

@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import HomePageClient, { type HomeInitialData } from "@/components/home-page-client"
 import { getLandingStats, getPopularGames, getTopTraders, getTrendingListings } from "@/app/actions/trends"
+import { getGiveawayHomeData } from "@/app/actions/giveaways"
 import { Container, Section } from "@/components/site/container"
 import { FaqSection } from "@/components/seo/faq-section"
 import { HOME_FAQ } from "@/lib/seo-content"
@@ -20,17 +21,19 @@ export const metadata: Metadata = {
 // Loaded on the server in parallel (each helper is cached), so the page arrives with its data
 // instead of firing server actions from the browser, which Next.js runs one at a time.
 async function loadHomeData(): Promise<HomeInitialData> {
-  const [stats, games, traders, trending] = await Promise.all([
+  const [stats, games, traders, trending, giveaway] = await Promise.all([
     getLandingStats(),
     getPopularGames(8),
     getTopTraders(4),
     getTrendingListings(6),
+    getGiveawayHomeData(),
   ])
   return {
     stats: stats.data ?? { totalUsers: 0, totalListings: 0, totalVolume: 0, activeTraders: 0 },
     games: games.data ?? [],
     traders: traders.data ?? [],
     trending: trending.data ?? [],
+    giveaway: giveaway.success ? giveaway.data : undefined,
   }
 }
 

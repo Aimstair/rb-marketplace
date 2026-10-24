@@ -55,53 +55,45 @@ const getCachedLandingStats = unstable_cache(
     error?: string
   }> => {
     try {
-      // Total users (excluding banned or deactivated)
-      const totalUsers = await prisma.user.count({
-        where: {
-          isBanned: false,
-        },
-      })
-
-      // Active listings: count from both ItemListing and CurrencyListing
-      const itemListingsCount = await prisma.itemListing.count({
-        where: {
-          status: "available",
-        },
-      })
-      const currencyListingsCount = await prisma.currencyListing.count({
-        where: {
-          status: "available",
-        },
-      })
+      const [totalUsers, itemListingsCount, currencyListingsCount, volumeResult, activeTraders] = await Promise.all([
+        // Total users (excluding banned or deactivated)
+        prisma.user.count({
+          where: {
+            isBanned: false,
+          },
+        }),
+        // Active listings: count from both ItemListing and CurrencyListing
+        prisma.itemListing.count({
+          where: {
+            status: "available",
+          },
+        }),
+        prisma.currencyListing.count({
+          where: {
+            status: "available",
+          },
+        }),
+        // Total volume from completed transactions only
+        (prisma.transaction as any).aggregate({
+          _sum: {
+            price: true,
+          },
+          where: {
+            status: "COMPLETED",
+          },
+        }),
+        // Active traders (users with at least one available listing)
+        prisma.user.count({
+          where: {
+            OR: [
+              { itemListings: { some: { status: "available" } } },
+              { currencyListings: { some: { status: "available" } } },
+            ],
+          },
+        }),
+      ])
       const totalListings = itemListingsCount + currencyListingsCount
-
-      // Total volume from completed transactions only
-      const volumeResult = await (prisma.transaction as any).aggregate({
-        _sum: {
-          price: true,
-        },
-        where: {
-          status: "COMPLETED",
-        },
-      })
       const totalVolume = volumeResult._sum.price || 0
-
-      // Active traders (users with at least one listing)
-      const itemTraders = await prisma.user.findMany({
-        where: {
-          itemListings: { some: { status: "available" } },
-        },
-        select: { id: true },
-      })
-      const currencyTraders = await prisma.user.findMany({
-        where: {
-          currencyListings: { some: { status: "available" } },
-        },
-        select: { id: true },
-      })
-      // Combine and deduplicate
-      const uniqueTraderIds = new Set([...itemTraders.map(t => t.id), ...currencyTraders.map(t => t.id)])
-      const activeTraders = uniqueTraderIds.size
 
       return {
         success: true,
@@ -421,29 +413,29 @@ const getCachedPopularGames = unstable_cache(
     error?: string
   }> => {
     try {
-      // Get item listings with game info
-      const itemListings = await prisma.itemListing.findMany({
-        where: { status: "available" },
-        select: {
-          price: true,
-          views: true,
-          game: {
-            select: { displayName: true },
+      // Get item and currency listings with game info
+      const [itemListings, currencyListings] = await Promise.all([
+        prisma.itemListing.findMany({
+          where: { status: "available" },
+          select: {
+            price: true,
+            views: true,
+            game: {
+              select: { displayName: true },
+            },
           },
-        },
-      })
-
-      // Get currency listings with game info
-      const currencyListings = await prisma.currencyListing.findMany({
-        where: { status: "available" },
-        select: {
-          ratePerPeso: true,
-          views: true,
-          game: {
-            select: { displayName: true },
+        }),
+        prisma.currencyListing.findMany({
+          where: { status: "available" },
+          select: {
+            ratePerPeso: true,
+            views: true,
+            game: {
+              select: { displayName: true },
+            },
           },
-        },
-      })
+        }),
+      ])
 
       // Aggregate by game
       const gameMap = new Map<string, { listings: number; totalPrice: number; totalViews: number }>()
