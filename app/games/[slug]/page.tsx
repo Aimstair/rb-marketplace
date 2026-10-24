@@ -7,6 +7,7 @@ import { ListingCard, ListingGrid, formatPeso } from "@/components/listing/listi
 import { FaqSection } from "@/components/seo/faq-section"
 import { ItemListJsonLd, WebPageJsonLd } from "@/components/json-ld"
 import { Button } from "@/components/ui/button"
+import { GameIcon } from "@/components/site/game-icon"
 import { getGameListings, getSeoGameBySlug, getSeoGames } from "@/lib/games"
 import { gameFaq } from "@/lib/seo-content"
 import { SITE_NAME, gamePath } from "@/lib/seo"
@@ -91,7 +92,10 @@ export default async function GamePage({ params }: { params: Params }) {
             <span className="text-foreground">{name}</span>
           </nav>
 
-          <h1 className="text-title max-w-[22ch]">Buy &amp; sell {name} items</h1>
+          <div className="flex items-center gap-5">
+            <GameIcon name={name} size={72} className="rounded-[18px]" />
+            <h1 className="text-title max-w-[22ch]">Buy &amp; sell {name} items</h1>
+          </div>
           <p className="mt-4 max-w-[62ch] text-[17px] leading-relaxed text-muted-foreground">
             {live > 0 ? (
               <>
@@ -238,8 +242,9 @@ export default async function GamePage({ params }: { params: Params }) {
                 <li key={g.slug}>
                   <Link
                     href={gamePath(g.displayName)}
-                    className="inline-flex h-9 items-center gap-2 rounded-full bg-secondary px-4 text-sm font-medium transition-colors hover:bg-[#3a3a3c]"
+                    className="inline-flex h-9 items-center gap-2 rounded-full bg-secondary py-1 pl-1 pr-4 text-sm font-medium transition-colors hover:bg-[#3a3a3c]"
                   >
+                    <GameIcon name={g.displayName} size={28} />
                     {g.displayName}
                     {g.itemCount + g.currencyCount > 0 && (
                       <span className="text-xs font-normal text-muted-foreground tabular-nums">
