@@ -155,7 +155,7 @@ export default function CurrencyTradingPage() {
     return (
       <div className="p-6 flex items-center justify-center h-[600px]">
         <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-primary mx-auto mb-4" />
+          <Loader2 className="w-12 h-12 animate-spin text-link mx-auto mb-4" />
           <p className="text-muted-foreground">Loading currency trades...</p>
         </div>
       </div>
@@ -166,14 +166,14 @@ export default function CurrencyTradingPage() {
     switch (status) {
       case "completed":
         return (
-          <Badge className="bg-green-500 text-white">
+          <Badge className="bg-success text-white">
             <CheckCircle className="h-3 w-3 mr-1" />
             Completed
           </Badge>
         )
       case "pending":
         return (
-          <Badge className="bg-yellow-500 text-white">
+          <Badge className="bg-warning text-white">
             <Clock className="h-3 w-3 mr-1" />
             Pending
           </Badge>
@@ -187,7 +187,7 @@ export default function CurrencyTradingPage() {
         )
       case "disputed":
         return (
-          <Badge className="bg-orange-500 text-white">
+          <Badge className="bg-warning text-white">
             <XCircle className="h-3 w-3 mr-1" />
             Disputed
           </Badge>
@@ -198,16 +198,16 @@ export default function CurrencyTradingPage() {
   }
 
   const getRiskColor = (score: number) => {
-    if (score >= 70) return "text-red-500"
-    if (score >= 40) return "text-orange-500"
-    return "text-green-500"
+    if (score >= 70) return "text-destructive"
+    if (score >= 40) return "text-warning"
+    return "text-success"
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="mx-auto w-full max-w-[1440px] space-y-8 p-6 md:p-10">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold">Currency Marketplace</h1>
+        <h1 className="text-[28px] md:text-[34px] font-semibold tracking-[-0.025em]">Currency Marketplace</h1>
         <p className="text-muted-foreground">Monitor high-risk currency trades and resolve disputes</p>
       </div>
 
@@ -215,31 +215,31 @@ export default function CurrencyTradingPage() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold">{stats.total}</p>
+            <p className="text-2xl font-semibold">{stats.total}</p>
             <p className="text-sm text-muted-foreground">Total Trades</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-green-500">{stats.completed}</p>
+            <p className="text-2xl font-semibold text-success">{stats.completed}</p>
             <p className="text-sm text-muted-foreground">Completed</p>
           </CardContent>
         </Card>
-        <Card className="border-yellow-500/50">
+        <Card className="border-warning/40">
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-yellow-500">{stats.pending}</p>
+            <p className="text-2xl font-semibold text-warning">{stats.pending}</p>
             <p className="text-sm text-muted-foreground">Pending</p>
           </CardContent>
         </Card>
-        <Card className="border-red-500/50">
+        <Card className="border-destructive/40">
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-red-500">{stats.flagged + stats.disputed}</p>
+            <p className="text-2xl font-semibold text-destructive">{stats.flagged + stats.disputed}</p>
             <p className="text-sm text-muted-foreground">Need Review</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold">{(stats.totalVolume / 1000).toFixed(0)}K</p>
+            <p className="text-2xl font-semibold">{(stats.totalVolume / 1000).toFixed(0)}K</p>
             <p className="text-sm text-muted-foreground">Total Volume (R$)</p>
           </CardContent>
         </Card>
@@ -250,10 +250,10 @@ export default function CurrencyTradingPage() {
         <div className="lg:col-span-2 space-y-6">
           {/* High Value Alerts */}
           {highValueAlerts.length > 0 && (
-            <Card className="border-red-500/50">
+            <Card className="border-destructive/40">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5 text-red-500" />
+                  <AlertTriangle className="h-5 w-5 text-destructive" />
                   High-Value Alerts
                 </CardTitle>
               </CardHeader>
@@ -262,7 +262,7 @@ export default function CurrencyTradingPage() {
                   {highValueAlerts.map((alert) => (
                     <div
                       key={alert.id}
-                      className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center justify-between"
+                      className="p-3 bg-destructive/10 border border-destructive/40 rounded-lg flex items-center justify-between"
                     >
                       <div>
                         <p className="font-medium">
@@ -299,7 +299,7 @@ export default function CurrencyTradingPage() {
             <CardContent className="overflow-hidden">
               <ChartContainer
                 config={{
-                  rate: { label: "Rate (₱/R$)", color: "hsl(var(--chart-1))" },
+                  rate: { label: "Rate (₱/R$)", color: "var(--chart-1)" },
                 }}
                 className="h-[200px] min-w-0"
               >
@@ -312,9 +312,9 @@ export default function CurrencyTradingPage() {
                     <Line
                       type="monotone"
                       dataKey="rate"
-                      stroke="hsl(var(--chart-1))"
+                      stroke="var(--chart-1)"
                       strokeWidth={2}
-                      dot={{ fill: "hsl(var(--chart-1))" }}
+                      dot={{ fill: "var(--chart-1)" }}
                     />
                   </LineChart>
                 </ResponsiveContainer>
@@ -364,7 +364,7 @@ export default function CurrencyTradingPage() {
                       onClick={() => setSelectedTrade(trade)}
                       className={`p-4 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors ${
                         selectedTrade?.id === trade.id ? "border-primary bg-muted/50" : ""
-                      } ${trade.status === "flagged" || trade.status === "disputed" ? "border-red-500/50" : ""}`}
+                      } ${trade.status === "flagged" || trade.status === "disputed" ? "border-destructive/40" : ""}`}
                     >
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-4">
@@ -444,7 +444,7 @@ export default function CurrencyTradingPage() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="text-center p-4 bg-muted/50 rounded-lg">
-                    <p className="text-3xl font-bold">{selectedTrade.amount.toLocaleString()} R$</p>
+                    <p className="text-3xl font-semibold">{selectedTrade.amount.toLocaleString()} R$</p>
                     <p className="text-lg text-muted-foreground">₱{selectedTrade.price.toLocaleString()} PHP</p>
                     <p className="text-sm text-muted-foreground">Rate: ₱{selectedTrade.rate}/R$</p>
                     <div className="mt-2">{getStatusBadge(selectedTrade.status)}</div>
@@ -471,7 +471,7 @@ export default function CurrencyTradingPage() {
                     </div>
                     <Progress
                       value={selectedTrade.seller.riskScore}
-                      className={`h-2 mt-1 ${selectedTrade.seller.riskScore >= 70 ? "[&>div]:bg-red-500" : selectedTrade.seller.riskScore >= 40 ? "[&>div]:bg-orange-500" : "[&>div]:bg-green-500"}`}
+                      className={`h-2 mt-1 ${selectedTrade.seller.riskScore >= 70 ? "[&>div]:bg-destructive" : selectedTrade.seller.riskScore >= 40 ? "[&>div]:bg-warning" : "[&>div]:bg-success"}`}
                     />
                   </div>
 
@@ -496,14 +496,14 @@ export default function CurrencyTradingPage() {
                     </div>
                     <Progress
                       value={selectedTrade.buyer.riskScore}
-                      className={`h-2 mt-1 ${selectedTrade.buyer.riskScore >= 70 ? "[&>div]:bg-red-500" : selectedTrade.buyer.riskScore >= 40 ? "[&>div]:bg-orange-500" : "[&>div]:bg-green-500"}`}
+                      className={`h-2 mt-1 ${selectedTrade.buyer.riskScore >= 70 ? "[&>div]:bg-destructive" : selectedTrade.buyer.riskScore >= 40 ? "[&>div]:bg-warning" : "[&>div]:bg-success"}`}
                     />
                   </div>
 
                   {/* Dispute Info */}
                   {selectedTrade.dispute && (
-                    <div className="p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg">
-                      <p className="text-sm font-medium text-orange-600 mb-2">Dispute Filed</p>
+                    <div className="p-3 bg-warning/10 border border-warning/40/20 rounded-lg">
+                      <p className="text-sm font-medium text-warning mb-2">Dispute Filed</p>
                       <p className="text-sm text-muted-foreground mb-2">{selectedTrade.dispute.reason}</p>
                       <p className="text-xs text-muted-foreground">Filed by: {selectedTrade.dispute.filedBy}</p>
                       <div className="flex flex-wrap gap-1 mt-2">
@@ -619,8 +619,8 @@ export default function CurrencyTradingPage() {
             <div className="space-y-6">
               {/* Trade Summary */}
               <div className="p-4 bg-muted/50 rounded-lg text-center">
-                <p className="text-3xl font-bold">{reviewingTrade.amount.toLocaleString()} R$</p>
-                <p className="text-xl text-primary font-semibold">₱{reviewingTrade.price.toLocaleString()}</p>
+                <p className="text-3xl font-semibold">{reviewingTrade.amount.toLocaleString()} R$</p>
+                <p className="text-xl text-link font-semibold">₱{reviewingTrade.price.toLocaleString()}</p>
                 <p className="text-sm text-muted-foreground">Rate: ₱{reviewingTrade.rate}/R$</p>
                 <div className="mt-2">{getStatusBadge(reviewingTrade.status)}</div>
               </div>
@@ -696,8 +696,8 @@ export default function CurrencyTradingPage() {
 
               {/* Flags */}
               {reviewingTrade.flags.length > 0 && (
-                <div className="p-4 border border-red-500/20 bg-red-500/5 rounded-lg">
-                  <p className="font-medium mb-2 text-red-500">Flags</p>
+                <div className="p-4 border border-destructive/40 bg-destructive/5 rounded-lg">
+                  <p className="font-medium mb-2 text-destructive">Flags</p>
                   <div className="flex flex-wrap gap-2">
                     {reviewingTrade.flags.map((flag: string) => (
                       <Badge key={flag} variant="destructive">
@@ -710,8 +710,8 @@ export default function CurrencyTradingPage() {
 
               {/* Dispute Info */}
               {reviewingTrade.dispute && (
-                <div className="p-4 border border-orange-500/20 bg-orange-500/5 rounded-lg">
-                  <p className="font-medium mb-2 text-orange-500">Dispute Information</p>
+                <div className="p-4 border border-warning/40/20 bg-warning/5 rounded-lg">
+                  <p className="font-medium mb-2 text-warning">Dispute Information</p>
                   <p className="text-sm mb-2">{reviewingTrade.dispute.reason}</p>
                   <p className="text-xs text-muted-foreground">Filed by: {reviewingTrade.dispute.filedBy}</p>
                   <div className="flex gap-2 mt-2">

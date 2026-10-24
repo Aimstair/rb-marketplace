@@ -59,7 +59,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
     if (!entry) {
       return {
-        title: "Hall of Shame Record Not Found | RbMarket",
+        title: "Hall of Shame record not found",
         description: "The Hall of Shame record you requested is unavailable.",
         robots: {
           index: false,
@@ -80,7 +80,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
     return {
       metadataBase: new URL(siteUrl),
-      title: `${primaryAlias} Incident Record | Hall of Shame | RbMarket`,
+      title: `${primaryAlias}: Scam Report`,
       description,
       alternates: {
         canonical: `/hall-of-shame/${id}`,
@@ -98,7 +98,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
         ...identifierTypes,
       ],
       openGraph: {
-        title: `${primaryAlias} Incident Record | RbMarket Hall of Shame`,
+        title: `${primaryAlias}: Scam Report | RbMarket Hall of Shame`,
         description,
         url: `${siteUrl}/hall-of-shame/${id}`,
         type: "article",
@@ -131,7 +131,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   } catch (error) {
     console.error("Failed to generate Hall of Shame detail metadata:", error)
     return {
-      title: "Hall of Shame Record | RbMarket",
+      title: "Hall of Shame record",
       description: "Community incident report and safety details.",
       robots: {
         index: false,

@@ -86,10 +86,10 @@ export function TransactionCard({ transaction, currentUserId, onUpdate }: Transa
   }
 
   const getStatusColor = (status: string) => {
-    if (status === "COMPLETED") return "bg-green-100 text-green-800"
-    if (status === "PENDING") return "bg-yellow-100 text-yellow-800"
-    if (status === "CANCELLED") return "bg-red-100 text-red-800"
-    return "bg-blue-100 text-blue-800"
+    if (status === "COMPLETED") return "bg-success/10 text-success"
+    if (status === "PENDING") return "bg-warning/10 text-warning"
+    if (status === "CANCELLED") return "bg-destructive/10 text-destructive"
+    return "bg-link/10 text-link"
   }
 
   const getStatusLabel = (status: string) => {
@@ -103,7 +103,7 @@ export function TransactionCard({ transaction, currentUserId, onUpdate }: Transa
   const counterpartyConfirmed = isBuyer ? transaction.sellerConfirmed : transaction.buyerConfirmed
 
   return (
-    <Card className="overflow-hidden hover:shadow-md transition-shadow">
+    <Card className="overflow-hidden transition-shadow">
       <div className="p-4 sm:p-6">
         <div className="flex flex-col sm:flex-row gap-4">
           {/* Image */}
@@ -143,7 +143,7 @@ export function TransactionCard({ transaction, currentUserId, onUpdate }: Transa
             </div>
 
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-sm mb-4">
-              <span className="font-bold text-primary">₱{transaction.price.toLocaleString()}</span>
+              <span className="font-semibold text-link">₱{transaction.price.toLocaleString()}</span>
               <span className="text-muted-foreground">
                 {new Date(transaction.createdAt).toLocaleDateString()}
               </span>
@@ -178,16 +178,16 @@ export function TransactionCard({ transaction, currentUserId, onUpdate }: Transa
                   </div>
 
                   {/* Confirmation Status */}
-                  <div className="mt-2 p-3 bg-muted rounded-lg space-y-1">
+                  <div className="mt-2 space-y-1 rounded-xl bg-secondary/60 p-3">
                     <div className="flex items-center gap-2 text-xs">
                       <div
-                        className={`w-2 h-2 rounded-full ${userConfirmed ? "bg-green-500" : "bg-gray-300"}`}
+                        className={`w-2 h-2 rounded-full ${userConfirmed ? "bg-success" : "bg-secondary"}`}
                       />
                       <span>{isBuyer ? "You" : "You"} confirmed: {userConfirmed ? "✓" : "Pending"}</span>
                     </div>
                     <div className="flex items-center gap-2 text-xs">
                       <div
-                        className={`w-2 h-2 rounded-full ${counterpartyConfirmed ? "bg-green-500" : "bg-gray-300"}`}
+                        className={`w-2 h-2 rounded-full ${counterpartyConfirmed ? "bg-success" : "bg-secondary"}`}
                       />
                       <span>{counterpartyName} confirmed: {counterpartyConfirmed ? "✓" : "Pending"}</span>
                     </div>

@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
+import { getSessionUser } from "@/lib/session-user"
 import { createNotification } from "./notifications"
 import { sendTransactionCompletedEmail } from "@/lib/engagement-email"
 import { z } from "zod"
@@ -255,10 +256,7 @@ export async function getTransactions(
       }
     }
 
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: { id: true },
-    })
+    const currentUser = await getSessionUser() // id from the JWT session, no DB lookup
 
     if (!currentUser) {
       return {
@@ -410,9 +408,7 @@ export async function getTransactionById(transactionId: string): Promise<{
       }
     }
 
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
+    const currentUser = await getSessionUser() // id from the JWT session, no DB lookup
 
     if (!currentUser) {
       return {
@@ -551,9 +547,7 @@ export async function getTransactionByPeers(
       }
     }
 
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
+    const currentUser = await getSessionUser() // id from the JWT session, no DB lookup
 
     if (!currentUser) {
       return {
@@ -737,9 +731,7 @@ export async function toggleTransactionConfirmation(
       }
     }
 
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
+    const currentUser = await getSessionUser() // id from the JWT session, no DB lookup
 
     if (!currentUser) {
       return {
@@ -1308,9 +1300,7 @@ export async function submitVouch(
       }
     }
 
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
+    const currentUser = await getSessionUser() // id from the JWT session, no DB lookup
 
     if (!currentUser) {
       return {
@@ -1433,9 +1423,7 @@ export async function cancelTransaction(transactionId: string): Promise<{
       }
     }
     
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
+    const currentUser = await getSessionUser() // id from the JWT session, no DB lookup
 
     if (!currentUser) {
       return {

@@ -1,18 +1,15 @@
+import {
+  incrementWindowCounter,
+  isExpiringKeyStoreAvailable,
+  reportExpiringKeyStoreFailure,
+} from "@/lib/expiring-keys"
+
 interface RateLimitEntry {
   count: number
   resetTime: number
 }
 
 const rateLimitStore = new Map<string, RateLimitEntry>()
-const upstashRestUrl = process.env.UPSTASH_REDIS_REST_URL
-const upstashRestToken = process.env.UPSTASH_REDIS_REST_TOKEN
-
-type UpstashValue = string | number
-
-interface UpstashPipelineResponse {
-  result: number | string | null
-  error?: string
-}
 
 export interface RateLimitResult {
   allowed: boolean
@@ -43,11 +40,13 @@ export async function checkRateLimit(
 ): Promise<RateLimitResult> {
   const key = buildRateLimitKey(identifier, options.namespace)
 
-  if (upstashRestUrl && upstashRestToken) {
+  // Shared counter in Postgres so limits hold across all server instances;
+  // the in-memory store is only a fallback when the database is unavailable.
+  if (isExpiringKeyStoreAvailable()) {
     try {
-      return await checkUpstashRateLimit(key, maxRequests, windowMs)
+      return await checkDatabaseRateLimit(key, maxRequests, windowMs)
     } catch (error) {
-      console.error("Upstash rate-limit failed, falling back to memory store:", error)
+      reportExpiringKeyStoreFailure("Rate limit", error)
     }
   }
 
@@ -98,64 +97,36 @@ function checkMemoryRateLimit(
   }
 }
 
-async function checkUpstashRateLimit(
+async function checkDatabaseRateLimit(
   key: string,
   maxRequests: number,
   windowMs: number
 ): Promise<RateLimitResult> {
-  const now = Date.now()
-  const [incrResponse, ttlResponse] = await runUpstashPipeline([
-    ["INCR", key],
-    ["PTTL", key],
-  ])
-
-  if (incrResponse.error || ttlResponse.error) {
-    throw new Error(incrResponse.error || ttlResponse.error || "Unknown Upstash pipeline error")
-  }
-
-  const count = Number(incrResponse.result || 0)
-  let ttlMs = Number(ttlResponse.result || -1)
-
-  if (count === 1 || ttlMs < 0) {
-    const [expireResponse] = await runUpstashPipeline([["PEXPIRE", key, windowMs]])
-    if (expireResponse.error) {
-      throw new Error(expireResponse.error)
-    }
-    ttlMs = windowMs
-  }
-
-  const safeTtlMs = Math.max(0, ttlMs)
+  const { count, expiresAt } = await incrementWindowCounter(key, windowMs)
+  const ttlMs = Math.max(0, expiresAt.getTime() - Date.now())
 
   return {
     allowed: count <= maxRequests,
     remaining: Math.max(0, maxRequests - count),
-    resetTime: now + safeTtlMs,
-    retryAfterSeconds: Math.max(1, Math.ceil(safeTtlMs / 1000)),
+    resetTime: expiresAt.getTime(),
+    retryAfterSeconds: Math.max(1, Math.ceil(ttlMs / 1000)),
   }
-}
-
-async function runUpstashPipeline(commands: UpstashValue[][]): Promise<UpstashPipelineResponse[]> {
-  const response = await fetch(`${upstashRestUrl}/pipeline`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${upstashRestToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(commands),
-    cache: "no-store",
-  })
-
-  if (!response.ok) {
-    throw new Error(`Upstash request failed with status ${response.status}`)
-  }
-
-  return (await response.json()) as UpstashPipelineResponse[]
 }
 
 function buildRateLimitKey(identifier: string, namespace?: string): string {
   const safeIdentifier = (identifier || "unknown").trim().toLowerCase()
   const safeNamespace = (namespace || "global").trim().toLowerCase()
   return `rate-limit:${safeNamespace}:${safeIdentifier}`
+}
+
+/**
+ * True when the current request is a server action invoked from the browser (Next.js sends
+ * a "next-action" header), as opposed to a server component render calling the same code.
+ * Read-only rate limits only need to apply to the former: that's the path scrapers can hit
+ * directly, while page renders are already bounded by page requests.
+ */
+export function isClientActionRequest(headers: Pick<Headers, "get"> | null | undefined): boolean {
+  return Boolean(headers?.get("next-action"))
 }
 
 export function getRateLimitIdentifier(params: {

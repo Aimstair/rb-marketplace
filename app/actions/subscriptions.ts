@@ -1,6 +1,7 @@
 "use server"
 
 import { prisma } from "@/lib/prisma"
+import { getSessionUser } from "@/lib/session-user"
 import { headers } from "next/headers"
 import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit"
 
@@ -227,20 +228,16 @@ export async function getMySubscription(userId: string): Promise<{
   error?: string
 }> {
   try {
-    const mySubscriptionRate = await enforceSubscriptionRateLimit({
-      namespace: "subscriptions-my-plan",
-      maxRequests: SUBSCRIPTION_RATE_LIMITS.read.maxRequests,
-      windowMs: SUBSCRIPTION_RATE_LIMITS.read.windowMs,
-      userId,
-      message: "Too many subscription detail requests.",
-    })
-
-    if (!mySubscriptionRate.success) {
-      return { success: false, error: mySubscriptionRate.error }
+    // Always the caller's own plan; the userId argument is ignored so it can't be used
+    // to read someone else's subscription. One indexed row read needs no rate limit.
+    void userId
+    const sessionUser = await getSessionUser()
+    if (!sessionUser) {
+      return { success: false, error: "Unauthorized" }
     }
 
     const user = await prisma.user.findUnique({
-      where: { id: userId },
+      where: { id: sessionUser.id },
       select: {
         subscriptionTier: true,
         subscriptionStatus: true,
@@ -421,6 +418,14 @@ export async function checkAndExpireSubscriptions(userId?: string): Promise<{
   error?: string
 }> {
   try {
+    // Client code may only expire the caller's own plan. Without a session this is a no-op
+    // rather than a sweep across every user.
+    const sessionUser = await getSessionUser()
+    if (!sessionUser) {
+      return { success: true, expiredCount: 0 }
+    }
+    userId = sessionUser.id
+
     const expireRate = await enforceSubscriptionRateLimit({
       namespace: "subscriptions-expire-check",
       maxRequests: SUBSCRIPTION_RATE_LIMITS.maintenance.maxRequests,

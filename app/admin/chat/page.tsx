@@ -213,10 +213,10 @@ export default function ChatMonitoringPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="mx-auto w-full max-w-[1440px] space-y-8 p-6 md:p-10">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold">Chat Monitoring</h1>
+        <h1 className="text-[28px] md:text-[34px] font-semibold tracking-[-0.025em]">Chat Monitoring</h1>
         <p className="text-muted-foreground">Monitor conversations and detect scam patterns</p>
       </div>
 
@@ -227,20 +227,20 @@ export default function ChatMonitoringPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total Conversations</p>
-                <p className="text-2xl font-bold">{stats.total}</p>
+                <p className="text-2xl font-semibold">{stats.total}</p>
               </div>
               <MessageSquare className="h-8 w-8 text-muted-foreground" />
             </div>
           </CardContent>
         </Card>
-        <Card className="border-red-500/50">
+        <Card className="border-destructive/40">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Flagged</p>
-                <p className="text-2xl font-bold text-red-500">{stats.flagged}</p>
+                <p className="text-2xl font-semibold text-destructive">{stats.flagged}</p>
               </div>
-              <AlertTriangle className="h-8 w-8 text-red-500" />
+              <AlertTriangle className="h-8 w-8 text-destructive" />
             </div>
           </CardContent>
         </Card>
@@ -249,7 +249,7 @@ export default function ChatMonitoringPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">AI Detections</p>
-                <p className="text-2xl font-bold">{stats.aiDetections}</p>
+                <p className="text-2xl font-semibold">{stats.aiDetections}</p>
               </div>
               <Bot className="h-8 w-8 text-muted-foreground" />
             </div>
@@ -260,7 +260,7 @@ export default function ChatMonitoringPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Users Muted</p>
-                <p className="text-2xl font-bold">{stats.usersMuted}</p>
+                <p className="text-2xl font-semibold">{stats.usersMuted}</p>
               </div>
               <MessageSquareOff className="h-8 w-8 text-muted-foreground" />
             </div>
@@ -300,7 +300,7 @@ export default function ChatMonitoringPage() {
               <ScrollArea className="h-[500px]">
                 {loading ? (
                   <div className="flex items-center justify-center py-12">
-                    <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                    <Loader2 className="w-8 h-8 animate-spin text-link" />
                   </div>
                 ) : conversations.length === 0 ? (
                   <div className="p-8 text-center text-muted-foreground">
@@ -315,7 +315,7 @@ export default function ChatMonitoringPage() {
                         onClick={() => handleConversationSelect(conv)}
                         className={`p-4 cursor-pointer hover:bg-muted/50 transition-colors ${
                           selectedConversation?.id === conv.id ? "bg-muted/50 border-l-2 border-l-primary" : ""
-                        } ${conv.flagged ? "bg-red-500/5" : ""}`}
+                        } ${conv.flagged ? "bg-destructive/5" : ""}`}
                       >
                         <div className="flex items-center gap-2 mb-2">
                           <div className="flex -space-x-2 relative">
@@ -326,7 +326,7 @@ export default function ChatMonitoringPage() {
                               </Avatar>
                             ))}
                             {conv.flagged && (
-                              <div className="absolute -top-1 -right-1 bg-red-500 rounded-full p-1">
+                              <div className="absolute -top-1 -right-1 bg-destructive rounded-full p-1">
                                 <AlertTriangle className="h-3 w-3 text-white" />
                               </div>
                             )}
@@ -336,7 +336,7 @@ export default function ChatMonitoringPage() {
                               {conv.participants.map((p) => p.username).join(" & ")}
                             </p>
                             {conv.flagged && (
-                              <p className="text-xs text-red-500 truncate">{conv.flagReason}</p>
+                              <p className="text-xs text-destructive truncate">{conv.flagReason}</p>
                             )}
                           </div>
                           {conv.flagged && (
@@ -397,7 +397,7 @@ export default function ChatMonitoringPage() {
                 <ScrollArea className="h-[400px] border rounded-lg p-4">
                   {messagesLoading ? (
                     <div className="flex items-center justify-center py-12">
-                      <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                      <Loader2 className="w-8 h-8 animate-spin text-link" />
                     </div>
                   ) : messages.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
@@ -411,7 +411,7 @@ export default function ChatMonitoringPage() {
                         return (
                           <div
                             key={msg.id}
-                            className={`flex gap-3 ${msg.flagged ? "bg-red-500/10 -mx-2 px-2 py-2 rounded-lg border border-red-500/20" : ""}`}
+                            className={`flex gap-3 ${msg.flagged ? "bg-destructive/10 -mx-2 px-2 py-2 rounded-lg border border-destructive/40" : ""}`}
                           >
                             <Avatar className="h-8 w-8">
                               <AvatarImage src={participant?.avatar || undefined} />
@@ -419,7 +419,7 @@ export default function ChatMonitoringPage() {
                             </Avatar>
                             <div className="flex-1">
                               <div className="flex items-center gap-2 mb-1">
-                                <span className={`font-medium text-sm ${isBanned ? "text-red-500" : ""}`}>
+                                <span className={`font-medium text-sm ${isBanned ? "text-destructive" : ""}`}>
                                   {msg.sender}
                                 </span>
                                 {isBanned && (

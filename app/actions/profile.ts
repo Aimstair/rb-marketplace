@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
+import { getSessionUser } from "@/lib/session-user"
 import bcrypt from "bcryptjs"
 import { headers } from "next/headers"
 import { unstable_cache } from "next/cache"
@@ -209,21 +210,14 @@ const getCachedProfileDetails = unstable_cache(
       })
     }
 
-    // Calculate successful transactions (COMPLETED status)
-    const successfulTransactions = await prisma.transaction.count({
-      where: {
-        OR: [
-          { buyerId: user.id },
-          { sellerId: user.id },
-        ],
-        status: "COMPLETED",
-      },
-    })
-
-    // Fetch completed transactions with details
-    let transactions: any[] = []
-    try {
-      const rawTransactions = await prisma.transaction.findMany({
+    // These three reads are independent: run them together instead of one after another
+    const completedWhere = {
+      OR: [{ buyerId: user.id }, { sellerId: user.id }],
+      status: "COMPLETED",
+    }
+    const [successfulTransactions, rawTransactionsResult, conversations] = await Promise.all([
+      prisma.transaction.count({ where: completedWhere }),
+      prisma.transaction.findMany({
         where: {
           OR: [
             { buyerId: user.id },
@@ -241,7 +235,25 @@ const getCachedProfileDetails = unstable_cache(
         },
         orderBy: { updatedAt: "desc" },
         take: 50,
-      })
+      }).catch((err: unknown) => {
+        console.error("Error fetching transactions:", err)
+        return null
+      }),
+      // Response rate only needs who sent the first two messages of recent conversations
+      prisma.conversation.findMany({
+        where: { OR: [{ buyerId: user.id }, { sellerId: user.id }] },
+        select: {
+          messages: { orderBy: { createdAt: "asc" }, take: 2, select: { senderId: true } },
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 200,
+      }),
+    ])
+
+    // Fetch completed transactions with details
+    let transactions: any[] = []
+    try {
+      const rawTransactions = rawTransactionsResult ?? []
 
       const itemListingIds = Array.from(
         new Set(
@@ -325,21 +337,7 @@ const getCachedProfileDetails = unstable_cache(
       transactions = []
     }
 
-    // Calculate response rate from conversations
-    const conversations = await prisma.conversation.findMany({
-      where: {
-        OR: [
-          { buyerId: user.id },
-          { sellerId: user.id },
-        ],
-      },
-      include: {
-        messages: {
-          orderBy: { createdAt: "asc" },
-          take: 2, // First message and first response
-        },
-      },
-    })
+    // Calculate response rate from conversations (fetched above)
 
     let responseRate = 100 // Default to 100% if no data
     if (conversations.length > 0) {
@@ -353,16 +351,9 @@ const getCachedProfileDetails = unstable_cache(
       responseRate = Math.round((conversationsWithResponses.length / conversations.length) * 100)
     }
 
-    // Check if current user is viewing their own profile
-    const session = await auth()
-    let isOwnProfile = false
-    if (session?.user?.email) {
-      const currentUser = await prisma.user.findUnique({
-        where: { email: session.user.email },
-        select: { id: true },
-      })
-      isOwnProfile = currentUser?.id === user.id
-    }
+    // Viewer-specific fields can't be computed inside unstable_cache (auth() reads cookies,
+    // which Next.js rejects in a cache scope). getProfile() sets isOwnProfile per request.
+    const isOwnProfile = false
 
     const profileData: UserProfileData = {
       id: user.id,
@@ -442,13 +433,9 @@ export async function getProfile(usernameOrId: string): Promise<GetProfileResult
   let isOwnProfile = false
   
   try {
-    const session = await auth()
-    if (session?.user?.email) {
-      const currentUser = await prisma.user.findUnique({
-        where: { email: session.user.email },
-        select: { id: true }
-      })
-      
+    // The session carries the viewer's id, so no lookup by email is needed
+    const currentUser = await getSessionUser()
+    {
       if (currentUser) {
         isOwnProfile = currentUser.id === result.data.id
         
@@ -795,14 +782,15 @@ export async function getUserPreferences(): Promise<{
   error?: string
 }> {
   try {
-    const session = await auth()
-    if (!session?.user?.email) {
+    const sessionUser = await getSessionUser()
+    if (!sessionUser) {
       return { success: false, error: "Not authenticated" }
     }
 
+    // Only the preferences row is needed, looked up by the session id
     const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      include: { preferences: true },
+      where: { id: sessionUser.id },
+      select: { preferences: true },
     })
 
     if (!user) {

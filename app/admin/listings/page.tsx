@@ -101,15 +101,15 @@ export default function ListingsPage() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "available":
-        return <Badge className="bg-green-500 text-white">Available</Badge>
+        return <Badge className="bg-success text-white">Available</Badge>
       case "pending":
-        return <Badge className="bg-yellow-500 text-white">Pending Review</Badge>
+        return <Badge className="bg-warning text-white">Pending Review</Badge>
       case "hidden":
         return <Badge variant="secondary">Hidden</Badge>
       case "banned":
         return <Badge variant="destructive">Banned</Badge>
       case "sold":
-        return <Badge className="bg-blue-500 text-white">Sold</Badge>
+        return <Badge className="bg-primary text-white">Sold</Badge>
       default:
         return <Badge variant="outline">{status}</Badge>
     }
@@ -158,10 +158,10 @@ export default function ListingsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="mx-auto w-full max-w-[1440px] space-y-8 p-6 md:p-10">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold">Listing Management</h1>
+        <h1 className="text-[28px] md:text-[34px] font-semibold tracking-[-0.025em]">Listing Management</h1>
         <p className="text-muted-foreground">Review and moderate marketplace listings</p>
       </div>
 
@@ -169,37 +169,37 @@ export default function ListingsPage() {
       <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold">{stats.total}</p>
+            <p className="text-2xl font-semibold">{stats.total}</p>
             <p className="text-sm text-muted-foreground">Total</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-green-500">{stats.available}</p>
+            <p className="text-2xl font-semibold text-success">{stats.available}</p>
             <p className="text-sm text-muted-foreground">Available</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-blue-500">{stats.sold}</p>
+            <p className="text-2xl font-semibold text-link">{stats.sold}</p>
             <p className="text-sm text-muted-foreground">Sold</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-yellow-500">{stats.pending}</p>
+            <p className="text-2xl font-semibold text-warning">{stats.pending}</p>
             <p className="text-sm text-muted-foreground">Pending</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-muted-foreground">{stats.hidden}</p>
+            <p className="text-2xl font-semibold text-muted-foreground">{stats.hidden}</p>
             <p className="text-sm text-muted-foreground">Hidden</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-red-500">{stats.banned}</p>
+            <p className="text-2xl font-semibold text-destructive">{stats.banned}</p>
             <p className="text-sm text-muted-foreground">Banned</p>
           </CardContent>
         </Card>
@@ -257,7 +257,7 @@ export default function ListingsPage() {
         <CardContent>
           {loading ? (
             <div className="flex items-center justify-center h-[400px]">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <Loader2 className="h-8 w-8 animate-spin text-link" />
             </div>
           ) : listings.length === 0 ? (
             <div className="flex items-center justify-center h-[400px]">

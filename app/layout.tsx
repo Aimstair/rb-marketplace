@@ -1,195 +1,106 @@
 import type React from "react"
-import type { Metadata } from "next"
-import { Geist, Geist_Mono } from "next/font/google"
+import type { Metadata, Viewport } from "next"
+import { Inter } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { SpeedInsights } from "@vercel/speed-insights/next"
 import { AuthProvider } from "@/lib/auth-context"
 import { NextAuthProvider } from "@/lib/next-auth-provider"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
-import { prisma } from "@/lib/prisma"
+import { SiteChrome } from "@/components/site/site-chrome"
+import { SiteFooter } from "@/components/site/site-footer"
+import { getSystemSettingValue } from "@/lib/system-settings"
 import { redirect } from "next/navigation" 
 import { headers } from "next/headers"
-import { unstable_cache } from "next/cache"
 import { auth } from "@/auth"
+import { SiteJsonLd } from "@/components/json-ld"
+import { SITE_DESCRIPTION, SITE_LOCALE, SITE_NAME, getSiteUrl } from "@/lib/seo"
 import "./globals.css"
 
-const _geist = Geist({ subsets: ["latin"] })
-const _geistMono = Geist_Mono({ subsets: ["latin"] })
-const DEFAULT_SITE_URL = "https://rbmarket.app"
+const inter = Inter({ subsets: ["latin"], display: "swap", variable: "--font-inter" })
 
-function getSiteUrl(): string {
-  const candidate = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || DEFAULT_SITE_URL
-  try {
-    return new URL(candidate).toString().replace(/\/$/, "")
-  } catch {
-    return DEFAULT_SITE_URL
-  }
-}
-
-// Every page render reads these settings, so they are cached and invalidated
-// via the "system-settings" tag when an admin saves or resets settings.
-const getCachedSystemSetting = unstable_cache(
-  async (key: string) => prisma.systemSettings.findUnique({ where: { key } }),
-  ["layout-system-setting-v1"],
-  { revalidate: 300, tags: ["system-settings"] }
-)
-
+// Served from a cross-request cache: this runs for metadata and the layout on every page.
 async function getSystemSetting(key: string) {
-  try {
-    return await getCachedSystemSetting(key)
-  } catch (error) {
-    console.error(`Error fetching system setting (${key}):`, error)
-    return null
-  }
+  const value = await getSystemSettingValue(key)
+  return value === undefined ? null : { value }
 }
 
-async function getMetadata(): Promise<Metadata> {
-  try {
-    const [siteNameSetting, siteDescSetting] = await Promise.all([
-      getSystemSetting("site_name"),
-      getSystemSetting("site_description")
-    ])
+const SITE_KEYWORDS = [
+  "Roblox marketplace",
+  "Roblox marketplace Philippines",
+  "Roblox buy and sell",
+  "buy and sell Roblox items",
+  "sell Roblox items for cash",
+  "Roblox items GCash",
+  "Roblox trading Philippines",
+  "Grow a Garden buy and sell",
+  "Steal a Brainrot for sale",
+  "MM2 items for sale",
+  "Blox Fruits for sale",
+  "Adopt Me pets for sale",
+  "Roblox limiteds",
+  "RbMarket",
+]
 
-    const siteName = siteNameSetting?.value || "RbMarket"
-    const siteDescription = siteDescSetting?.value || "Peer-to-peer marketplace for trading Roblox items anonymously. Browse listings, connect with sellers, and build trust through our vouch system."
-    const siteUrl = getSiteUrl()
+const SAME_AS = (process.env.NEXT_PUBLIC_SOCIAL_LINKS || "")
+  .split(",")
+  .map((url) => url.trim())
+  .filter((url) => /^https?:\/\//i.test(url))
 
-    return {
-      metadataBase: new URL(siteUrl),
-      title: siteName,
-      description: siteDescription,
-      applicationName: siteName,
-      keywords: [
-        "RbMarket",
-        "Roblox marketplace",
-        "Roblox buy and sell",
-        "Roblox sell for cash",
-        "Roblox sell pets",
-        "Roblox sell units",
-        "buy Roblox items",
-        "sell Roblox items",
-        "Roblox currency",
-        "Roblox pet trading",
-        "trusted Roblox trading",
-      ],
-      robots: {
-        index: true,
-        follow: true,
-        googleBot: {
-          index: true,
-          follow: true,
-          "max-image-preview": "large",
-          "max-snippet": -1,
-          "max-video-preview": -1,
-        },
-      },
-      alternates: {
-        canonical: "/",
-      },
-      openGraph: {
-        title: siteName,
-        description: siteDescription,
-        type: "website",
-        siteName,
-        url: siteUrl,
-      },
-      twitter: {
-        card: "summary_large_image",
-        title: siteName,
-        description: siteDescription,
-      },
-      generator: "Aerox Software",
-      icons: {
-        icon: [
-          {
-            url: "/logo.png",
-            media: "(prefers-color-scheme: light)",
-          },
-          {
-            url: "/logo.png",
-            media: "(prefers-color-scheme: dark)",
-          },
-          {
-            url: "/logo.png",
-            type: "image/png",
-          },
-        ],
-        apple: "/logo.png",
-      },
-    }
-  } catch (error) {
-    console.error("Error fetching metadata settings:", error)
-    // Return defaults if there's an error
-    const siteUrl = getSiteUrl()
-    return {
-      metadataBase: new URL(siteUrl),
-      title: "RbMarket — Roblox Marketplace | Buy & Sell Pets, Items & Units for Cash",
-      description: "The trusted Roblox marketplace to buy and sell Roblox pets, game items, and in-game units for cash. Connect with verified traders, list your pets, and sell for real cash on RbMarket.",
-      applicationName: "RbMarket",
-      keywords: [
-        "RbMarket",
-        "Roblox marketplace",
-        "Roblox buy and sell",
-        "Roblox sell for cash",
-        "Roblox sell pets",
-        "Roblox sell units",
-        "buy Roblox items",
-        "sell Roblox items",
-        "Roblox currency",
-        "Roblox pet trading",
-        "trusted Roblox trading",
-      ],
-      robots: {
-        index: true,
-        follow: true,
-        googleBot: {
-          index: true,
-          follow: true,
-          "max-image-preview": "large",
-          "max-snippet": -1,
-          "max-video-preview": -1,
-        },
-      },
-      alternates: {
-        canonical: "/",
-      },
-      openGraph: {
-        title: "RbMarket — Roblox Marketplace | Buy & Sell Pets, Items & Units for Cash",
-        description: "The trusted Roblox marketplace to buy and sell Roblox pets, game items, and in-game units for cash. Connect with verified traders, list your pets, and sell for real cash on RbMarket.",
-        type: "website",
-        siteName: "RbMarket",
-        url: siteUrl,
-      },
-      twitter: {
-        card: "summary_large_image",
-        title: "RbMarket — Roblox Marketplace | Buy & Sell Pets, Items & Units for Cash",
-        description: "The trusted Roblox marketplace to buy and sell Roblox pets, game items, and in-game units for cash. Connect with verified traders, list your pets, and sell for real cash on RbMarket.",
-      },
-      generator: "Aerox Software",
-      icons: {
-        icon: [
-          {
-            url: "/logo.png",
-            media: "(prefers-color-scheme: light)",
-          },
-          {
-            url: "/logo.png",
-            media: "(prefers-color-scheme: dark)",
-          },
-          {
-            url: "/logo.png",
-            type: "image/png",
-          },
-        ],
-        apple: "/logo.png",
-      },
-    }
-  }
+export const metadata: Metadata = {
+  metadataBase: new URL(getSiteUrl()),
+  title: {
+    default: `${SITE_NAME}: Buy & Sell Roblox Items in the Philippines`,
+    template: `%s | ${SITE_NAME}`,
+  },
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  keywords: SITE_KEYWORDS,
+  category: "shopping",
+  creator: SITE_NAME,
+  publisher: SITE_NAME,
+  formatDetection: { telephone: false, email: false, address: false },
+  // No site-wide canonical: each page declares its own, otherwise every page would point at "/"
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
+  openGraph: {
+    type: "website",
+    siteName: SITE_NAME,
+    locale: SITE_LOCALE,
+    title: `${SITE_NAME}: Buy & Sell Roblox Items in the Philippines`,
+    description: SITE_DESCRIPTION,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: `${SITE_NAME}: Buy & Sell Roblox Items in the Philippines`,
+    description: SITE_DESCRIPTION,
+  },
+  verification: {
+    google: process.env.GOOGLE_SITE_VERIFICATION || undefined,
+    other: process.env.BING_SITE_VERIFICATION ? { "msvalidate.01": process.env.BING_SITE_VERIFICATION } : undefined,
+  },
+  icons: {
+    icon: [
+      { url: "/favicon-48.png", sizes: "48x48", type: "image/png" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: "/apple-icon.png",
+  },
 }
 
-export async function generateMetadata(): Promise<Metadata> {
-  return getMetadata()
+
+export const viewport: Viewport = {
+  themeColor: "#000000",
+  colorScheme: "dark",
 }
 
 export default async function RootLayout({
@@ -218,11 +129,14 @@ export default async function RootLayout({
   }
 
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={`font-sans antialiased`}>
+    <html lang="en-PH" className={`dark ${inter.variable}`} suppressHydrationWarning>
+      <body className="font-sans antialiased">
+        <SiteJsonLd sameAs={SAME_AS} />
         <NextAuthProvider session={session}>
-          <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-            <AuthProvider>{children}</AuthProvider>
+          <ThemeProvider attribute="class" forcedTheme="dark" defaultTheme="dark" disableTransitionOnChange>
+            <AuthProvider>
+              <SiteChrome footer={<SiteFooter />}>{children}</SiteChrome>
+            </AuthProvider>
             <Toaster />
           </ThemeProvider>
         </NextAuthProvider>

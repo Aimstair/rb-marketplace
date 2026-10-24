@@ -1,12 +1,12 @@
 "use client"
 
-import Navigation from "@/components/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import { Check, Zap, Crown, Star, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 import { getMySubscription } from "@/app/actions/subscriptions"
@@ -165,25 +165,36 @@ export default function SubscriptionsPage() {
 
   return (
     <>
-      <Navigation />
-      <main className="container max-w-[1920px] mx-auto px-6 py-8">
+      <main className="mx-auto w-full max-w-[1440px] px-5 md:px-8 lg:px-10 pt-10 pb-16 md:pt-14 md:pb-20">
         <div className="max-w-6xl mx-auto">
-          <h1 className="text-3xl font-bold mb-2 text-center">Subscriptions & Boosts</h1>
-          <p className="text-muted-foreground mb-8 text-center">Upgrade your account for better visibility and features</p>
+          <h1 className="text-title mb-2 text-center">Subscriptions & Boosts</h1>
+          <p className="mt-2 text-[17px] text-muted-foreground mb-8 text-center">Upgrade your account for better visibility and features</p>
 
           {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-3" aria-hidden="true">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="space-y-4 rounded-[20px] bg-card p-6">
+                  <Skeleton className="h-6 w-24" />
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-10 w-32 rounded-xl" />
+                  <div className="space-y-2.5 pt-2">
+                    {[1, 2, 3, 4].map((j) => (
+                      <Skeleton key={j} className="h-3.5 w-full" />
+                    ))}
+                  </div>
+                  <Skeleton className="h-11 w-full rounded-full" />
+                </div>
+              ))}
             </div>
           ) : (
             <>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {/* Free Plan */}
                 <Card className="p-6 relative">
-                  <h2 className="text-2xl font-bold mb-2">Free</h2>
+                  <h2 className="text-2xl font-semibold mb-2">Free</h2>
                   <p className="text-muted-foreground mb-6">Perfect to get started</p>
                   <div className="mb-8">
-                    <p className="text-3xl font-bold mb-4">
+                    <p className="text-3xl font-semibold mb-4">
                       ₱0<span className="text-sm text-muted-foreground">/month</span>
                     </p>
                   </div>
@@ -196,31 +207,31 @@ export default function SubscriptionsPage() {
                   </Button>
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
-                      <Check className="w-5 h-5 text-green-500" />
+                      <Check className="w-5 h-5 text-success" />
                       <span className="text-sm font-medium">3 Listings</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Check className="w-5 h-5 text-green-500" />
+                      <Check className="w-5 h-5 text-success" />
                       <span className="text-sm">Basic profile</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Check className="w-5 h-5 text-green-500" />
+                      <Check className="w-5 h-5 text-success" />
                       <span className="text-sm">Standard search visibility</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Check className="w-5 h-5 text-green-500" />
+                      <Check className="w-5 h-5 text-success" />
                       <span className="text-sm">Standard support</span>
                     </div>
                   </div>
                 </Card>
 
                 {/* Pro Plan */}
-                <Card className="p-6 relative border-primary border-2">
-                  <Badge className="absolute -top-3 left-6">Most Popular</Badge>
-                  <h2 className="text-2xl font-bold mb-2">Pro</h2>
+                <Card className="relative p-6 ring-2 ring-link">
+                  <Badge className="absolute -top-3 left-6 bg-link text-black">Most popular</Badge>
+                  <h2 className="text-2xl font-semibold mb-2">Pro</h2>
                   <p className="text-muted-foreground mb-6">For active traders</p>
                   <div className="mb-8">
-                    <p className="text-3xl font-bold mb-4">
+                    <p className="text-3xl font-semibold mb-4">
                       ₱199<span className="text-sm text-muted-foreground">/month</span>
                     </p>
                   </div>
@@ -248,23 +259,23 @@ export default function SubscriptionsPage() {
                   </Button>
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
-                      <Check className="w-5 h-5 text-green-500" />
+                      <Check className="w-5 h-5 text-success" />
                       <span className="text-sm font-medium">Up to 10 listings</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Star className="w-5 h-5 text-amber-500" />
+                      <Star className="w-5 h-5 text-warning" />
                       <span className="text-sm font-medium">1 Featured Listing</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Check className="w-5 h-5 text-green-500" />
+                      <Check className="w-5 h-5 text-success" />
                       <span className="text-sm">Priority messaging</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Check className="w-5 h-5 text-green-500" />
+                      <Check className="w-5 h-5 text-success" />
                       <span className="text-sm">Enhanced visibility</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">
+                      <Badge variant="outline" className="text-xs bg-primary/10 text-link border-primary/20">
                         Featured badge
                       </Badge>
                     </div>
@@ -272,12 +283,12 @@ export default function SubscriptionsPage() {
                 </Card>
 
                 {/* Elite Plan */}
-                <Card className="p-6 relative bg-linear-to-b from-amber-500/5 to-transparent border-amber-500/30">
-                  <Badge className="absolute -top-3 left-6 bg-amber-500 text-white">Best Value</Badge>
-                  <h2 className="text-2xl font-bold mb-2">Elite</h2>
+                <Card className="p-6 relative border-warning/40">
+                  <Badge className="absolute -top-3 left-6 bg-warning text-white">Best Value</Badge>
+                  <h2 className="text-2xl font-semibold mb-2">Elite</h2>
                   <p className="text-muted-foreground mb-6">For professional sellers</p>
                   <div className="mb-8">
-                    <p className="text-3xl font-bold mb-4">
+                    <p className="text-3xl font-semibold mb-4">
                       ₱499<span className="text-sm text-muted-foreground">/month</span>
                     </p>
                   </div>
@@ -305,23 +316,23 @@ export default function SubscriptionsPage() {
                   </Button>
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
-                      <Check className="w-5 h-5 text-green-500" />
+                      <Check className="w-5 h-5 text-success" />
                       <span className="text-sm font-medium">Up to 30 listings</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Star className="w-5 h-5 text-amber-500" />
+                      <Star className="w-5 h-5 text-warning" />
                       <span className="text-sm font-medium">3 Featured Listings</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Check className="w-5 h-5 text-green-500" />
+                      <Check className="w-5 h-5 text-success" />
                       <span className="text-sm">Priority support</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Check className="w-5 h-5 text-green-500" />
+                      <Check className="w-5 h-5 text-success" />
                       <span className="text-sm">Top visibility</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-600 border-amber-500/20">
+                      <Badge variant="outline" className="text-xs bg-warning/10 text-warning border-warning/40">
                         Elite badge
                       </Badge>
                     </div>
@@ -333,7 +344,7 @@ export default function SubscriptionsPage() {
 
           {/* Feature Comparison */}
           <Card className="mt-8 p-6">
-            <h3 className="text-xl font-bold mb-4">Feature Comparison</h3>
+            <h3 className="mb-5 text-[21px] font-semibold tracking-[-0.015em]">Feature Comparison</h3>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
@@ -366,7 +377,7 @@ export default function SubscriptionsPage() {
                       </Badge>
                     </td>
                     <td className="text-center py-3 px-4">
-                      <Badge className="text-xs bg-amber-500">Elite</Badge>
+                      <Badge className="text-xs bg-warning">Elite</Badge>
                     </td>
                   </tr>
                   <tr className="border-b">

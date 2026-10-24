@@ -4,6 +4,12 @@ import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import { unstable_cache } from "next/cache"
 
+// Operations tools (seller re-engagement) are for admins only.
+async function isAdminSession(): Promise<boolean> {
+  const session = await auth()
+  return session?.user?.role === "admin"
+}
+
 interface LandingStats {
   totalUsers: number
   totalListings: number
@@ -206,10 +212,7 @@ const getCachedTrendingListings = unstable_cache(
             select: {
               id: true,
               username: true,
-              vouchesReceived: {
-                where: { status: "VALID" },
-                select: { id: true },
-              },
+              _count: { select: { vouchesReceived: { where: { status: "VALID" } } } },
             },
           },
         },
@@ -234,10 +237,7 @@ const getCachedTrendingListings = unstable_cache(
             select: {
               id: true,
               username: true,
-              vouchesReceived: {
-                where: { status: "VALID" },
-                select: { id: true },
-              },
+              _count: { select: { vouchesReceived: { where: { status: "VALID" } } } },
             },
           },
         },
@@ -287,7 +287,7 @@ const getCachedTrendingListings = unstable_cache(
           seller: {
             id: listing.seller.id,
             username: listing.seller.username,
-            vouch: listing.seller.vouchesReceived.length,
+            vouch: listing.seller._count.vouchesReceived,
           },
           views: listing.views,
           vouchCount: listing.upvotes,
@@ -303,7 +303,7 @@ const getCachedTrendingListings = unstable_cache(
           seller: {
             id: listing.seller.id,
             username: listing.seller.username,
-            vouch: listing.seller.vouchesReceived.length,
+            vouch: listing.seller._count.vouchesReceived,
           },
           views: listing.views,
           vouchCount: listing.upvotes,
@@ -554,17 +554,13 @@ const getCachedTopTraders = unstable_cache(
           profilePicture: true,
           isVerified: true,
           joinDate: true,
-          vouchesReceived: {
-            where: { status: "VALID" }, // Only count valid vouches
-            select: { id: true },
-          },
-          itemListings: {
-            where: { status: "available" },
-            select: { id: true },
-          },
-          currencyListings: {
-            where: { status: "available" },
-            select: { id: true },
+          // Counted in the database rather than loading every row
+          _count: {
+            select: {
+              vouchesReceived: { where: { status: "VALID" } },
+              itemListings: { where: { status: "available" } },
+              currencyListings: { where: { status: "available" } },
+            },
           },
         },
         orderBy: [
@@ -605,9 +601,9 @@ const getCachedTopTraders = unstable_cache(
         id: trader.id,
         username: trader.username,
         avatar: trader.profilePicture,
-        vouch: trader.vouchesReceived.length,
+        vouch: trader._count.vouchesReceived,
         joinDate: trader.joinDate,
-        listings: trader.itemListings.length + trader.currencyListings.length,
+        listings: trader._count.itemListings + trader._count.currencyListings,
         verified: trader.isVerified,
         completedTrades: salesMap.get(trader.id)?.completedTrades || 0,
         recentSaleAt: salesMap.get(trader.id)?.recentSaleAt || null,
@@ -874,11 +870,11 @@ const getCachedTrendsOverviewMetrics = unstable_cache(
   async (days: number): Promise<{
     success: boolean
     data?: {
-      activeListings: { value: number; change: number }
-      activeTraders: { value: number; change: number }
-      completedTransactions: { value: number; change: number }
-      tradeVolume: { value: number; change: number }
-      averagePrice: { value: number; change: number }
+      activeListings: { value: number; change: number; previous?: number }
+      activeTraders: { value: number; change: number; previous?: number }
+      completedTransactions: { value: number; change: number; previous?: number }
+      tradeVolume: { value: number; change: number; previous?: number }
+      averagePrice: { value: number; change: number; previous?: number }
     }
     error?: string
   }> => {
@@ -949,23 +945,23 @@ const getCachedTrendsOverviewMetrics = unstable_cache(
         data: {
           activeListings: {
             value: currentListings,
-            change: getPercentChange(currentListings, previousListings),
+            change: getPercentChange(currentListings, previousListings), previous: previousListings,
           },
           activeTraders: {
             value: currentTraderIds.size,
-            change: getPercentChange(currentTraderIds.size, previousTraderIds.size),
+            change: getPercentChange(currentTraderIds.size, previousTraderIds.size), previous: previousTraderIds.size,
           },
           completedTransactions: {
             value: currentCompletedTransactions,
-            change: getPercentChange(currentCompletedTransactions, previousCompletedTransactions),
+            change: getPercentChange(currentCompletedTransactions, previousCompletedTransactions), previous: previousCompletedTransactions,
           },
           tradeVolume: {
             value: currentTradeVolume,
-            change: getPercentChange(currentTradeVolume, previousTradeVolume),
+            change: getPercentChange(currentTradeVolume, previousTradeVolume), previous: previousTradeVolume,
           },
           averagePrice: {
             value: currentAveragePrice,
-            change: getPercentChange(currentAveragePrice, previousAveragePrice),
+            change: getPercentChange(currentAveragePrice, previousAveragePrice), previous: previousAveragePrice,
           },
         },
       }
@@ -983,11 +979,11 @@ export async function getTrendsOverviewMetrics(
 ): Promise<{
   success: boolean
   data?: {
-    activeListings: { value: number; change: number }
-    activeTraders: { value: number; change: number }
-    completedTransactions: { value: number; change: number }
-    tradeVolume: { value: number; change: number }
-    averagePrice: { value: number; change: number }
+    activeListings: { value: number; change: number; previous?: number }
+    activeTraders: { value: number; change: number; previous?: number }
+    completedTransactions: { value: number; change: number; previous?: number }
+    tradeVolume: { value: number; change: number; previous?: number }
+    averagePrice: { value: number; change: number; previous?: number }
   }
   error?: string
 }> {
@@ -1225,6 +1221,9 @@ export async function getRetentionWatchlist(
   }>
   error?: string
 }> {
+  if (!(await isAdminSession())) {
+    return { success: false, error: "Unauthorized" }
+  }
   try {
     const [itemListings, currencyListings] = await Promise.all([
       prisma.itemListing.findMany({
@@ -1587,6 +1586,10 @@ export async function dispatchRetentionWatchlistAlerts(params: {
   }
   error?: string
 }> {
+  // Sends alert emails to sellers: never callable by regular users
+  if (!(await isAdminSession())) {
+    return { success: false, error: "Unauthorized" }
+  }
   try {
     const limit = params.limit || 8
     const watchlistResult = await getRetentionWatchlist(limit)
@@ -1692,3 +1695,47 @@ export async function trackTrendsInteractionsBatch(
     return { success: false, error: "Failed to track trends interactions" }
   }
 }
+
+/**
+ * Everything the public Trends page shows, in one call. Server actions invoked from the
+ * browser run one at a time, so a single aggregate keeps a range switch to one round trip.
+ */
+export async function getTrendsDashboard(days: number = 30) {
+  const safeDays = [7, 30, 90, 365].includes(days) ? days : 30
+  return getCachedTrendsDashboard(safeDays)
+}
+
+// The dashboard is the same for every visitor, so build it at most once a minute per range.
+const getCachedTrendsDashboard = unstable_cache(
+  async (safeDays: number) => buildTrendsDashboard(safeDays),
+  ["trends-dashboard-v1"],
+  { revalidate: 60 },
+)
+
+async function buildTrendsDashboard(safeDays: number) {
+
+  const [metrics, marketTrends, trending, topSelling, games, traders, activity, currency] = await Promise.all([
+    getTrendsOverviewMetrics(safeDays),
+    getMarketTrends(safeDays),
+    getTrendingListings(6),
+    getTopSellingItems(5),
+    getPopularGames(8),
+    getTopTraders(4),
+    getRecentActivity(12),
+    getCurrencyMarketTrends(safeDays, 5),
+  ])
+
+  return {
+    days: safeDays,
+    metrics: metrics.data ?? null,
+    marketTrends: marketTrends.data ?? [],
+    trending: trending.data ?? [],
+    topSelling: topSelling.data ?? [],
+    games: games.data ?? [],
+    traders: traders.data ?? [],
+    activity: activity.data ?? [],
+    currency: currency.data ?? null,
+  }
+}
+
+export type TrendsDashboard = Awaited<ReturnType<typeof buildTrendsDashboard>>

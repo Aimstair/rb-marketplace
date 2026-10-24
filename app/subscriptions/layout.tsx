@@ -13,8 +13,8 @@ function getSiteUrl(): string {
 
 export async function generateMetadata(): Promise<Metadata> {
   const siteUrl = getSiteUrl()
-  const title = "Subscriptions - RB Marketplace"
-  const description = "Compare Free, Pro, and Elite plans to boost listing visibility, featured placement, and seller growth on RB Marketplace."
+  const title = "Seller Plans and Listing Boosts"
+  const description = "Compare RbMarket Free, Pro and Elite plans for sellers: featured placement, more visibility and boosts for your Roblox listings. Prices in pesos."
 
   return {
     title,
@@ -23,7 +23,6 @@ export async function generateMetadata(): Promise<Metadata> {
     alternates: {
       canonical: "/subscriptions",
     },
-    keywords: ["RB Marketplace subscriptions", "Pro plan", "Elite plan", "featured listings"],
     openGraph: {
       title,
       description,

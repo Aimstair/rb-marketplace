@@ -1,6 +1,5 @@
 "use client"
 
-import Navigation from "@/components/navigation"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import { Plus, Trash2, Eye, ChevronLeft, ChevronRight, AlertCircle, Search } from "lucide-react"
@@ -9,6 +8,7 @@ import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Skeleton } from "@/components/ui/skeleton"
+import { MyListingsSkeleton } from "@/components/site/skeletons"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -107,35 +107,25 @@ export default function MyListingsPage() {
     }
   }, [status, session?.user?.id, currentPage])
 
-  if (status === "loading") {
-    return (
-      <>
-        <Navigation />
-        <main className="container max-w-[1920px] mx-auto px-6 py-8">
-          <Skeleton className="h-12 w-64 mb-8" />
-          <Skeleton className="h-24 mb-6" />
-          <Skeleton className="h-96 mb-8" />
-        </main>
-      </>
-    )
+  // Session loading, or about to redirect to login: keep the page shape instead of a blank gap
+  if (status === "loading" || status === "unauthenticated") {
+    return <MyListingsSkeleton />
   }
-
-  if (status === "unauthenticated") return null
 
   const getStatusColor = (status: string) => {
     switch (status) {
       case "available":
-        return "bg-green-100 text-green-800"
+        return "bg-success/10 text-success"
       case "sold":
-        return "bg-gray-100 text-gray-800"
+        return "bg-secondary text-foreground"
       case "pending":
-        return "bg-yellow-100 text-yellow-800"
+        return "bg-warning/10 text-warning"
       case "hidden":
-        return "bg-orange-100 text-orange-800"
+        return "bg-warning/10 text-warning"
       case "deleted":
-        return "bg-red-100 text-red-800"
+        return "bg-destructive/10 text-destructive"
       default:
-        return "bg-blue-100 text-blue-800"
+        return "bg-link/10 text-link"
     }
   }
 
@@ -262,10 +252,9 @@ export default function MyListingsPage() {
 
   return (
     <>
-      <Navigation />
-      <main className="container max-w-[1920px] mx-auto px-6 py-8">
+      <main className="mx-auto w-full max-w-[1440px] px-5 md:px-8 lg:px-10 pt-10 pb-16 md:pt-14 md:pb-20">
         <div className="flex items-center justify-between mb-8">
-          <h1 className="text-3xl font-bold">My Listings</h1>
+          <h1 className="text-title">My Listings</h1>
           <Link href="/sell">
             <Button disabled={!canCreateMore}>
               <Plus className="w-4 h-4 mr-2" />
@@ -294,7 +283,7 @@ export default function MyListingsPage() {
                   You can create {listingsRemaining} more listing{listingsRemaining !== 1 ? "s" : ""}
                 </>
               ) : (
-                <span className="flex items-center gap-1 text-orange-500">
+                <span className="flex items-center gap-1 text-warning">
                   <AlertCircle className="h-4 w-4" />
                   Listing limit reached
                 </span>
@@ -312,19 +301,19 @@ export default function MyListingsPage() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           <Card className="p-4">
             <p className="text-sm text-muted-foreground mb-1">Active Listings</p>
-            <p className="text-2xl font-bold">{activeListingsCount}</p>
+            <p className="text-2xl font-semibold">{activeListingsCount}</p>
           </Card>
           <Card className="p-4">
             <p className="text-sm text-muted-foreground mb-1">Total Views</p>
-            <p className="text-2xl font-bold">{listings.reduce((sum, l) => sum + (l.views || 0), 0).toLocaleString()}</p>
+            <p className="text-2xl font-semibold">{listings.reduce((sum, l) => sum + (l.views || 0), 0).toLocaleString()}</p>
           </Card>
           <Card className="p-4">
             <p className="text-sm text-muted-foreground mb-1">Total Inquiries</p>
-            <p className="text-2xl font-bold">{listings.reduce((sum, l) => sum + (l.inquiries || 0), 0).toLocaleString()}</p>
+            <p className="text-2xl font-semibold">{listings.reduce((sum, l) => sum + (l.inquiries || 0), 0).toLocaleString()}</p>
           </Card>
           <Card className="p-4">
             <p className="text-sm text-muted-foreground mb-1">Items Sold</p>
-            <p className="text-2xl font-bold">{listings.filter((l) => l.status === "sold").length}</p>
+            <p className="text-2xl font-semibold">{listings.filter((l) => l.status === "sold").length}</p>
           </Card>
         </div>
 
@@ -402,7 +391,7 @@ export default function MyListingsPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-sm">{listing.game}</td>
-                      <td className="px-6 py-4 font-bold text-primary">₱{listing.price.toLocaleString()}</td>
+                      <td className="px-6 py-4 font-semibold text-link">₱{listing.price.toLocaleString()}</td>
                       <td className="px-6 py-4">
                         {(listing.status === "available" || listing.status === "hidden") ? (
                           <Select
@@ -419,13 +408,13 @@ export default function MyListingsPage() {
                             <SelectContent>
                               <SelectItem value="available">
                                 <div className="flex items-center gap-2">
-                                  <div className="w-2 h-2 rounded-full bg-green-500" />
+                                  <div className="w-2 h-2 rounded-full bg-success" />
                                   Available
                                 </div>
                               </SelectItem>
                               <SelectItem value="hidden">
                                 <div className="flex items-center gap-2">
-                                  <div className="w-2 h-2 rounded-full bg-orange-500" />
+                                  <div className="w-2 h-2 rounded-full bg-warning" />
                                   Hidden
                                 </div>
                               </SelectItem>
@@ -454,7 +443,7 @@ export default function MyListingsPage() {
                             onClick={() => handleDeleteClick(listing.id)}
                             title="Delete listing"
                             disabled={listing.status === "sold"}
-                            className="text-red-500 hover:text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>
@@ -526,7 +515,7 @@ export default function MyListingsPage() {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleFirstConfirm} className="bg-red-500 hover:bg-red-600">
+              <AlertDialogAction onClick={handleFirstConfirm} className="bg-destructive hover:bg-destructive">
                 Continue
               </AlertDialogAction>
             </AlertDialogFooter>
@@ -546,7 +535,7 @@ export default function MyListingsPage() {
                   <li>Send notifications to all buyers</li>
                   <li>Remove the listing from the marketplace</li>
                 </ul>
-                <div className="text-red-600 font-medium mt-3">This action cannot be undone!</div>
+                <div className="text-destructive font-medium mt-3">This action cannot be undone!</div>
               </div>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -554,7 +543,7 @@ export default function MyListingsPage() {
               <AlertDialogAction 
                 onClick={handleConfirmDelete} 
                 disabled={isDeleting}
-                className="bg-red-500 hover:bg-red-600"
+                className="bg-destructive hover:bg-destructive"
               >
                 {isDeleting ? "Deleting..." : "Yes, Delete Listing"}
               </AlertDialogAction>

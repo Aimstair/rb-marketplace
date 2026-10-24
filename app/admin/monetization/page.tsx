@@ -217,36 +217,36 @@ export default function MonetizationPage() {
   const getPlanBadgeColor = (plan: string) => {
     switch (plan) {
       case "Elite":
-        return "bg-amber-500/10 text-amber-500 border-amber-500/20"
+        return "bg-warning/10 text-warning border-warning/40"
       case "Pro":
-        return "bg-blue-500/10 text-blue-500 border-blue-500/20"
+        return "bg-primary/10 text-link border-link/40"
       case "Free":
-        return "bg-gray-500/10 text-gray-500 border-gray-500/20"
+        return "bg-secondary text-muted-foreground border-border"
       default:
-        return "bg-gray-500/10 text-gray-500 border-gray-500/20"
+        return "bg-secondary text-muted-foreground border-border"
     }
   }
 
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "active":
-        return <Badge className="bg-green-500/10 text-green-500 border-green-500/20">Active</Badge>
+        return <Badge className="bg-success/10 text-success border-success/40">Active</Badge>
       case "expiring":
-        return <Badge className="bg-orange-500/10 text-orange-500 border-orange-500/20">Expiring Soon</Badge>
+        return <Badge className="bg-warning/10 text-warning border-warning/40/20">Expiring Soon</Badge>
       case "cancelled":
-        return <Badge className="bg-red-500/10 text-red-500 border-red-500/20">Cancelled</Badge>
+        return <Badge className="bg-destructive/10 text-destructive border-destructive/40">Cancelled</Badge>
       case "expired":
-        return <Badge className="bg-gray-500/10 text-gray-500 border-gray-500/20">Expired</Badge>
+        return <Badge className="bg-secondary text-muted-foreground border-border">Expired</Badge>
       default:
         return <Badge variant="outline">{status}</Badge>
     }
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="mx-auto w-full max-w-[1440px] space-y-8 p-6 md:p-10">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold">Monetization & Billing</h1>
+        <h1 className="text-[28px] md:text-[34px] font-semibold tracking-[-0.025em]">Monetization & Billing</h1>
         <p className="text-muted-foreground">Manage subscriptions, purchases, and revenue</p>
       </div>
 
@@ -255,60 +255,60 @@ export default function MonetizationPage() {
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-emerald-500/10 rounded-lg">
-                <DollarSign className="h-5 w-5 text-emerald-500" />
+              <div className="p-2 bg-success/10 rounded-lg">
+                <DollarSign className="h-5 w-5 text-success" />
               </div>
-              <div className="flex items-center text-green-500 text-sm">
+              <div className="flex items-center text-success text-sm">
                 <ArrowUpRight className="h-4 w-4" />
                 {stats.subscriptionGrowth}
               </div>
             </div>
-            <p className="text-2xl font-bold">₱{(stats.subscriptionRevenue / 100).toLocaleString()}</p>
+            <p className="text-2xl font-semibold">₱{(stats.subscriptionRevenue / 100).toLocaleString()}</p>
             <p className="text-sm text-muted-foreground">Total Subscription Revenue</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-blue-500/10 rounded-lg">
-                <Users className="h-5 w-5 text-blue-500" />
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <Users className="h-5 w-5 text-link" />
               </div>
-              <div className="flex items-center text-green-500 text-sm">
+              <div className="flex items-center text-success text-sm">
                 <ArrowUpRight className="h-4 w-4" />
                 {stats.subscriberGrowth}
               </div>
             </div>
-            <p className="text-2xl font-bold">{stats.activeSubscribers}</p>
+            <p className="text-2xl font-semibold">{stats.activeSubscribers}</p>
             <p className="text-sm text-muted-foreground">Active Subscribers</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-purple-500/10 rounded-lg">
-                <Zap className="h-5 w-5 text-purple-500" />
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <Zap className="h-5 w-5 text-link" />
               </div>
-              <div className="flex items-center text-green-500 text-sm">
+              <div className="flex items-center text-success text-sm">
                 <ArrowUpRight className="h-4 w-4" />
                 {stats.boostGrowth}
               </div>
             </div>
-            <p className="text-2xl font-bold">₱{stats.boostRevenue.toLocaleString()}</p>
+            <p className="text-2xl font-semibold">₱{stats.boostRevenue.toLocaleString()}</p>
             <p className="text-sm text-muted-foreground">Boost Revenue</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-amber-500/10 rounded-lg">
-                <Star className="h-5 w-5 text-amber-500" />
+              <div className="p-2 bg-warning/10 rounded-lg">
+                <Star className="h-5 w-5 text-warning" />
               </div>
-              <div className="flex items-center text-green-500 text-sm">
+              <div className="flex items-center text-success text-sm">
                 <ArrowUpRight className="h-4 w-4" />
                 {stats.featuredGrowth}
               </div>
             </div>
-            <p className="text-2xl font-bold">₱{stats.featuredRevenue.toLocaleString()}</p>
+            <p className="text-2xl font-semibold">₱{stats.featuredRevenue.toLocaleString()}</p>
             <p className="text-sm text-muted-foreground">Featured Revenue</p>
           </CardContent>
         </Card>
@@ -333,9 +333,9 @@ export default function MonetizationPage() {
               <CardContent className="overflow-hidden">
                 <ChartContainer
                   config={{
-                    subscriptions: { label: "Subscriptions", color: "hsl(var(--chart-1))" },
-                    boosts: { label: "Boosts", color: "hsl(var(--chart-2))" },
-                    featured: { label: "Featured", color: "hsl(var(--chart-3))" },
+                    subscriptions: { label: "Subscriptions", color: "var(--chart-1)" },
+                    boosts: { label: "Boosts", color: "var(--chart-2)" },
+                    featured: { label: "Featured", color: "var(--chart-3)" },
                   }}
                   className="h-[300px] w-full min-w-0"
                 >
@@ -349,24 +349,24 @@ export default function MonetizationPage() {
                         type="monotone"
                         dataKey="subscriptions"
                         stackId="1"
-                        stroke="hsl(var(--chart-1))"
-                        fill="hsl(var(--chart-1))"
+                        stroke="var(--chart-1)"
+                        fill="var(--chart-1)"
                         fillOpacity={0.6}
                       />
                       <Area
                         type="monotone"
                         dataKey="boosts"
                         stackId="1"
-                        stroke="hsl(var(--chart-2))"
-                        fill="hsl(var(--chart-2))"
+                        stroke="var(--chart-2)"
+                        fill="var(--chart-2)"
                         fillOpacity={0.6}
                       />
                       <Area
                         type="monotone"
                         dataKey="featured"
                         stackId="1"
-                        stroke="hsl(var(--chart-3))"
-                        fill="hsl(var(--chart-3))"
+                        stroke="var(--chart-3)"
+                        fill="var(--chart-3)"
                         fillOpacity={0.6}
                       />
                     </AreaChart>
@@ -383,7 +383,7 @@ export default function MonetizationPage() {
               <CardContent className="overflow-hidden">
                 <ChartContainer
                   config={{
-                    revenue: { label: "Revenue", color: "hsl(var(--chart-2))" },
+                    revenue: { label: "Revenue", color: "var(--chart-2)" },
                   }}
                   className="h-[300px] w-full min-w-0"
                 >
@@ -393,7 +393,7 @@ export default function MonetizationPage() {
                       <XAxis dataKey="day" className="text-xs" tick={{ fontSize: 12 }} />
                       <YAxis className="text-xs" tick={{ fontSize: 12 }} width={50} tickFormatter={(v) => `₱${v}`} />
                       <ChartTooltip content={<ChartTooltipContent />} />
-                      <Bar dataKey="revenue" fill="hsl(var(--chart-2))" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="revenue" fill="var(--chart-2)" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </ChartContainer>
@@ -421,7 +421,7 @@ export default function MonetizationPage() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="font-medium text-green-500">₱{(sale.amount / 100).toLocaleString()}</p>
+                      <p className="font-medium text-success">₱{(sale.amount / 100).toLocaleString()}</p>
                       <p className="text-xs text-muted-foreground">{new Date(sale.createdAt).toLocaleDateString()}</p>
                     </div>
                   </div>
@@ -434,11 +434,11 @@ export default function MonetizationPage() {
         <TabsContent value="plans" className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {subscriptionPlans.map((plan) => {
-              const planColor = plan.id === "free" ? "bg-gray-500" : plan.id === "pro" ? "bg-blue-500" : "bg-amber-500"
+              const planColor = plan.id === "free" ? "bg-muted-foreground" : plan.id === "pro" ? "bg-primary" : "bg-warning"
               return (
                 <Card
                   key={plan.id}
-                  className={`relative ${plan.id === "pro" ? "border-primary border-2" : ""} ${plan.id === "elite" ? "border-amber-500/50" : ""}`}
+                  className={`relative ${plan.id === "pro" ? "border-primary border-2" : ""} ${plan.id === "elite" ? "border-warning/40" : ""}`}
                 >
                   {plan.id === "pro" && (
                     <div className="absolute -top-3 left-1/2 -translate-x-1/2">
@@ -447,18 +447,18 @@ export default function MonetizationPage() {
                   )}
                   {plan.id === "elite" && (
                     <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                      <Badge className="bg-amber-500 text-white">Best Value</Badge>
+                      <Badge className="bg-warning text-white">Best Value</Badge>
                     </div>
                   )}
                   <CardHeader>
                     <div className="flex items-center gap-2">
                       <div className={`w-3 h-3 rounded-full ${planColor}`} />
                       <CardTitle>{plan.name}</CardTitle>
-                      {plan.id === "pro" && <Zap className="h-4 w-4 text-primary" />}
-                      {plan.id === "elite" && <Crown className="h-4 w-4 text-amber-500" />}
+                      {plan.id === "pro" && <Zap className="h-4 w-4 text-link" />}
+                      {plan.id === "elite" && <Crown className="h-4 w-4 text-warning" />}
                     </div>
                     <div className="flex items-baseline gap-1">
-                      <span className="text-3xl font-bold">{plan.price}</span>
+                      <span className="text-3xl font-semibold">{plan.price}</span>
                       <span className="text-muted-foreground">{plan.period}</span>
                     </div>
                   </CardHeader>
@@ -466,7 +466,7 @@ export default function MonetizationPage() {
                     <ul className="space-y-2 mb-4">
                       {plan.features.map((feature: string, index: number) => (
                         <li key={index} className="flex items-center gap-2 text-sm">
-                          <Check className="w-4 h-4 text-green-500" />
+                          <Check className="w-4 h-4 text-success" />
                           {feature}
                         </li>
                       ))}
@@ -474,7 +474,7 @@ export default function MonetizationPage() {
                     <div className="pt-4 border-t">
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-muted-foreground">Subscribers</span>
-                        <span className="font-bold">{plan.subscribers.toLocaleString()}</span>
+                        <span className="font-semibold">{plan.subscribers.toLocaleString()}</span>
                       </div>
                     </div>
                   </CardContent>
@@ -585,7 +585,7 @@ export default function MonetizationPage() {
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 onClick={() => handleAdjustPlan(user, "cancel")}
-                                className="text-red-500"
+                                className="text-destructive"
                               >
                                 <CreditCard className="h-4 w-4 mr-2" />
                                 Cancel Subscription
@@ -684,8 +684,8 @@ export default function MonetizationPage() {
             )}
 
             {adjustAction === "cancel" && (
-              <div className="p-4 bg-red-500/10 rounded-lg border border-red-500/20">
-                <p className="text-sm text-red-500">
+              <div className="p-4 bg-destructive/10 rounded-lg border border-destructive/40">
+                <p className="text-sm text-destructive">
                   This will immediately cancel the subscription for {selectedUser?.username}. They will lose access to
                   premium features at the end of their billing period.
                 </p>

@@ -83,8 +83,8 @@ export default function AdminDashboard() {
       change: usersChange.percent,
       trend: usersChange.trend,
       icon: Users,
-      color: "text-blue-500",
-      bgColor: "bg-blue-500/10",
+      color: "text-link",
+      bgColor: "bg-primary/10",
     },
     {
       label: "Active Listings",
@@ -92,8 +92,8 @@ export default function AdminDashboard() {
       change: listingsChange.percent,
       trend: listingsChange.trend,
       icon: ShoppingBag,
-      color: "text-green-500",
-      bgColor: "bg-green-500/10",
+      color: "text-success",
+      bgColor: "bg-success/10",
     },
     {
       label: "Pending Reports",
@@ -101,8 +101,8 @@ export default function AdminDashboard() {
       change: reportsChange.percent,
       trend: reportsChange.trend,
       icon: AlertTriangle,
-      color: "text-orange-500",
-      bgColor: "bg-orange-500/10",
+      color: "text-warning",
+      bgColor: "bg-warning/10",
     },
     {
       label: "Revenue (Total)",
@@ -110,22 +110,22 @@ export default function AdminDashboard() {
       change: revenueChange.percent,
       trend: revenueChange.trend,
       icon: DollarSign,
-      color: "text-emerald-500",
-      bgColor: "bg-emerald-500/10",
+      color: "text-success",
+      bgColor: "bg-success/10",
     },
   ]
   return (
-    <div className="p-6 space-y-6">
+    <div className="mx-auto w-full max-w-[1440px] space-y-8 p-6 md:p-10">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold">Dashboard Overview</h1>
+        <h1 className="text-[28px] md:text-[34px] font-semibold tracking-[-0.025em]">Dashboard Overview</h1>
         <p className="text-muted-foreground">Welcome back, here's what's happening with RbMarket today.</p>
       </div>
 
       {/* Loading state */}
       {loading ? (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <Loader2 className="w-8 h-8 animate-spin text-link" />
         </div>
       ) : (
         <>
@@ -143,7 +143,7 @@ export default function AdminDashboard() {
                       <div
                         className={cn(
                           "flex items-center gap-1 text-sm font-medium",
-                          stat.trend === "up" ? "text-green-500" : stat.trend === "down" ? "text-red-500" : "text-gray-500",
+                          stat.trend === "up" ? "text-success" : stat.trend === "down" ? "text-destructive" : "text-muted-foreground",
                         )}
                       >
                         {stat.trend === "up" ? (
@@ -155,7 +155,7 @@ export default function AdminDashboard() {
                       </div>
                     </div>
                     <div className="mt-4">
-                      <p className="text-2xl font-bold">{stat.value}</p>
+                      <p className="text-2xl font-semibold">{stat.value}</p>
                       <p className="text-sm text-muted-foreground">{stat.label}</p>
                     </div>
                   </CardContent>
@@ -175,9 +175,9 @@ export default function AdminDashboard() {
               <CardContent className="overflow-hidden">
                 <ChartContainer
                   config={{
-                    users: { label: "Active Visitors", color: "hsl(var(--chart-1))" },
-                    listings: { label: "New Listings", color: "hsl(var(--chart-2))" },
-                    trades: { label: "Trades", color: "hsl(var(--chart-3))" },
+                    users: { label: "Active Visitors", color: "var(--chart-1)" },
+                    listings: { label: "New Listings", color: "var(--chart-2)" },
+                    trades: { label: "Trades", color: "var(--chart-3)" },
                   }}
                   className="h-[300px] w-full min-w-0"
                 >
@@ -185,8 +185,8 @@ export default function AdminDashboard() {
                     <AreaChart data={trafficData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                       <defs>
                         <linearGradient id="colorUsers" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="hsl(var(--chart-1))" stopOpacity={0.3} />
-                          <stop offset="95%" stopColor="hsl(var(--chart-1))" stopOpacity={0} />
+                          <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="var(--chart-1)" stopOpacity={0} />
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
@@ -196,7 +196,7 @@ export default function AdminDashboard() {
                       <Area
                         type="monotone"
                         dataKey="users"
-                        stroke="hsl(var(--chart-1))"
+                        stroke="var(--chart-1)"
                         fillOpacity={1}
                         fill="url(#colorUsers)"
                       />
@@ -215,7 +215,7 @@ export default function AdminDashboard() {
               <CardContent className="overflow-hidden">
                 <ChartContainer
                   config={{
-                    revenue: { label: "Platform Revenue (₱)", color: "hsl(var(--chart-2))" },
+                    revenue: { label: "Platform Revenue (₱)", color: "var(--chart-2)" },
                   }}
                   className="h-[300px] w-full min-w-0"
                 >
@@ -225,7 +225,7 @@ export default function AdminDashboard() {
                       <XAxis dataKey="month" className="text-xs" tick={{ fontSize: 12 }} />
                       <YAxis className="text-xs" tick={{ fontSize: 12 }} width={40} />
                       <ChartTooltip content={<ChartTooltipContent />} />
-                      <Bar dataKey="revenue" fill="hsl(var(--chart-2))" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="revenue" fill="var(--chart-2)" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </ChartContainer>
@@ -302,12 +302,12 @@ export default function AdminDashboard() {
                         <div className="flex items-center gap-3">
                           {activity.type === "user_joined" ? (
                             <>
-                              <Badge className="bg-blue-500">New User</Badge>
+                              <Badge className="bg-primary">New User</Badge>
                               <span className="font-medium">{activity.user?.username}</span>
                             </>
                           ) : (
                             <>
-                              <Badge className="bg-green-500">Transaction</Badge>
+                              <Badge className="bg-success">Transaction</Badge>
                               <span className="text-sm">
                                 <span className="font-medium">{activity.transaction?.buyer?.username}</span> bought{" "}
                                 <span className="font-medium">{activity.transaction?.listing?.title}</span> from{" "}

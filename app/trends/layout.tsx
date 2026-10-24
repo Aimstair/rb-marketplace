@@ -1,5 +1,5 @@
 import type { Metadata } from "next"
-import { OrganizationJsonLd, WebPageJsonLd } from "@/components/json-ld"
+import { WebPageJsonLd } from "@/components/json-ld"
 
 const DEFAULT_SITE_URL = "https://rbmarket.app"
 
@@ -14,7 +14,7 @@ function getSiteUrl(): string {
 
 export function generateMetadata(): Metadata {
   const siteUrl = getSiteUrl()
-  const title = "Roblox Marketplace Price Trends — Pets, Items & Units | RbMarket"
+  const title = "Roblox Item Price Trends in the Philippines"
   const description =
     "Track Roblox marketplace trends: pet prices, item demand, currency unit rates, and active trader activity across all major Roblox games on RbMarket."
 
@@ -62,11 +62,11 @@ export function generateMetadata(): Metadata {
 export default function TrendsLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
-      <OrganizationJsonLd />
       <WebPageJsonLd
         name="RbMarket Trends"
         description="Marketplace trend dashboards for Roblox item and currency trading activity on RbMarket."
         path="/trends"
+        crumbs={[{ name: "Trends", path: "/trends" }]}
       />
       {children}
     </>

@@ -122,10 +122,10 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="mx-auto w-full max-w-[1440px] space-y-8 p-6 md:p-10">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold">User Management</h1>
+        <h1 className="text-[28px] md:text-[34px] font-semibold tracking-[-0.025em]">User Management</h1>
         <p className="text-muted-foreground">Search, view, and manage user accounts</p>
       </div>
 
@@ -169,7 +169,7 @@ export default function UsersPage() {
             <CardContent>
               {loading ? (
                 <div className="flex items-center justify-center h-[600px]">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <Loader2 className="h-8 w-8 animate-spin text-link" />
                 </div>
               ) : (
                 <ScrollArea className="h-[600px]">
@@ -192,8 +192,8 @@ export default function UsersPage() {
                               <div className="flex items-center gap-2">
                                 <p className="font-semibold">{user.username}</p>
                                 {user.isBanned && <Badge variant="destructive">Banned</Badge>}
-                                {user.isVerified && <Badge className="bg-green-500">Verified</Badge>}
-                                {user.role === "admin" && <Badge className="bg-purple-500">Admin</Badge>}
+                                {user.isVerified && <Badge className="bg-success">Verified</Badge>}
+                                {user.role === "admin" && <Badge className="bg-primary">Admin</Badge>}
                               </div>
                               <p className="text-sm text-muted-foreground">{user.email}</p>
                             </div>
@@ -299,8 +299,8 @@ export default function UsersPage() {
                   <p className="text-sm font-medium">Account Status</p>
                   <div className="flex flex-wrap gap-2">
                     {selectedUser.isBanned && <Badge variant="destructive">Banned</Badge>}
-                    {selectedUser.isVerified && <Badge className="bg-green-500">Verified</Badge>}
-                    {selectedUser.role === "admin" && <Badge className="bg-purple-500">Admin</Badge>}
+                    {selectedUser.isVerified && <Badge className="bg-success">Verified</Badge>}
+                    {selectedUser.role === "admin" && <Badge className="bg-primary">Admin</Badge>}
                     {!selectedUser.isBanned && !selectedUser.isVerified && (
                       <Badge variant="secondary">Regular User</Badge>
                     )}

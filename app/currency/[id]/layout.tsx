@@ -1,101 +1,55 @@
 import { Metadata } from "next"
+import { unstable_cache } from "next/cache"
 import { prisma } from "@/lib/prisma"
 
-const DEFAULT_SITE_URL = "https://rbmarket.app"
-
-function getSiteUrl(): string {
-  const candidate = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || DEFAULT_SITE_URL
-  try {
-    return new URL(candidate).toString().replace(/\/$/, "")
-  } catch {
-    return DEFAULT_SITE_URL
-  }
-}
+// Metadata lookups are cached so a warm page view runs no extra query
+const getCachedCurrencyListingMeta = unstable_cache(
+  async (id: string) =>
+    prisma.currencyListing.findUnique({
+      where: { id },
+      include: {
+        seller: { select: { username: true } },
+        game: { select: { displayName: true } },
+        gameCurrency: { select: { displayName: true } },
+      },
+    }),
+  ["currency-currencyListing-meta-v1"],
+  { revalidate: 60 },
+)
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   try {
     const { id } = await params
-    const listing = await prisma.currencyListing.findUnique({
-      where: { id },
-      include: {
-        seller: {
-          select: {
-            username: true,
-          },
-        },
-        game: {
-          select: {
-            displayName: true,
-          },
-        },
-        gameCurrency: {
-          select: {
-            displayName: true,
-          },
-        },
-      },
-    })
+    const listing = await getCachedCurrencyListingMeta(id)
 
     if (!listing) {
       return {
-        title: "Currency Listing Not Found - RB Marketplace",
+        title: "Currency offer not found",
         description: "The currency listing you're looking for doesn't exist.",
-        robots: {
-          index: false,
-          follow: false,
-        },
+        robots: { index: false, follow: false },
       }
     }
 
-    const siteUrl = getSiteUrl()
-    const listingStatus = String(listing.status || "").toLowerCase()
-    const isIndexable = listingStatus === "available"
-    const formattedRate = Number(listing.ratePerPeso || 0).toLocaleString()
+    const isIndexable = String(listing.status || "").toLowerCase() === "available"
+    const rate = Number(listing.ratePerPeso || 0).toLocaleString("en-PH")
     const gameName = listing.game?.displayName || "Roblox"
-    const currencyName = listing.gameCurrency?.displayName || "In-game Currency"
-    const description = `Buy ${currencyName} for ${gameName} from ${listing.seller.username} at ${formattedRate} per P1. Stock available: ${listing.stock.toLocaleString()}.`
+    const currencyName = listing.gameCurrency?.displayName || "in-game currency"
+    const title = `Buy ${gameName} ${currencyName}: ${rate} per ₱1`
+    const description = `Buy ${gameName} ${currencyName} from ${listing.seller.username} at ${rate} per ₱1, ${listing.stock.toLocaleString("en-PH")} in stock (orders ${listing.minOrder.toLocaleString("en-PH")} to ${listing.maxOrder.toLocaleString("en-PH")}). Pay with GCash or PayPal on RbMarket.`
+    const images = listing.image ? [{ url: listing.image, alt: `${gameName} ${currencyName}` }] : undefined
 
     return {
-      title: `${listing.title} - Currency Offer on RB Marketplace`,
+      title,
       description,
-      metadataBase: new URL(siteUrl),
-      alternates: {
-        canonical: `/currency/${id}`,
-      },
-      robots: {
-        index: isIndexable,
-        follow: isIndexable,
-      },
-      keywords: [listing.title, gameName, currencyName, "currency", "Roblox", "marketplace", "buy", "sell"],
-      openGraph: {
-        title: `${listing.title} - RB Marketplace`,
-        description,
-        type: "website",
-        url: `${siteUrl}/currency/${id}`,
-        images: listing.image
-          ? [
-              {
-                url: listing.image,
-                width: 1200,
-                height: 630,
-                alt: listing.title,
-              },
-            ]
-          : [],
-      },
-      twitter: {
-        card: "summary_large_image",
-        title: `${listing.title} - RB Marketplace`,
-        description,
-        images: listing.image ? [listing.image] : [],
-      },
+      alternates: { canonical: `/currency/${id}` },
+      robots: { index: isIndexable, follow: true },
+      keywords: [`buy ${gameName} ${currencyName}`, `${gameName} ${currencyName} for sale`, `${currencyName} GCash`, "Roblox currency Philippines"],
+      openGraph: { title, description, type: "website", url: `/currency/${id}`, images },
+      twitter: { card: "summary_large_image", title, description, images: listing.image ? [listing.image] : undefined },
     }
   } catch (error) {
     console.error("Error generating currency listing metadata:", error)
-    return {
-      title: "Currency Listing - RB Marketplace",
-      description: "Browse currency offers on RB Marketplace",
-    }
+    return { title: "Roblox currency offer" }
   }
 }
 

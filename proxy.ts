@@ -1,5 +1,4 @@
 import { auth } from "@/auth"
-import { prisma } from "@/lib/prisma"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
@@ -48,24 +47,8 @@ export default auth(async function proxy(request: NextRequest) {
       })
     }
 
-    try {
-      const user = await prisma.user.findUnique({
-        where: { id: profileId },
-        select: { id: true },
-      })
-
-      if (!user) {
-        return new NextResponse("Not Found", {
-          status: 404,
-          headers: {
-            "content-type": "text/plain; charset=utf-8",
-            "x-robots-tag": "noindex, nofollow",
-          },
-        })
-      }
-    } catch (error) {
-      console.error("Profile existence middleware DB check failed:", error)
-    }
+    // Existence is checked by the page itself (it calls notFound()), so no database query
+    // runs in middleware on every profile request.
   }
 
   const requestHeaders = new Headers(request.headers)

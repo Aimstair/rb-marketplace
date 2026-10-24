@@ -1,97 +1,52 @@
 import type { Metadata } from "next"
-import HomePageClient from "@/components/home-page-client"
+import HomePageClient, { type HomeInitialData } from "@/components/home-page-client"
 import { getLandingStats, getPopularGames, getTopTraders, getTrendingListings } from "@/app/actions/trends"
 import { getGiveawayHomeData } from "@/app/actions/giveaways"
-import { OrganizationJsonLd, WebsiteJsonLd } from "@/components/json-ld"
+import { Container, Section } from "@/components/site/container"
+import { FaqSection } from "@/components/seo/faq-section"
+import { HOME_FAQ } from "@/lib/seo-content"
+import { SITE_DESCRIPTION, SITE_NAME } from "@/lib/seo"
 
-const DEFAULT_SITE_URL = "https://rbmarket.app"
+const title = `Roblox Marketplace Philippines: Buy & Sell Items | ${SITE_NAME}`
 
-function getSiteUrl(): string {
-  const candidate = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || DEFAULT_SITE_URL
-  try {
-    return new URL(candidate).toString().replace(/\/$/, "")
-  } catch {
-    return DEFAULT_SITE_URL
-  }
+export const metadata: Metadata = {
+  // Absolute so the brand suffix from the root template isn't added twice
+  title: { absolute: title },
+  description: SITE_DESCRIPTION,
+  alternates: { canonical: "/" },
+  openGraph: { title, description: SITE_DESCRIPTION, url: "/", type: "website" },
+  twitter: { card: "summary_large_image", title, description: SITE_DESCRIPTION },
 }
 
-export function generateMetadata(): Metadata {
-  const siteUrl = getSiteUrl()
-  const title = "RbMarket | Buy & Sell Roblox Pets, Items & Units for Cash"
-  const description =
-    "RbMarket is the trusted Roblox marketplace to buy and sell Roblox pets, game items, and in-game units for cash. Connect with verified traders and sell your Roblox items safely."
-
+// Loaded on the server in parallel (each helper is cached), so the page arrives with its data
+// instead of firing server actions from the browser, which Next.js runs one at a time.
+async function loadHomeData(): Promise<HomeInitialData> {
+  const [stats, games, traders, trending, giveaway] = await Promise.all([
+    getLandingStats(),
+    getPopularGames(8),
+    getTopTraders(4),
+    getTrendingListings(6),
+    getGiveawayHomeData(),
+  ])
   return {
-    metadataBase: new URL(siteUrl),
-    title,
-    description,
-    alternates: {
-      canonical: "/",
-    },
-    keywords: [
-      "RbMarket",
-      "Roblox marketplace",
-      "Roblox buy and sell",
-      "Roblox sell for cash",
-      "Roblox sell pets",
-      "Roblox sell units",
-      "Roblox item trading",
-      "Roblox currency trading",
-      "Roblox pet marketplace",
-      "trusted Roblox sellers",
-      "peer to peer Roblox marketplace",
-    ],
-    openGraph: {
-      title,
-      description,
-      url: siteUrl,
-      type: "website",
-      siteName: "RbMarket",
-      images: [
-        {
-          url: "/opengraph-image",
-          width: 1200,
-          height: 630,
-          alt: "RbMarket — Roblox buy and sell marketplace",
-        },
-      ],
-    },
-    twitter: {
-      card: "summary_large_image",
-      title,
-      description,
-      images: ["/opengraph-image"],
-    },
+    stats: stats.data ?? { totalUsers: 0, totalListings: 0, totalVolume: 0, activeTraders: 0 },
+    games: games.data ?? [],
+    traders: traders.data ?? [],
+    trending: trending.data ?? [],
+    giveaway: giveaway.success ? giveaway.data : undefined,
   }
 }
 
 export default async function HomePage() {
-  // Fetched on the server (mostly from cache) so the stat cards and sections
-  // arrive with the HTML instead of waiting on client-side Server Actions,
-  // which Next.js runs one at a time after hydration.
-  const [statsResult, gamesResult, tradersResult, giveawayResult, featuredResult] = await Promise.all([
-    getLandingStats(),
-    getPopularGames(6),
-    getTopTraders(4),
-    getGiveawayHomeData(),
-    getTrendingListings(4),
-  ])
-
+  const initialData = await loadHomeData()
   return (
     <>
-      <OrganizationJsonLd
-        description="RbMarket is the trusted peer-to-peer Roblox marketplace to buy and sell Roblox pets, items, and in-game units for cash."
-      />
-      <WebsiteJsonLd
-        description="Buy and sell Roblox pets, game items, and in-game units for cash on RbMarket — the trusted Roblox marketplace."
-      />
-      <HomePageClient
-        initialStats={statsResult.success ? statsResult.data : undefined}
-        initialGames={gamesResult.success ? gamesResult.data : undefined}
-        initialTraders={tradersResult.success ? tradersResult.data : undefined}
-        initialGiveaway={giveawayResult.success ? giveawayResult.data : undefined}
-        initialFeaturedListings={featuredResult.success ? featuredResult.data : undefined}
-      />
+      <HomePageClient initialData={initialData} />
+      <Section surface>
+        <Container>
+          <FaqSection entries={HOME_FAQ} title="Buying and selling on RbMarket" />
+        </Container>
+      </Section>
     </>
   )
 }

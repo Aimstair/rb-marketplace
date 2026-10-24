@@ -2,7 +2,9 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  // Load relations with SQL joins in one query instead of one query per relation
+  previewFeatures = ["relationJoins"]
 }
 
 datasource db {
@@ -177,6 +179,9 @@ model ItemListing {
   @@index([status])
   @@index([gameId])
   @@index([gameItemId])
+  // Composite indexes for hot queries
+  @@index([status, createdAt])
+  @@index([sellerId, status])
   @@map("item_listings")
 }
 
@@ -230,6 +235,8 @@ model CurrencyListing {
   @@index([status])
   @@index([gameId])
   @@index([gameCurrencyId])
+  // Composite indexes for hot queries
+  @@index([sellerId, status])
   @@map("currency_listings")
 }
 
@@ -310,6 +317,8 @@ model Vouch {
   @@index([fromUserId, toUserId]) // Changed from unique to index to allow multiple vouches with different statuses
   @@index([toUserId])
   @@index([transactionId])
+  // Composite indexes for hot queries
+  @@index([toUserId, status])
   @@map("vouches")
 }
 
@@ -344,6 +353,9 @@ model Conversation {
   @@index([sellerId])
   @@index([listingId])
   @@index([updatedAt])
+  // Composite indexes for hot queries
+  @@index([buyerId, updatedAt])
+  @@index([sellerId, updatedAt])
   @@map("conversations")
 }
 
@@ -376,6 +388,9 @@ model Message {
   @@index([conversationId])
   @@index([senderId])
   @@index([createdAt])
+  // Composite indexes for hot queries
+  @@index([conversationId, createdAt])
+  @@index([conversationId, isRead, senderId])
   @@map("messages")
 }
 
@@ -427,6 +442,10 @@ model Transaction {
   @@index([listingType])
   @@index([conversationId])
   @@index([createdAt])
+  // Composite indexes for hot queries
+  @@index([status, createdAt])
+  @@index([buyerId, status])
+  @@index([sellerId, status])
   @@map("transactions")
 }
 
@@ -451,6 +470,9 @@ model Notification {
   @@index([userId])
   @@index([isRead])
   @@index([createdAt])
+  // Composite indexes for hot queries
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
   @@map("notifications")
 }
 
@@ -1063,4 +1085,16 @@ model BlogPost {
   @@index([slug])
   @@index([createdAt])
   @@map("blog_posts")
+}
+
+// Short-lived keys shared by every server instance: rate-limit counters and
+// campaign send guards. Replaces Upstash Redis. Expired rows are pruned lazily.
+model ExpiringKey {
+  key       String   @id
+  count     Int      @default(0)
+  value     String?
+  expiresAt DateTime
+
+  @@index([expiresAt])
+  @@map("expiring_keys")
 }

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import { z } from "zod"
 import { headers } from "next/headers"
+import { after } from "next/server"
 import { unstable_cache } from "next/cache"
 import { moderateContent, logModerationAction } from "@/lib/moderation"
 import {
@@ -16,7 +17,7 @@ import {
   type GetListingsResult,
   type CreateListingResult,
 } from "@/lib/schemas"
-import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit"
+import { checkRateLimit, getRateLimitIdentifier, isClientActionRequest } from "@/lib/rate-limit"
 
 const LISTING_RATE_LIMITS = {
   read: { maxRequests: 100, windowMs: 60 * 1000 },
@@ -34,6 +35,10 @@ async function enforceListingRateLimit(params: {
   message: string
 }): Promise<{ success: true } | { success: false; error: string }> {
   const requestHeaders = await headers()
+  // Read limits only guard browser-invoked actions; server renders skip the extra DB write
+  if (params.namespace === "listings-read" && !isClientActionRequest(requestHeaders)) {
+    return { success: true }
+  }
   const identifier = getRateLimitIdentifier({
     headers: requestHeaders,
     userId: params.userId,
@@ -88,12 +93,8 @@ function getCachedListingDetails(id: string) {
               isVerified: true,
               joinDate: true,
               lastActive: true,
-              vouchesReceived: {
-                where: { status: "VALID" },
-                select: { id: true },
-              },
               _count: {
-                select: { itemListings: true },
+                select: { itemListings: true, vouchesReceived: { where: { status: "VALID" } } },
               },
             },
           },
@@ -137,13 +138,9 @@ function getCachedListingDetails(id: string) {
                 isVerified: true,
                 joinDate: true,
                 lastActive: true,
-                vouchesReceived: {
-                  where: { status: "VALID" },
-                  select: { id: true },
-                },
                 _count: {
-                  select: { currencyListings: true },
-                },
+                select: { currencyListings: true, vouchesReceived: { where: { status: "VALID" } } },
+              },
               },
             },
           },
@@ -207,35 +204,40 @@ export async function getListing(id: string, currentUserId?: string): Promise<{
     const authPromise = (async () => {
       if (currentUserId) return currentUserId
       const session = await auth()
-      if (session?.user?.email) {
-        const user = await prisma.user.findUnique({
-          where: { email: session.user.email },
-          select: { id: true },
-        })
-        return user?.id
-      }
-      return undefined
+      // The JWT session already carries the user id; no need for a database lookup
+      return session?.user?.id || undefined
     })()
 
     const detailsPromise = getCachedListingDetails(id)
-    
-    const [userId, { listing, listingType, minOrder, maxOrder }] = await Promise.all([
+    // The vote only depends on the user, so look it up alongside the listing details
+    const votePromise = authPromise.then((uid) =>
+      uid
+        ? prisma.listingVote.findUnique({
+            where: { userId_listingId: { userId: uid, listingId: id } },
+            select: { type: true },
+          })
+        : null,
+    )
+
+    const [userId, { listing, listingType, minOrder, maxOrder }, vote] = await Promise.all([
       authPromise,
-      detailsPromise
+      detailsPromise,
+      votePromise,
     ])
 
     if (!listing) {
       return { success: false, error: "Listing not found" }
     }
 
-    // Track unique view - only increment if this user/session hasn't viewed before
+    // Track unique view after the response is sent - only increment if this user/session hasn't viewed before.
+    // Request headers must be read here, outside the after() callback.
+    const headersList = await headers()
+    const ipAddress = headersList.get("x-forwarded-for") || headersList.get("x-real-ip") || "unknown"
+    // Generate session identifier for anonymous users
+    const sessionId = userId ? null : `${ipAddress}-${headersList.get("user-agent") || "unknown"}`
+
+    after(async () => {
     try {
-      const headersList = await headers()
-      const ipAddress = headersList.get("x-forwarded-for") || headersList.get("x-real-ip") || "unknown"
-      
-      // Generate session identifier for anonymous users
-      const sessionId = userId ? null : `${ipAddress}-${headersList.get("user-agent") || "unknown"}`
-      
       // Check if this user/session has already viewed this listing
       const existingView = await prisma.listingView.findFirst({
         where: {
@@ -275,23 +277,10 @@ export async function getListing(id: string, currentUserId?: string): Promise<{
       }
     } catch (err) {
       console.error("Error tracking view:", err)
-      // Continue even if view tracking fails
     }
+    })
 
-    // Get user's vote if they're logged in
-    let userVote: "UP" | "DOWN" | null = null
-    if (userId) {
-      const vote = await prisma.listingVote.findUnique({
-        where: {
-          userId_listingId: {
-            userId,
-            listingId: id,
-          },
-        },
-        select: { type: true },
-      })
-      userVote = (vote?.type as "UP" | "DOWN") || null
-    }
+    const userVote: "UP" | "DOWN" | null = (vote?.type as "UP" | "DOWN") || null
 
     // Auto-update status to SOLD if insufficient stock
     let finalStatus = listing.status
@@ -310,20 +299,22 @@ export async function getListing(id: string, currentUserId?: string): Promise<{
         
         if (isInsufficient) {
           finalStatus = "sold"
-          await prisma.itemListing.update({
-            where: { id: listing.id },
-            data: { status: "sold" },
-          })
+          after(() =>
+            prisma.itemListing
+              .update({ where: { id: listing.id }, data: { status: "sold" } })
+              .catch((err) => console.error("Failed to mark listing sold:", err)),
+          )
         }
       } else if (listingType === "CURRENCY") {
         // For currency listings, check if stock is less than the rate per peso
         // (minimum purchase is 1 peso, which requires ratePerPeso amount of currency)
         if (listing.stock < listing.ratePerPeso) {
           finalStatus = "sold"
-          await prisma.currencyListing.update({
-            where: { id: listing.id },
-            data: { status: "sold" },
-          })
+          after(() =>
+            prisma.currencyListing
+              .update({ where: { id: listing.id }, data: { status: "sold" } })
+              .catch((err) => console.error("Failed to mark listing sold:", err)),
+          )
         }
       }
     }
@@ -355,7 +346,7 @@ export async function getListing(id: string, currentUserId?: string): Promise<{
           isVerified: listing.seller.isVerified,
           joinDate: listing.seller.joinDate,
           lastActive: listing.seller.lastActive,
-          vouchCount: listing.seller.vouchesReceived.length,
+          vouchCount: listing.seller._count.vouchesReceived,
         },
         upvotes: listing.upvotes || 0,
         downvotes: listing.downvotes || 0,
@@ -505,27 +496,15 @@ export async function getListings(
         orderBy = { createdAt: "desc" }
     }
 
-    // Get total count
-    const total = await prisma.itemListing.count({ where })
-    const totalPages = Math.ceil(total / safeItemsPerPage)
-    const queryPage = totalPages > 0 ? Math.min(safePage, totalPages) : 1
-
-    // Get paginated listings
-    const listings = await prisma.itemListing.findMany({
+    const fetchPage = (pageNumber: number) =>
+      prisma.itemListing.findMany({
       where,
       include: {
         seller: {
           select: {
             id: true,
             username: true,
-            vouchesReceived: {
-              where: {
-                status: "VALID",
-              },
-              select: {
-                id: true,
-              },
-            },
+            _count: { select: { vouchesReceived: { where: { status: "VALID" } } } },
           },
         },
         game: {
@@ -541,12 +520,20 @@ export async function getListings(
         },
       },
       orderBy,
-      skip: (queryPage - 1) * safeItemsPerPage,
+      skip: (pageNumber - 1) * safeItemsPerPage,
       take: safeItemsPerPage,
     })
 
-    // Auto-update listings with insufficient stock to SOLD
-    const updatePromises = listings
+    // Count and page in parallel; each query is a database round trip.
+    const [total, requestedPage] = await Promise.all([prisma.itemListing.count({ where }), fetchPage(safePage)])
+    const totalPages = Math.ceil(total / safeItemsPerPage)
+    const queryPage = totalPages > 0 ? Math.min(safePage, totalPages) : 1
+    // Only when the requested page is past the end (rare): fall back to the last page
+    const listings = queryPage === safePage ? requestedPage : await fetchPage(queryPage)
+
+    // Auto-update listings with insufficient stock to SOLD, after the response is sent.
+    // The response already reports them as sold via displayStatus below.
+    const soldOutIds = listings
       .filter((listing: any) => {
         if (listing.status !== "available") return false
         // Check based on pricing mode
@@ -556,15 +543,14 @@ export async function getListings(
           return listing.stock < 1
         }
       })
-      .map((listing: any) =>
-        prisma.itemListing.update({
-          where: { id: listing.id },
-          data: { status: "sold" },
-        })
-      )
+      .map((listing: any) => listing.id as string)
 
-    if (updatePromises.length > 0) {
-      await Promise.all(updatePromises)
+    if (soldOutIds.length > 0) {
+      after(() =>
+        prisma.itemListing
+          .updateMany({ where: { id: { in: soldOutIds } }, data: { status: "sold" } })
+          .catch((err) => console.error("Failed to mark sold-out listings:", err)),
+      )
     }
 
     // Transform to response format
@@ -589,7 +575,7 @@ export async function getListings(
           id: listing.seller.id,
           username: listing.seller.username,
         },
-        vouch: listing.seller.vouchesReceived?.length || 0,
+        vouch: listing.seller._count?.vouchesReceived || 0,
         status: displayStatus,
         category: listing.gameItem.category,
         itemType: listing.gameItem.itemType,
@@ -624,8 +610,9 @@ export async function getUserListings(
     const safeItemsPerPage = Math.min(Math.max(itemsPerPage, 1), 50)
     const safePage = Math.max(page, 1)
 
-    // Fetch item listings
-    const itemListings = await prisma.itemListing.findMany({
+    // Item and currency listings are independent: fetch both in one round trip
+    const [itemListings, currencyListings] = await Promise.all([
+      prisma.itemListing.findMany({
       where: { sellerId },
       include: {
         seller: {
@@ -647,10 +634,8 @@ export async function getUserListings(
         },
       },
       orderBy: { createdAt: "desc" },
-    })
-
-    // Fetch currency listings
-    const currencyListings = await prisma.currencyListing.findMany({
+    }),
+      prisma.currencyListing.findMany({
       where: { sellerId },
       include: {
         seller: {
@@ -671,9 +656,24 @@ export async function getUserListings(
         },
       },
       orderBy: { createdAt: "desc" },
-    })
+    }),
+    ])
 
-    const allListingIds = [...itemListings.map((listing: any) => listing.id), ...currencyListings.map((listing: any) => listing.id)]
+    // Paginate first (same order as before: items, then currency), then count inquiries
+    // only for the listings on this page instead of every listing the seller has.
+    const ordered = [
+      ...itemListings.map((listing: any) => ({ kind: "ITEM" as const, listing })),
+      ...currencyListings.map((listing: any) => ({ kind: "CURRENCY" as const, listing })),
+    ]
+    const total = ordered.length
+    const totalPages = Math.ceil(total / safeItemsPerPage)
+    const queryPage = totalPages > 0 ? Math.min(safePage, totalPages) : 1
+    const startIndex = (queryPage - 1) * safeItemsPerPage
+    const pageEntries = ordered.slice(startIndex, startIndex + safeItemsPerPage)
+    const pageItemListings = pageEntries.filter((e) => e.kind === "ITEM").map((e) => e.listing)
+    const pageCurrencyListings = pageEntries.filter((e) => e.kind === "CURRENCY").map((e) => e.listing)
+
+    const allListingIds = pageEntries.map((e) => e.listing.id)
     const groupedConversationCounts = allListingIds.length
       ? await prisma.conversation.groupBy({
           by: ["listingId", "listingType"],
@@ -695,7 +695,7 @@ export async function getUserListings(
 
     // Combine and transform
     const allListings: ListingResponse[] = [
-      ...itemListings.map((listing: any) => {
+      ...pageItemListings.map((listing: any) => {
         const inquiriesCount = inquiriesCountMap.get(`ITEM:${listing.id}`) || 0
         return {
           id: listing.id,
@@ -720,7 +720,7 @@ export async function getUserListings(
           listingType: listing.listingType,
         }
       }),
-      ...currencyListings.map((listing: any) => {
+      ...pageCurrencyListings.map((listing: any) => {
         const inquiriesCount = inquiriesCountMap.get(`CURRENCY:${listing.id}`) || 0
         return {
           id: listing.id,
@@ -747,15 +747,8 @@ export async function getUserListings(
       }),
     ]
 
-    // Apply pagination
-    const total = allListings.length
-    const totalPages = Math.ceil(total / safeItemsPerPage)
-    const queryPage = totalPages > 0 ? Math.min(safePage, totalPages) : 1
-    const startIndex = (queryPage - 1) * safeItemsPerPage
-    const paginatedListings = allListings.slice(startIndex, startIndex + safeItemsPerPage)
-
     return {
-      listings: paginatedListings,
+      listings: allListings,
       total,
       totalPages,
       currentPage: queryPage,
@@ -851,12 +844,7 @@ export async function getCurrencyListings(): Promise<CurrencyListing[]> {
           select: {
             id: true,
             username: true,
-            vouchesReceived: {
-              where: {
-                status: "VALID",
-              },
-              select: { id: true },
-            },
+            _count: { select: { vouchesReceived: { where: { status: "VALID" } } } },
           },
         },
         game: {
@@ -898,7 +886,7 @@ export async function getCurrencyListings(): Promise<CurrencyListing[]> {
       stock: listing.stock,
       sellerId: listing.sellerId,
       sellerUsername: listing.seller.username,
-      sellerVouches: listing.seller.vouchesReceived?.length || 0,
+      sellerVouches: listing.seller._count?.vouchesReceived || 0,
       upvotes: listing.upvotes || 0,
       downvotes: listing.downvotes || 0,
       status: (listing.stock < listing.ratePerPeso ? "Sold" : listing.status === "available" ? "Available" : listing.status) as
@@ -1028,14 +1016,15 @@ export async function createListing(input: CreateItemListingInput): Promise<Crea
       }
     }
 
-    // Find game item by category AND itemType
-    const gameItem = await prisma.gameItem.findFirst({
-      where: {
-        gameId: game.id,
-        category: validatedData.category,
-        itemType: validatedData.itemType,
-      },
-    })
+    // The sell form sends the item type's unique name (several types can share an itemType,
+    // e.g. "Fish" and "In-game Item"); older clients send the itemType, so fall back to that.
+    const gameItem =
+      (await prisma.gameItem.findFirst({
+        where: { gameId: game.id, category: validatedData.category, name: validatedData.itemType },
+      })) ??
+      (await prisma.gameItem.findFirst({
+        where: { gameId: game.id, category: validatedData.category, itemType: validatedData.itemType },
+      }))
 
     if (!gameItem) {
       // Log for debugging
@@ -1398,11 +1387,20 @@ export async function createCurrencyListing(input: CreateCurrencyListingInput): 
  * @param type - Optional filter type (CATEGORY, GAME, ITEM_TYPE, CONDITION)
  * @returns Array of filter options
  */
-export async function getFilterOptions(type?: string): Promise<{
-  id: string
-  label: string
-  value: string
-}[]> {
+type FilterOption = { id: string; label: string; value: string }
+
+// Games, categories and item types change rarely; cache them instead of querying on every marketplace load.
+const getCachedFilterOptions = unstable_cache(
+  async (type: string) => computeFilterOptions(type === "ALL" ? undefined : type),
+  ["filter-options-v1"],
+  { revalidate: 300 },
+)
+
+export async function getFilterOptions(type?: string): Promise<FilterOption[]> {
+  return getCachedFilterOptions(type ?? "ALL")
+}
+
+async function computeFilterOptions(type?: string): Promise<FilterOption[]> {
   try {
     if (type === "CATEGORY") {
       // Get unique categories from GameItem table
@@ -1492,12 +1490,7 @@ export async function getNewCurrencyListings(): Promise<{
           select: {
             id: true,
             username: true,
-            vouchesReceived: {
-              where: {
-                status: "VALID",
-              },
-              select: { id: true },
-            },
+            _count: { select: { vouchesReceived: { where: { status: "VALID" } } } },
           },
         },
         game: {
@@ -1538,7 +1531,7 @@ export async function getNewCurrencyListings(): Promise<{
       stock: listing.stock,
       sellerId: listing.sellerId,
       sellerUsername: listing.seller.username,
-      sellerVouches: listing.seller.vouchesReceived?.length || 0,
+      sellerVouches: listing.seller._count?.vouchesReceived || 0,
       upvotes: listing.upvotes,
       downvotes: listing.downvotes,
       status: listing.stock < listing.ratePerPeso ? "sold" : listing.status,

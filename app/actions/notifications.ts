@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
+import { getSessionUser } from "@/lib/session-user"
 import { headers } from "next/headers"
 import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit"
 import { isRealtimeMessagingFeatureEnabled } from "@/lib/feature-flags"
@@ -196,9 +197,7 @@ export async function getNotifications(): Promise<GetNotificationsResult> {
     }
 
     // Find the current user by email from session
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
+    const currentUser = await getSessionUser() // id from the JWT session, no DB lookup
 
     if (!currentUser) {
       return {
@@ -226,6 +225,7 @@ export async function getNotifications(): Promise<GetNotificationsResult> {
     const notifications = await (prisma.notification as any).findMany({
       where: { userId: currentUser.id },
       orderBy: { createdAt: "desc" },
+      take: 50, // the dropdown shows 5 and the page a recent list; never load the full history
     })
 
     // Transform to response format
@@ -274,9 +274,7 @@ export async function markAsRead(notificationId: string): Promise<MarkAsReadResu
       }
     }
 
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
+    const currentUser = await getSessionUser() // id from the JWT session, no DB lookup
 
     if (!currentUser) {
       return {
@@ -355,9 +353,7 @@ export async function markAllAsRead(): Promise<MarkAsReadResult> {
       }
     }
 
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
+    const currentUser = await getSessionUser() // id from the JWT session, no DB lookup
 
     if (!currentUser) {
       return {
@@ -419,9 +415,7 @@ export async function getUnreadCount(): Promise<GetUnreadCountResult> {
       }
     }
 
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
+    const currentUser = await getSessionUser() // id from the JWT session, no DB lookup
 
     if (!currentUser) {
       return {

@@ -1,6 +1,5 @@
 "use client"
 
-import Navigation from "@/components/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
@@ -9,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Search, Loader2 } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
+import { ListPageSkeleton } from "@/components/site/skeletons"
 import { getTransactions } from "@/app/actions/transactions"
 import type { TransactionData } from "@/app/actions/transactions"
 import { TransactionCard } from "@/components/transaction-card"
@@ -80,28 +80,15 @@ export default function MyTransactionsPage() {
     setCurrentPageSelling(1)
   }, [searchQuery])
 
-  if (isAuthLoading) {
-    return (
-      <>
-        <Navigation />
-        <main className="container max-w-[1920px] mx-auto px-6 py-8">
-          <div className="space-y-4 mt-12">
-            {[1, 2, 3, 4].map(i => (
-              <Skeleton key={i} className="w-full h-32 rounded-lg" />
-            ))}
-          </div>
-        </main>
-      </>
-    )
+  // Session loading, or about to redirect to login: keep the page shape instead of a blank gap
+  if (isAuthLoading || !user) {
+    return <ListPageSkeleton />
   }
-
-  if (!user) return null
 
   return (
     <>
-      <Navigation />
-      <main className="container max-w-[1920px] mx-auto px-6 py-8">
-        <h1 className="text-3xl font-bold mb-8">My Transactions</h1>
+      <main className="mx-auto w-full max-w-[1440px] px-5 md:px-8 lg:px-10 pt-10 pb-16 md:pt-14 md:pb-20">
+        <h1 className="text-title mb-8">My Transactions</h1>
 
         {/* Search Bar */}
         <div className="mb-6">
@@ -132,7 +119,7 @@ export default function MyTransactionsPage() {
             {loading ? (
               <div className="space-y-4">
                 {[1, 2, 3, 4].map(i => (
-                  <Skeleton key={i} className="w-full h-32 rounded-lg" />
+                  <Skeleton key={i} className="h-32 w-full rounded-[20px]" />
                 ))}
               </div>
             ) : paginatedBuying.length === 0 ? (
@@ -204,7 +191,7 @@ export default function MyTransactionsPage() {
             {loading ? (
               <div className="space-y-4">
                 {[1, 2, 3, 4].map(i => (
-                  <Skeleton key={i} className="w-full h-32 rounded-lg" />
+                  <Skeleton key={i} className="h-32 w-full rounded-[20px]" />
                 ))}
               </div>
             ) : paginatedSelling.length === 0 ? (

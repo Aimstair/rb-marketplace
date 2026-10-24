@@ -81,12 +81,12 @@ export default function SettingsPage() {
       const result = await updateSystemSettings(settings)
       if (result.success) {
         toast({
-          title: "✅ Settings Saved",
+          title: "Settings Saved",
           description: "System settings have been updated successfully.",
         })
       } else {
         toast({
-          title: "❌ Failed to Save",
+          title: "Failed to Save",
           description: result.error || "Failed to save settings",
           variant: "destructive",
         })
@@ -94,7 +94,7 @@ export default function SettingsPage() {
     } catch (err) {
       console.error("Failed to save settings:", err)
       toast({
-        title: "❌ Error",
+        title: "Error",
         description: "An unexpected error occurred",
         variant: "destructive",
       })
@@ -113,13 +113,13 @@ export default function SettingsPage() {
       const result = await resetSystemSettings()
       if (result.success) {
         toast({
-          title: "✅ Settings Reset",
+          title: "Settings Reset",
           description: "All settings have been reset to defaults.",
         })
         await loadSettings() // Reload to show defaults
       } else {
         toast({
-          title: "❌ Failed to Reset",
+          title: "Failed to Reset",
           description: result.error || "Failed to reset settings",
           variant: "destructive",
         })
@@ -127,7 +127,7 @@ export default function SettingsPage() {
     } catch (err) {
       console.error("Failed to reset settings:", err)
       toast({
-        title: "❌ Error",
+        title: "Error",
         description: "An unexpected error occurred",
         variant: "destructive",
       })
@@ -143,16 +143,16 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <div className="p-6 flex items-center justify-center h-96">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <Loader2 className="w-8 h-8 animate-spin text-link" />
       </div>
     )
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="mx-auto w-full max-w-[1440px] space-y-8 p-6 md:p-10">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold">System Settings</h1>
+        <h1 className="text-[28px] md:text-[34px] font-semibold tracking-[-0.025em]">System Settings</h1>
         <p className="text-muted-foreground">Configure marketplace settings and features</p>
       </div>
 
@@ -187,8 +187,8 @@ export default function SettingsPage() {
               <Switch checked={settings.maintenance_mode} onCheckedChange={(checked) => updateSetting("maintenance_mode", checked)} />
             </div>
             {settings.maintenance_mode && (
-              <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-                <p className="text-sm text-yellow-600">
+              <div className="p-3 bg-warning/10 border border-warning/40 rounded-lg">
+                <p className="text-sm text-warning">
                   <AlertTriangle className="h-4 w-4 inline mr-1" />
                   Maintenance mode is active. Only admins can access the site.
                 </p>

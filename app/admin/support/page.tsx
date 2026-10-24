@@ -196,7 +196,7 @@ export default function SupportTicketsPage() {
       case "high":
         return <Badge variant="destructive">High</Badge>
       case "medium":
-        return <Badge className="bg-orange-500 text-white">Medium</Badge>
+        return <Badge className="bg-warning text-white">Medium</Badge>
       case "low":
         return <Badge variant="secondary">Low</Badge>
       default:
@@ -207,13 +207,13 @@ export default function SupportTicketsPage() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "open":
-        return <Badge className="bg-blue-500 text-white">Open</Badge>
+        return <Badge className="bg-primary text-white">Open</Badge>
       case "in-progress":
-        return <Badge className="bg-yellow-500 text-white">In Progress</Badge>
+        return <Badge className="bg-warning text-white">In Progress</Badge>
       case "pending":
         return <Badge variant="outline">Pending</Badge>
       case "resolved":
-        return <Badge className="bg-green-500 text-white">Resolved</Badge>
+        return <Badge className="bg-success text-white">Resolved</Badge>
       default:
         return <Badge variant="outline">{status}</Badge>
     }
@@ -281,10 +281,10 @@ export default function SupportTicketsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="mx-auto w-full max-w-[1440px] space-y-8 p-6 md:p-10">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold">Support Tickets</h1>
+        <h1 className="text-[28px] md:text-[34px] font-semibold tracking-[-0.025em]">Support Tickets</h1>
         <p className="text-muted-foreground">Manage user support requests and appeals</p>
       </div>
 
@@ -292,31 +292,31 @@ export default function SupportTicketsPage() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold">{stats.total}</p>
+            <p className="text-2xl font-semibold">{stats.total}</p>
             <p className="text-sm text-muted-foreground">Total</p>
           </CardContent>
         </Card>
-        <Card className="border-blue-500/50">
+        <Card className="border-link/40">
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-blue-500">{stats.open}</p>
+            <p className="text-2xl font-semibold text-link">{stats.open}</p>
             <p className="text-sm text-muted-foreground">Open</p>
           </CardContent>
         </Card>
-        <Card className="border-yellow-500/50">
+        <Card className="border-warning/40">
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-yellow-500">{stats.inProgress}</p>
+            <p className="text-2xl font-semibold text-warning">{stats.inProgress}</p>
             <p className="text-sm text-muted-foreground">In Progress</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-muted-foreground">{stats.pending}</p>
+            <p className="text-2xl font-semibold text-muted-foreground">{stats.pending}</p>
             <p className="text-sm text-muted-foreground">Pending</p>
           </CardContent>
         </Card>
-        <Card className="border-green-500/50">
+        <Card className="border-success/40">
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-green-500">{stats.resolved}</p>
+            <p className="text-2xl font-semibold text-success">{stats.resolved}</p>
             <p className="text-sm text-muted-foreground">Resolved</p>
           </CardContent>
         </Card>
@@ -523,7 +523,7 @@ export default function SupportTicketsPage() {
                         </Button>
                       )}
                       <Button
-                        className="bg-green-500 hover:bg-green-600"
+                        className="bg-success hover:bg-success"
                         onClick={handleCloseTicket}
                         disabled={actionLoading}
                       >

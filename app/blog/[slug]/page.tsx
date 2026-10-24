@@ -1,25 +1,38 @@
 import { getPostBySlug } from "@/app/actions/blog"
-import Navigation from "@/components/navigation"
 import { notFound } from "next/navigation"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { ChevronLeft } from "lucide-react"
+import type { Metadata } from "next"
+import { ArticleJsonLd } from "@/components/json-ld"
+import { stripHtml, truncate } from "@/lib/seo"
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params
   const post = await getPostBySlug(slug)
 
   if (!post) {
-    return { title: "Post Not Found | RBMarketplace" }
+    return { title: "Guide not found", robots: { index: false, follow: false } }
   }
 
+  const description = truncate(post.excerpt || stripHtml(post.content), 160)
   return {
-    title: `${post.title} | RBMarketplace Guides`,
-    description: post.excerpt,
+    title: post.title,
+    description,
+    alternates: { canonical: `/blog/${post.slug}` },
+    robots: { index: post.published, follow: true },
     openGraph: {
-      images: post.image ? [post.image] : [],
+      type: "article",
+      title: post.title,
+      description,
+      url: `/blog/${post.slug}`,
+      publishedTime: new Date(post.createdAt).toISOString(),
+      modifiedTime: new Date(post.updatedAt).toISOString(),
+      authors: [post.author.username],
+      images: post.image ? [post.image] : undefined,
     },
+    twitter: { card: "summary_large_image", title: post.title, description, images: post.image ? [post.image] : undefined },
   }
 }
 
@@ -33,11 +46,18 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
 
   return (
     <main className="min-h-screen bg-background">
-      <Navigation />
-      
-      <article className="container max-w-[1920px] mx-auto px-6 py-12">
+      <ArticleJsonLd
+        title={post.title}
+        description={truncate(post.excerpt || stripHtml(post.content), 160)}
+        path={`/blog/${post.slug}`}
+        image={post.image}
+        authorName={post.author.username}
+        publishedAt={post.createdAt}
+        updatedAt={post.updatedAt}
+      />
+      <article className="mx-auto w-full max-w-[1440px] px-5 md:px-8 lg:px-10 pt-10 pb-16 md:pt-14 md:pb-20">
         <div className="max-w-4xl mx-auto">
-          <Link href="/blog" className="inline-flex items-center text-sm text-muted-foreground hover:text-primary mb-8 transition-colors">
+          <Link href="/blog" className="inline-flex items-center text-sm text-muted-foreground hover:text-link mb-8 transition-colors">
             <ChevronLeft className="w-4 h-4 mr-1" />
             Back to Guides
           </Link>
@@ -53,7 +73,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                 })}
               </span>
             </div>
-            <h1 className="text-4xl md:text-6xl font-bold mb-6 leading-tight">{post.title}</h1>
+            <h1 className="text-4xl md:text-6xl font-semibold mb-6 leading-tight">{post.title}</h1>
             
             <div className="flex items-center gap-4 py-4 border-y">
               <Avatar className="w-12 h-12">

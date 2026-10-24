@@ -51,10 +51,10 @@ export function MultiImageUpload({ endpoint, values, onChange, maxImages = 8 }: 
           appearance={{
             button:
               "bg-primary text-primary-foreground hover:bg-primary/90 ut-uploading:bg-primary/60 after:bg-primary",
-            allowedContent: "text-primary",
+            allowedContent: "text-link",
             label: "text-sm font-semibold text-foreground",
             container:
-              "w-full rounded-lg border-2 border-dashed border-border bg-background transition-colors ut-uploading:border-primary ut-uploading:bg-primary/5",
+              "w-full rounded-lg border-2 border-dashed border-border bg-background transition-colors ut-uploading:border-primary ut-uploading:bg-link/[0.06]",
             uploadIcon: "text-muted-foreground",
           }}
         />

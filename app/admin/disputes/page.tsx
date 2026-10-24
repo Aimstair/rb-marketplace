@@ -100,12 +100,12 @@ const statusConfig: Record<
   string,
   { color: string; label: string; icon: React.ComponentType<{ className?: string }> }
 > = {
-  pending: { color: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20", label: "Pending", icon: Clock },
-  in_review: { color: "bg-blue-500/10 text-blue-500 border-blue-500/20", label: "In Review", icon: Scale },
-  resolved: { color: "bg-green-500/10 text-green-500 border-green-500/20", label: "Resolved", icon: CheckCircle },
-  rejected: { color: "bg-red-500/10 text-red-500 border-red-500/20", label: "Rejected", icon: XCircle },
+  pending: { color: "bg-warning/10 text-warning border-warning/40", label: "Pending", icon: Clock },
+  in_review: { color: "bg-primary/10 text-link border-link/40", label: "In Review", icon: Scale },
+  resolved: { color: "bg-success/10 text-success border-success/40", label: "Resolved", icon: CheckCircle },
+  rejected: { color: "bg-destructive/10 text-destructive border-destructive/40", label: "Rejected", icon: XCircle },
   escalated: {
-    color: "bg-purple-500/10 text-purple-500 border-purple-500/20",
+    color: "bg-primary/10 text-link border-link/40",
     label: "Escalated",
     icon: AlertTriangle,
   },
@@ -113,16 +113,16 @@ const statusConfig: Record<
 
 const priorityConfig: Record<string, { color: string; label: string }> = {
   low: { color: "bg-muted text-muted-foreground", label: "Low" },
-  medium: { color: "bg-yellow-500/10 text-yellow-500", label: "Medium" },
-  high: { color: "bg-orange-500/10 text-orange-500", label: "High" },
-  critical: { color: "bg-red-500/10 text-red-500", label: "Critical" },
+  medium: { color: "bg-warning/10 text-warning", label: "Medium" },
+  high: { color: "bg-warning/10 text-warning", label: "High" },
+  critical: { color: "bg-destructive/10 text-destructive", label: "Critical" },
 }
 
 const typeConfig: Record<string, { color: string; label: string }> = {
-  trade: { color: "bg-blue-500/10 text-blue-500", label: "Trade Issue" },
-  refund: { color: "bg-green-500/10 text-green-500", label: "Refund Request" },
-  scam: { color: "bg-red-500/10 text-red-500", label: "Scam Report" },
-  quality: { color: "bg-yellow-500/10 text-yellow-500", label: "Quality Issue" },
+  trade: { color: "bg-primary/10 text-link", label: "Trade Issue" },
+  refund: { color: "bg-success/10 text-success", label: "Refund Request" },
+  scam: { color: "bg-destructive/10 text-destructive", label: "Scam Report" },
+  quality: { color: "bg-warning/10 text-warning", label: "Quality Issue" },
 }
 
 type UiDispute = (typeof mockDisputes)[number] & { dbId?: string }
@@ -253,10 +253,10 @@ export default function DisputesPage() {
   })
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="mx-auto w-full max-w-[1440px] space-y-8 p-6 md:p-10">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Disputes</h1>
+          <h1 className="text-[28px] md:text-[34px] font-semibold tracking-[-0.025em]">Disputes</h1>
           <p className="text-muted-foreground">Manage trade disputes and resolution requests</p>
         </div>
       </div>
@@ -266,40 +266,40 @@ export default function DisputesPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Pending</CardTitle>
-            <Clock className="h-4 w-4 text-yellow-500" />
+            <Clock className="h-4 w-4 text-warning" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{disputes.filter((d) => d.status === "in_review").length}</div>
+            <div className="text-2xl font-semibold">{disputes.filter((d) => d.status === "in_review").length}</div>
             <p className="text-xs text-muted-foreground">Awaiting review</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">In Review</CardTitle>
-            <Scale className="h-4 w-4 text-blue-500" />
+            <Scale className="h-4 w-4 text-link" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{disputes.filter((d) => d.status === "in_review").length}</div>
+            <div className="text-2xl font-semibold">{disputes.filter((d) => d.status === "in_review").length}</div>
             <p className="text-xs text-muted-foreground">Being investigated</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Escalated</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-purple-500" />
+            <AlertTriangle className="h-4 w-4 text-link" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{disputes.filter((d) => d.status === "escalated").length}</div>
+            <div className="text-2xl font-semibold">{disputes.filter((d) => d.status === "escalated").length}</div>
             <p className="text-xs text-muted-foreground">Needs attention</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Resolved</CardTitle>
-            <CheckCircle className="h-4 w-4 text-green-500" />
+            <CheckCircle className="h-4 w-4 text-success" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{disputes.filter((d) => d.status === "resolved").length}</div>
+            <div className="text-2xl font-semibold">{disputes.filter((d) => d.status === "resolved").length}</div>
             <p className="text-xs text-muted-foreground">This week</p>
           </CardContent>
         </Card>
@@ -309,7 +309,7 @@ export default function DisputesPage() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-2xl font-semibold">
               $
               {disputes
                 .reduce((sum, d) => sum + parseFloat(d.value.replace("$", "")), 0)
@@ -376,7 +376,7 @@ export default function DisputesPage() {
           filteredDisputes.map((dispute) => {
             const StatusIcon = statusConfig[dispute.status]?.icon || Clock
             return (
-              <Card key={dispute.id} className={dispute.priority === "critical" ? "border-red-500/50" : ""}>
+              <Card key={dispute.id} className={dispute.priority === "critical" ? "border-destructive/40" : ""}>
                 <CardContent className="pt-6">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 space-y-4">
@@ -425,10 +425,10 @@ export default function DisputesPage() {
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium">{dispute.item}</span>
                           <span className="text-sm text-muted-foreground">•</span>
-                          <span className="text-sm font-semibold text-green-500">{dispute.value}</span>
+                          <span className="text-sm font-semibold text-success">{dispute.value}</span>
                         </div>
                         <p className="text-sm text-muted-foreground">{dispute.reason}</p>
-                        {dispute.resolution && <p className="text-sm text-green-600">Resolution: {dispute.resolution}</p>}
+                        {dispute.resolution && <p className="text-sm text-success">Resolution: {dispute.resolution}</p>}
                       </div>
 
                       {/* Meta */}

@@ -1,13 +1,16 @@
+import {
+  deleteKey,
+  isExpiringKeyStoreAvailable,
+  reportExpiringKeyStoreFailure,
+  setIfAbsent,
+  setValue,
+} from "@/lib/expiring-keys"
+
 type CampaignDispatchState = "sent" | "in_flight"
 
 interface MemoryCampaignEntry {
   state: CampaignDispatchState
   expiresAt: number
-}
-
-interface UpstashPipelineResponse {
-  result: number | string | null
-  error?: string
 }
 
 const campaignDispatchStore = new Map<string, MemoryCampaignEntry>()
@@ -27,34 +30,6 @@ function pruneExpiredMemoryEntries() {
 
 function toPositiveMs(value: number): number {
   return Math.max(60_000, Math.floor(value))
-}
-
-function hasUpstashConfig(): boolean {
-  return Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN)
-}
-
-async function runUpstashPipeline(commands: Array<Array<string | number>>): Promise<UpstashPipelineResponse[]> {
-  const upstashRestUrl = process.env.UPSTASH_REDIS_REST_URL
-  const upstashRestToken = process.env.UPSTASH_REDIS_REST_TOKEN
-  if (!upstashRestUrl || !upstashRestToken) {
-    throw new Error("Upstash Redis configuration is missing")
-  }
-
-  const response = await fetch(`${upstashRestUrl}/pipeline`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${upstashRestToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(commands),
-    cache: "no-store",
-  })
-
-  if (!response.ok) {
-    throw new Error(`Upstash request failed with status ${response.status}`)
-  }
-
-  return (await response.json()) as UpstashPipelineResponse[]
 }
 
 function tryAcquireMemory(key: string, ttlMs: number): boolean {
@@ -84,26 +59,21 @@ function clearMemory(key: string) {
   campaignDispatchStore.delete(key)
 }
 
+// Guards live in Postgres (expiring_keys) so every server instance sees them;
+// the in-memory store is only a fallback when the database is unavailable.
+
 export async function tryAcquireCampaignDispatchGuard(key: string, ttlMs: number): Promise<boolean> {
   const safeTtlMs = toPositiveMs(ttlMs)
   const durableKey = namespacedKey(key)
 
-  if (!hasUpstashConfig()) {
+  if (!isExpiringKeyStoreAvailable()) {
     return tryAcquireMemory(durableKey, safeTtlMs)
   }
 
   try {
-    const [setResponse] = await runUpstashPipeline([
-      ["SET", durableKey, "in_flight", "PX", safeTtlMs, "NX"],
-    ])
-
-    if (setResponse?.error) {
-      throw new Error(setResponse.error)
-    }
-
-    return setResponse?.result === "OK"
+    return await setIfAbsent(durableKey, "in_flight", safeTtlMs)
   } catch (error) {
-    console.error("Campaign dedupe Redis acquire failed, falling back to memory store:", error)
+    reportExpiringKeyStoreFailure("Campaign dedupe", error)
     return tryAcquireMemory(durableKey, safeTtlMs)
   }
 }
@@ -112,37 +82,31 @@ export async function markCampaignDispatchDelivered(key: string, ttlMs: number):
   const safeTtlMs = toPositiveMs(ttlMs)
   const durableKey = namespacedKey(key)
 
-  if (!hasUpstashConfig()) {
+  if (!isExpiringKeyStoreAvailable()) {
     markMemoryDelivered(durableKey, safeTtlMs)
     return
   }
 
   try {
-    const [setResponse] = await runUpstashPipeline([["SET", durableKey, "sent", "PX", safeTtlMs]])
-    if (setResponse?.error) {
-      throw new Error(setResponse.error)
-    }
+    await setValue(durableKey, "sent", safeTtlMs)
   } catch (error) {
-    console.error("Campaign dedupe Redis mark-delivered failed, falling back to memory store:", error)
+    reportExpiringKeyStoreFailure("Campaign dedupe", error)
     markMemoryDelivered(durableKey, safeTtlMs)
   }
 }
 
 export async function clearCampaignDispatchGuard(key: string): Promise<void> {
   const durableKey = namespacedKey(key)
+  // Always clear the memory copy too, in case it was written during a database outage
+  clearMemory(durableKey)
 
-  if (!hasUpstashConfig()) {
-    clearMemory(durableKey)
+  if (!isExpiringKeyStoreAvailable()) {
     return
   }
 
   try {
-    const [deleteResponse] = await runUpstashPipeline([["DEL", durableKey]])
-    if (deleteResponse?.error) {
-      throw new Error(deleteResponse.error)
-    }
+    await deleteKey(durableKey)
   } catch (error) {
-    console.error("Campaign dedupe Redis clear failed, falling back to memory store:", error)
-    clearMemory(durableKey)
+    reportExpiringKeyStoreFailure("Campaign dedupe", error)
   }
 }

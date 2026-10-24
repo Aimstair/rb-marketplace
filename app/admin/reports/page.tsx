@@ -151,14 +151,14 @@ export default function ReportsPage() {
     switch (status) {
       case "PENDING":
         return (
-          <Badge variant="outline" className="border-orange-500 text-orange-500">
+          <Badge variant="outline" className="border-warning/40 text-warning">
             <Clock className="h-3 w-3 mr-1" />
             Pending
           </Badge>
         )
       case "RESOLVED":
         return (
-          <Badge className="bg-green-500 text-white">
+          <Badge className="bg-success text-white">
             <CheckCircle className="h-3 w-3 mr-1" />
             Resolved
           </Badge>
@@ -248,11 +248,11 @@ export default function ReportsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="mx-auto w-full max-w-[1440px] space-y-8 p-6 md:p-10">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Reports & Flagged Content</h1>
+          <h1 className="text-[28px] md:text-[34px] font-semibold tracking-[-0.025em]">Reports & Flagged Content</h1>
           <p className="text-muted-foreground">Review and handle user reports</p>
         </div>
         <Button
@@ -270,25 +270,25 @@ export default function ReportsPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold">{stats.total}</p>
+            <p className="text-2xl font-semibold">{stats.total}</p>
             <p className="text-sm text-muted-foreground">Total Reports</p>
           </CardContent>
         </Card>
-        <Card className="border-orange-500/50">
+        <Card className="border-warning/40/50">
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-orange-500">{stats.pending}</p>
+            <p className="text-2xl font-semibold text-warning">{stats.pending}</p>
             <p className="text-sm text-muted-foreground">Pending</p>
           </CardContent>
         </Card>
-        <Card className="border-green-500/50">
+        <Card className="border-success/40">
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-green-500">{stats.resolved}</p>
+            <p className="text-2xl font-semibold text-success">{stats.resolved}</p>
             <p className="text-sm text-muted-foreground">Resolved</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-muted-foreground">{stats.dismissed}</p>
+            <p className="text-2xl font-semibold text-muted-foreground">{stats.dismissed}</p>
             <p className="text-sm text-muted-foreground">Dismissed</p>
           </CardContent>
         </Card>
@@ -343,7 +343,7 @@ export default function ReportsPage() {
             <CardContent className="p-0">
               {loading ? (
                 <div className="flex items-center justify-center h-[400px]">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <Loader2 className="h-8 w-8 animate-spin text-link" />
                 </div>
               ) : (
                 <ScrollArea className="h-[600px]">

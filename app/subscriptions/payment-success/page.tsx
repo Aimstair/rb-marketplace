@@ -24,11 +24,11 @@ export default function PaymentSuccessPage() {
     <div className="min-h-screen flex items-center justify-center bg-background">
       <div className="text-center space-y-4">
         <div className="flex justify-center">
-          <div className="rounded-full bg-green-500/10 p-6">
-            <Check className="w-16 h-16 text-green-500" />
+          <div className="rounded-full bg-success/10 p-6">
+            <Check className="w-16 h-16 text-success" />
           </div>
         </div>
-        <h1 className="text-2xl font-bold">Payment Successful!</h1>
+        <h1 className="text-2xl font-semibold">Payment Successful!</h1>
         <p className="text-muted-foreground">
           Your subscription is being processed.
         </p>
