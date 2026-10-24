@@ -87,21 +87,21 @@ export default function AdminSidebar() {
     <TooltipProvider delayDuration={0}>
       <aside
         className={cn(
-          "fixed top-0 left-0 h-screen bg-card border-r flex flex-col transition-all duration-300 z-40 overflow-y-auto",
+          "sticky top-0 z-40 flex h-screen shrink-0 flex-col overflow-y-auto border-r border-white/[0.08] bg-surface transition-[width] duration-300",
           collapsed ? "w-16" : "w-64",
         )}
       >
         {/* Header */}
         <div
           className={cn(
-            "p-4 border-b flex items-center sticky top-0 bg-card z-10",
+            "sticky top-0 z-10 flex h-[52px] items-center bg-surface px-4",
             collapsed ? "justify-center" : "justify-between",
           )}
         >
           {!collapsed && (
             <div>
-              <h1 className="font-bold text-lg text-primary">Admin Panel</h1>
-              <p className="text-xs text-muted-foreground">RbMarket</p>
+              <p className="text-[15px] font-semibold tracking-[-0.01em]">RbMarket</p>
+              <p className="text-[11px] text-muted-foreground">Admin</p>
             </div>
           )}
           <Button variant="ghost" size="icon" onClick={() => setCollapsed(!collapsed)} className="h-8 w-8">
@@ -110,11 +110,11 @@ export default function AdminSidebar() {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 py-4 space-y-6 px-2">
+        <nav className="flex-1 space-y-6 px-2 py-4">
           {sidebarSections.map((section) => (
             <div key={section.title}>
               {!collapsed && (
-                <p className="px-3 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">
                   {section.title}
                 </p>
               )}
@@ -127,14 +127,14 @@ export default function AdminSidebar() {
                     <Link
                       href={item.href}
                       className={cn(
-                        "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                         isActive
-                          ? "bg-primary text-primary-foreground"
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                          ? "bg-secondary text-foreground"
+                          : "text-muted-foreground hover:bg-white/[0.04] hover:text-foreground",
                         collapsed && "justify-center px-2",
                       )}
                     >
-                      <Icon className="h-4 w-4 flex-shrink-0" />
+                      <Icon className={cn("h-4 w-4 flex-shrink-0", isActive && "text-link")} strokeWidth={1.75} />
                       {!collapsed && <span>{item.label}</span>}
                     </Link>
                   )
@@ -158,7 +158,7 @@ export default function AdminSidebar() {
         </nav>
 
         {/* Footer */}
-        <div className="p-4 border-t space-y-2 sticky bottom-0 bg-card">
+        <div className="sticky bottom-0 space-y-2 border-t border-white/[0.08] bg-surface p-4">
           {collapsed ? (
             <>
               <Tooltip>
@@ -183,8 +183,8 @@ export default function AdminSidebar() {
           ) : (
             <>
               <div className="flex items-center gap-3 px-2 py-2">
-                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                  <span className="text-sm font-semibold text-primary">{user?.username?.charAt(0).toUpperCase()}</span>
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-secondary">
+                  <span className="text-sm font-semibold">{user?.username?.charAt(0).toUpperCase()}</span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{user?.username}</p>
@@ -193,7 +193,7 @@ export default function AdminSidebar() {
               </div>
               <div className="flex gap-2">
                 <Link href="/" className="flex-1">
-                  <Button variant="outline" size="sm" className="w-full bg-transparent">
+                  <Button variant="secondary" size="sm" className="w-full">
                     <Home className="h-4 w-4 mr-2" />
                     Site
                   </Button>

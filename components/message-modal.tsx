@@ -160,7 +160,7 @@ export default function MessageModal({
                 className="w-10 h-10 rounded-full object-cover"
               />
               <div>
-                <h2 className="font-bold">{seller.username}</h2>
+                <h2 className="font-semibold">{seller.username}</h2>
                 <p className="text-xs text-muted-foreground">{seller.lastActive}</p>
               </div>
             </div>
@@ -183,7 +183,7 @@ export default function MessageModal({
                   <span className="text-muted-foreground">
                     Buying: {purchaseDetails.amount.toLocaleString()} {currencyType}
                   </span>
-                  <span className="text-primary font-semibold">₱{purchaseDetails.cost.toLocaleString()}</span>
+                  <span className="text-link font-semibold">₱{purchaseDetails.cost.toLocaleString()}</span>
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground">₱{listing.price.toLocaleString()}</p>

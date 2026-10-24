@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-import Navigation from "@/components/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
@@ -38,6 +37,7 @@ import {
 import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
 import { Textarea } from "@/components/ui/textarea"
 import { Skeleton } from "@/components/ui/skeleton"
+import { MessagesSkeleton } from "@/components/site/skeletons"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -112,13 +112,13 @@ type Message = {
 const getStatusBadge = (status: "ongoing" | "completed" | "sold" | "cancelled") => {
   switch (status) {
     case "ongoing":
-      return { label: "Ongoing", className: "bg-yellow-500/20 text-yellow-600 border-yellow-500/30" }
+      return { label: "Ongoing", className: "bg-warning/20 text-warning border-warning/40" }
     case "completed":
-      return { label: "Completed", className: "bg-green-500/20 text-green-600 border-green-500/30" }
+      return { label: "Completed", className: "bg-success/20 text-success border-success/40" }
     case "sold":
-      return { label: "Sold", className: "bg-red-500/20 text-red-600 border-red-500/30" }
+      return { label: "Sold", className: "bg-destructive/20 text-destructive border-destructive/40" }
     case "cancelled":
-      return { label: "Cancelled", className: "bg-red-500/20 text-red-600 border-red-500/30" }
+      return { label: "Cancelled", className: "bg-destructive/20 text-destructive border-destructive/40" }
   }
 }
 
@@ -866,46 +866,7 @@ export default function MessagesPage() {
   }
 
   if (isAuthLoading || !user) {
-    return (
-      <>
-        <Navigation />
-        <main className="container max-w-[1920px] mx-auto px-6 py-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-[700px]">
-            {/* Conversations List Skeleton */}
-            <div className="md:col-span-1 border rounded-lg bg-card overflow-hidden flex flex-col p-4 space-y-4">
-              <Skeleton className="h-10 w-full mb-4" />
-              {[1, 2, 3, 4, 5, 6].map(i => (
-                <div key={i} className="flex gap-4 items-center">
-                  <Skeleton className="w-12 h-12 rounded-full flex-shrink-0" />
-                  <div className="space-y-2 flex-1">
-                    <Skeleton className="h-4 w-3/4" />
-                    <Skeleton className="h-3 w-1/2" />
-                  </div>
-                </div>
-              ))}
-            </div>
-            
-            {/* Chat Area Skeleton */}
-            <div className="md:col-span-2 border rounded-lg bg-card overflow-hidden flex flex-col">
-              <div className="p-4 border-b flex justify-between items-center">
-                <Skeleton className="h-6 w-1/3" />
-                <Skeleton className="h-8 w-24" />
-              </div>
-              <div className="flex-1 p-4 flex flex-col justify-end space-y-4">
-                {[1, 2].map((i) => (
-                  <div key={i} className={`flex ${i % 2 === 0 ? 'justify-end' : 'justify-start'}`}>
-                    <Skeleton className="h-16 w-64 rounded-lg" />
-                  </div>
-                ))}
-              </div>
-              <div className="p-4 border-t mt-auto">
-                <Skeleton className="h-12 w-full rounded-md" />
-              </div>
-            </div>
-          </div>
-        </main>
-      </>
-    )
+    return <MessagesSkeleton />
   }
 
   const handleSendMessage = async () => {
@@ -1674,13 +1635,12 @@ export default function MessagesPage() {
 
   return (
     <>
-      <Navigation />
-      <main className="container max-w-[1920px] mx-auto px-6 py-8">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-[700px]">
+      <main className="mx-auto w-full max-w-[1440px] px-5 md:px-8 lg:px-10 py-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:h-[calc(100dvh-52px-4rem)] md:min-h-[560px]">
           {/* Contacts List */}
-          <div className="md:col-span-1 border rounded-lg bg-card overflow-hidden flex flex-col">
+          <div className="md:col-span-1 rounded-[20px] bg-card overflow-hidden flex flex-col max-md:h-[420px]">
             <div className="p-4 border-b">
-              <h2 className="font-semibold text-lg mb-3">Recent Contacts</h2>
+              <h1 className="mb-3 text-[22px] font-semibold tracking-[-0.02em]">Messages</h1>
               <div className="relative mb-3">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
@@ -1701,7 +1661,7 @@ export default function MessagesPage() {
                     </span>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-48 bg-background/95 backdrop-blur-sm">
+                <DropdownMenuContent align="start" className="w-48">
                   <DropdownMenuItem onClick={() => setStatusFilter("all")}>All Status</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setStatusFilter("ongoing")}>Ongoing</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setStatusFilter("completed")}>Completed</DropdownMenuItem>
@@ -1741,31 +1701,29 @@ export default function MessagesPage() {
                     <button
                       key={contact.id}
                       onClick={() => handleSelectContact(contact)}
-                      className={`w-full p-4 border-b text-left hover:bg-muted transition ${
-                        selectedContact?.id === contact.id ? "bg-muted border-l-2 border-l-primary" : ""
-                      } ${contact.blocked ? "opacity-50" : ""} ${
-                        hasUnread ? "bg-primary/5 border-l-2 border-l-primary" : ""
-                      }`}
+                      className={`w-full px-4 py-3 border-b border-white/[0.06] text-left transition-colors hover:bg-white/[0.04] ${
+                        selectedContact?.id === contact.id ? "bg-secondary hover:bg-secondary" : hasUnread ? "bg-link/[0.06]" : ""
+                      } ${contact.blocked ? "opacity-50" : ""}`}
                     >
                       <div className="flex items-start gap-3">
                         <img
                           src={contact.item.image || "/placeholder.svg"}
                           alt={contact.item.title}
-                          className="w-10 h-10 rounded object-cover shrink-0"
+                          className="size-11 rounded-xl bg-secondary object-cover shrink-0"
                         />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2">
                             <p className="font-medium truncate flex items-center gap-2">
                               {contact.name}
-                              {contact.blocked && <Ban className="w-3 h-3 text-red-500" />}
+                              {contact.blocked && <Ban className="w-3 h-3 text-destructive" />}
                               {contact.unreadCount > 0 && (
-                                <span className="ml-1 px-1.5 py-0.5 bg-primary text-primary-foreground text-xs rounded-full font-bold">
+                                <span className="ml-1 min-w-[18px] px-1.5 py-0.5 bg-link text-black text-[11px] leading-none rounded-full font-semibold text-center tabular-nums">
                                   {contact.unreadCount}
                                 </span>
                               )}
                             </p>
                             {contact.online && !contact.blocked && (
-                              <div className="w-2 h-2 bg-green-500 rounded-full shrink-0"></div>
+                              <div className="w-2 h-2 bg-success rounded-full shrink-0"></div>
                             )}
                           </div>
                           <p className="text-xs text-muted-foreground truncate">{contact.item.title}</p>
@@ -1788,7 +1746,7 @@ export default function MessagesPage() {
           </div>
 
           {/* Chat Area */}
-          <div className="md:col-span-2 border rounded-lg bg-card flex flex-col h-[700px]">
+          <div className="md:col-span-2 rounded-[20px] bg-card overflow-hidden flex flex-col h-[calc(100dvh-52px-4rem)] min-h-[560px] md:h-full">
             {selectedContact ? (
               <>
                 <div className="p-4 border-b flex items-center justify-between">
@@ -1862,19 +1820,13 @@ export default function MessagesPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() => setShowBlockModal(true)}
-                          className={selectedContact.blocked ? "text-green-600" : "text-orange-600"}
-                        >
-                          <Ban className="w-4 h-4 mr-2" />
-                          {selectedContact.blocked ? "Unblock User" : "Block User"}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setShowReportModal(true)} className="text-red-600">
+                        {/* Block is hidden until blocking is stored server-side; it only changed local state. */}
+                        <DropdownMenuItem onClick={() => setShowReportModal(true)} className="text-destructive">
                           <Flag className="w-4 h-4 mr-2" />
                           Report User
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => setShowDeleteModal(true)} className="text-red-600">
+                        <DropdownMenuItem onClick={() => setShowDeleteModal(true)} className="text-destructive">
                           <Trash2 className="w-4 h-4 mr-2" />
                           Delete Chat
                         </DropdownMenuItem>
@@ -1900,7 +1852,7 @@ export default function MessagesPage() {
                       </div>
                       <p className="font-semibold truncate">{selectedContact.item.title}</p>
                       <div className="flex flex-col gap-0.5">
-                        <p className="text-primary font-bold">
+                        <p className="text-link font-semibold">
                           PHP {(transaction?.price ?? selectedContact.item.price).toLocaleString()}
                         </p>
                         {transaction?.amount && (
@@ -1931,12 +1883,12 @@ export default function MessagesPage() {
                         <div className="flex items-center gap-4 text-sm">
                           <div className="flex items-center gap-2">
                             <CheckCircle
-                              className={`w-4 h-4 ${transaction.buyerConfirmed ? "text-green-500" : "text-muted-foreground"}`}
+                              className={`w-4 h-4 ${transaction.buyerConfirmed ? "text-success" : "text-muted-foreground"}`}
                             />
                             <span
                               className={
                                 transaction.buyerConfirmed
-                                  ? "text-green-600"
+                                  ? "text-success"
                                   : "text-muted-foreground"
                               }
                             >
@@ -1949,12 +1901,12 @@ export default function MessagesPage() {
                           </div>
                           <div className="flex items-center gap-2">
                             <CheckCircle
-                              className={`w-4 h-4 ${transaction.sellerConfirmed ? "text-green-500" : "text-muted-foreground"}`}
+                              className={`w-4 h-4 ${transaction.sellerConfirmed ? "text-success" : "text-muted-foreground"}`}
                             />
                             <span
                               className={
                                 transaction.sellerConfirmed
-                                  ? "text-green-600"
+                                  ? "text-success"
                                   : "text-muted-foreground"
                               }
                             >
@@ -1970,7 +1922,7 @@ export default function MessagesPage() {
                           {transaction.status === "COMPLETED" ? (
                             <>
                               {transaction.userVouched ? (
-                                <Badge variant="outline" className="bg-green-500/20 text-green-600">
+                                <Badge variant="outline" className="bg-success/20 text-success">
                                   <CheckCircle className="w-3 h-3 mr-1" />
                                   Vouched
                                 </Badge>
@@ -2023,7 +1975,7 @@ export default function MessagesPage() {
                               </Button>
                             </>
                           ) : transaction.status === "CANCELLED" ? (
-                            <span className="text-sm text-red-500 flex items-center gap-1">
+                            <span className="text-sm text-destructive flex items-center gap-1">
                               <AlertTriangle className="w-4 h-4" />
                               Transaction cancelled
                             </span>
@@ -2031,12 +1983,12 @@ export default function MessagesPage() {
                         </div>
                       </>
                     ) : selectedContact.status === "sold" ? (
-                      <div className="flex items-center gap-2 text-sm text-orange-600 bg-orange-500/10 px-3 py-2 rounded-lg">
+                      <div className="flex items-center gap-2 text-sm text-warning bg-warning/10 px-3 py-2 rounded-lg">
                         <AlertTriangle className="w-4 h-4" />
                         Item sold to another user
                       </div>
                     ) : selectedContact.status === "cancelled" ? (
-                      <div className="flex items-center gap-2 text-sm text-red-600 bg-red-500/10 px-3 py-2 rounded-lg">
+                      <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-lg">
                         <Ban className="w-4 h-4" />
                         Transaction cancelled
                       </div>
@@ -2062,7 +2014,7 @@ export default function MessagesPage() {
                   ) : selectedContact.blocked ? (
                     <div className="h-full flex items-center justify-center text-muted-foreground">
                       <div className="text-center">
-                        <Ban className="w-12 h-12 mx-auto mb-2 opacity-50 text-red-500" />
+                        <Ban className="w-12 h-12 mx-auto mb-2 opacity-50 text-destructive" />
                         <p>You have blocked this user</p>
                         <p className="text-sm">Unblock to continue the conversation</p>
                       </div>
@@ -2122,14 +2074,14 @@ export default function MessagesPage() {
                               }`}
                             >
                               <div className="flex items-center gap-2 mb-2">
-                                <DollarSign className="w-4 h-4 text-primary" />
+                                <DollarSign className="w-4 h-4 text-link" />
                                 <span className="text-sm font-medium">Counteroffer</span>
                               </div>
-                              <p className="text-2xl font-bold text-primary">₱{msg.offerAmount?.toLocaleString()}</p>
+                              <p className="text-2xl font-semibold text-link">₱{msg.offerAmount?.toLocaleString()}</p>
                               <p className="text-xs text-muted-foreground mt-1">{msg.timestamp}</p>
                               {msg.offerStatus === "pending" && msg.sender !== "buyer" && (
                                 <>
-                                  <Badge variant="outline" className="mt-2 bg-yellow-500/20 text-yellow-600">
+                                  <Badge variant="outline" className="mt-2 bg-warning/20 text-warning">
                                     Pending
                                   </Badge>
                                   <div className="flex gap-2 mt-3">
@@ -2153,22 +2105,20 @@ export default function MessagesPage() {
                                 </>
                               )}
                               {msg.offerStatus === "accepted" && (
-                                <Badge variant="outline" className="mt-2 bg-green-500/20 text-green-600">
+                                <Badge variant="outline" className="mt-2 bg-success/20 text-success">
                                   Accepted
                                 </Badge>
                               )}
                               {msg.offerStatus === "declined" && (
-                                <Badge variant="outline" className="mt-2 bg-red-500/20 text-red-600">
+                                <Badge variant="outline" className="mt-2 bg-destructive/20 text-destructive">
                                   Declined
                                 </Badge>
                               )}
                             </div>
                           ) : msg.type === "image" ? (
                             <div
-                              className={`max-w-xs p-2 rounded-lg ${
-                                msg.sender === "buyer"
-                                  ? "bg-primary text-primary-foreground"
-                                  : "bg-muted text-foreground"
+                              className={`max-w-[75%] sm:max-w-xs overflow-hidden rounded-[20px] p-1 ${
+                                msg.sender === "buyer" ? "bg-primary text-white rounded-br-md" : "bg-secondary text-foreground rounded-bl-md"
                               }`}
                             >
                               <img
@@ -2181,13 +2131,11 @@ export default function MessagesPage() {
                             </div>
                           ) : (
                             <div
-                              className={`max-w-xs p-3 rounded-lg ${
-                                msg.sender === "buyer"
-                                  ? "bg-primary text-primary-foreground"
-                                  : "bg-muted text-foreground"
+                              className={`max-w-[75%] sm:max-w-sm rounded-[20px] px-3.5 py-2 ${
+                                msg.sender === "buyer" ? "bg-primary text-white rounded-br-md" : "bg-secondary text-foreground rounded-bl-md"
                               }`}
                             >
-                              <p className="text-sm">{msg.text}</p>
+                              <p className="text-[15px] leading-snug whitespace-pre-wrap break-words">{msg.text}</p>
                               <p className="text-xs mt-1 opacity-70">{msg.timestamp}</p>
                             </div>
                           )}
@@ -2315,19 +2263,19 @@ export default function MessagesPage() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <label className="text-sm font-medium mb-2 block">Rating</label>
+              <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Rating</label>
               <div className="flex gap-1">
                 {[1, 2, 3, 4, 5].map((star) => (
                   <button key={star} onClick={() => setVouchRating(star)} className="p-1 hover:scale-110 transition">
                     <Star
-                      className={`w-6 h-6 ${star <= vouchRating ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground"}`}
+                      className={`w-6 h-6 ${star <= vouchRating ? "fill-warning text-warning" : "text-muted-foreground"}`}
                     />
                   </button>
                 ))}
               </div>
             </div>
             <div>
-              <label className="text-sm font-medium mb-2 block">Message (optional)</label>
+              <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Message (optional)</label>
               <Textarea
                 placeholder="Great trader, fast and reliable!"
                 value={vouchMessage}
@@ -2357,7 +2305,7 @@ export default function MessagesPage() {
       <Dialog open={showReportModal} onOpenChange={setShowReportModal}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-600">
+            <DialogTitle className="flex items-center gap-2 text-destructive">
               <Flag className="w-5 h-5" />
               Report {selectedContact?.name}
             </DialogTitle>
@@ -2368,11 +2316,11 @@ export default function MessagesPage() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <label className="text-sm font-medium mb-2 block">Reason for Report *</label>
+              <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Reason for Report *</label>
               <select
                 value={reportReason}
                 onChange={(e) => setReportReason(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg bg-background"
+                className="w-full h-10 rounded-xl border border-input bg-card px-3.5 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/40"
               >
                 <option value="">Select a reason</option>
                 {reportReasons.map((reason) => (
@@ -2383,7 +2331,7 @@ export default function MessagesPage() {
               </select>
             </div>
             <div>
-              <label className="text-sm font-medium mb-2 block">Additional Details</label>
+              <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Additional Details</label>
               <Textarea
                 placeholder="Provide more details about the issue..."
                 value={reportDetails}
@@ -2436,7 +2384,7 @@ export default function MessagesPage() {
       <Dialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-600">
+            <DialogTitle className="flex items-center gap-2 text-destructive">
               <Trash2 className="w-5 h-5" />
               Delete Chat with {selectedContact?.name}?
             </DialogTitle>

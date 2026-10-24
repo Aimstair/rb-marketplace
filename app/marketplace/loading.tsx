@@ -1,3 +1,5 @@
+import { MarketplaceSkeleton } from "@/components/site/skeletons"
+
 export default function Loading() {
-  return null
+  return <MarketplaceSkeleton />
 }

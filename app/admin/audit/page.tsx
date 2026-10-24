@@ -79,12 +79,12 @@ export default function AuditLogsPage() {
         document.body.removeChild(a)
 
         toast({
-          title: "✅ Export Successful",
+          title: "Export Successful",
           description: "Audit logs have been exported to CSV",
         })
       } else {
         toast({
-          title: "❌ Export Failed",
+          title: "Export Failed",
           description: result.error || "Failed to export audit logs",
           variant: "destructive",
         })
@@ -92,7 +92,7 @@ export default function AuditLogsPage() {
     } catch (err) {
       console.error("Failed to export logs:", err)
       toast({
-        title: "❌ Error",
+        title: "Error",
         description: "An unexpected error occurred during export",
         variant: "destructive",
       })
@@ -148,33 +148,33 @@ export default function AuditLogsPage() {
       case "USER_BANNED":
         return <Badge variant="destructive">User Banned</Badge>
       case "USER_UNBANNED":
-        return <Badge className="bg-green-500 text-white">User Unbanned</Badge>
+        return <Badge className="bg-success text-white">User Unbanned</Badge>
       case "USER_MUTED":
-        return <Badge className="bg-orange-500 text-white">User Muted</Badge>
+        return <Badge className="bg-warning text-white">User Muted</Badge>
       case "LISTING_REMOVED":
         return <Badge variant="destructive">Listing Removed</Badge>
       case "VOUCH_INVALIDATED":
-        return <Badge className="bg-orange-500 text-white">Vouch Invalidated</Badge>
+        return <Badge className="bg-warning text-white">Vouch Invalidated</Badge>
       case "VOUCH_APPROVED":
-        return <Badge className="bg-green-500 text-white">Vouch Approved</Badge>
+        return <Badge className="bg-success text-white">Vouch Approved</Badge>
       case "VOUCH_PATTERN_INVALIDATED":
         return <Badge variant="destructive">Pattern Invalidated</Badge>
       case "USER_WARNING":
-        return <Badge className="bg-yellow-500 text-white">Warning Issued</Badge>
+        return <Badge className="bg-warning text-white">Warning Issued</Badge>
       case "ADMIN_LOGIN":
         return <Badge variant="outline">Admin Login</Badge>
       case "SUBSCRIPTION_MODIFIED":
-        return <Badge className="bg-blue-500 text-white">Subscription Modified</Badge>
+        return <Badge className="bg-primary text-white">Subscription Modified</Badge>
       case "USER_ROLE_UPDATED":
-        return <Badge className="bg-purple-500 text-white">Role Updated</Badge>
+        return <Badge className="bg-primary text-white">Role Updated</Badge>
       case "SETTINGS_CHANGED":
         return <Badge variant="secondary">Settings Changed</Badge>
       case "DISPUTE_RESOLVED":
-        return <Badge className="bg-green-500 text-white">Dispute Resolved</Badge>
+        return <Badge className="bg-success text-white">Dispute Resolved</Badge>
       case "TICKET_CLOSED":
-        return <Badge className="bg-blue-500 text-white">Ticket Closed</Badge>
+        return <Badge className="bg-primary text-white">Ticket Closed</Badge>
       case "ANNOUNCEMENT_CREATED":
-        return <Badge className="bg-cyan-500 text-white">Announcement Created</Badge>
+        return <Badge className="bg-link text-white">Announcement Created</Badge>
       case "ANNOUNCEMENT_DELETED":
         return <Badge variant="destructive">Announcement Deleted</Badge>
       default:
@@ -198,10 +198,10 @@ export default function AuditLogsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="mx-auto w-full max-w-[1440px] space-y-8 p-6 md:p-10">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold">Audit Logs</h1>
+        <h1 className="text-[28px] md:text-[34px] font-semibold tracking-[-0.025em]">Audit Logs</h1>
         <p className="text-muted-foreground">Track all admin actions and system changes</p>
       </div>
 
@@ -283,7 +283,7 @@ export default function AuditLogsPage() {
         <CardContent>
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              <Loader2 className="w-8 h-8 animate-spin text-link" />
             </div>
           ) : (
             <ScrollArea className="h-[600px]">

@@ -1,13 +1,15 @@
+import type { Metadata } from "next"
 import Link from "next/link"
-import Navigation from "@/components/navigation"
 import { getPublishedPosts } from "@/app/actions/blog"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
-export const metadata = {
-  title: "Blog & Guides | RBMarketplace",
-  description: "Learn how to safely buy and sell Roblox items, pets, and currencies for real cash.",
+export const metadata: Metadata = {
+  title: "Roblox Trading Guides: Buy, Sell & Stay Safe",
+  description: "Guides to buying and selling Roblox items, pets and currency in the Philippines: pricing, GCash payments and how to avoid scams.",
+  alternates: { canonical: "/blog" },
+  openGraph: { url: "/blog", type: "website" },
 }
 
 export default async function BlogPage() {
@@ -15,13 +17,12 @@ export default async function BlogPage() {
 
   return (
     <main className="min-h-screen bg-background">
-      <Navigation />
       
       {/* Hero Section */}
-      <div className="bg-muted/30 py-16 md:py-24 border-b">
-        <div className="container max-w-[1920px] mx-auto px-6">
+      <div className="bg-surface py-16 md:py-24 border-b border-white/[0.08]">
+        <div className="mx-auto w-full max-w-[1440px] px-5 md:px-8 lg:px-10">
           <div className="max-w-3xl">
-            <h1 className="text-4xl md:text-5xl font-bold mb-4">Marketplace Guides & Insights</h1>
+            <h1 className="text-title mb-4">Roblox trading guides</h1>
             <p className="text-lg text-muted-foreground">
               Master the Roblox economy. Learn the safest ways to sell items for cash, track trends, and avoid scams.
             </p>
@@ -30,7 +31,7 @@ export default async function BlogPage() {
       </div>
 
       {/* Post Grid */}
-      <div className="container max-w-[1920px] mx-auto px-6 py-12">
+      <div className="mx-auto w-full max-w-[1440px] px-5 md:px-8 lg:px-10 pt-10 pb-16 md:pt-14 md:pb-20">
         {posts.length === 0 ? (
           <div className="text-center py-20 text-muted-foreground border rounded-xl border-dashed">
             <p>No guides published yet. Check back soon!</p>
@@ -45,7 +46,7 @@ export default async function BlogPage() {
                       <img 
                         src={post.image} 
                         alt={post.title} 
-                        className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-500"
+                        className="object-cover w-full h-full transition-transform duration-500"
                       />
                     </div>
                   ) : (
@@ -60,7 +61,7 @@ export default async function BlogPage() {
                         {new Date(post.createdAt).toLocaleDateString()}
                       </span>
                     </div>
-                    <h2 className="text-xl font-bold line-clamp-2 group-hover:text-primary transition-colors">
+                    <h2 className="text-xl font-semibold line-clamp-2 group-hover:text-link transition-colors">
                       {post.title}
                     </h2>
                   </CardHeader>

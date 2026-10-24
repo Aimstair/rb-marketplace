@@ -307,9 +307,9 @@ export default function AdminGiveawaysPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="mx-auto w-full max-w-[1440px] space-y-8 p-6 md:p-10">
       <div>
-        <h1 className="text-3xl font-bold">Giveaway Management</h1>
+        <h1 className="text-[28px] md:text-[34px] font-semibold tracking-[-0.025em]">Giveaway Management</h1>
         <p className="text-muted-foreground">Create giveaways, manage participants, and control lifecycle states.</p>
       </div>
 

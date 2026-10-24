@@ -38,18 +38,18 @@ import { useSession } from "next-auth/react"
 
 const typeConfig: Record<string, { icon: React.ComponentType<{ className?: string }>; color: string; label: string }> =
   {
-    maintenance: { icon: AlertTriangle, color: "bg-yellow-500/10 text-yellow-500", label: "Maintenance" },
-    update: { icon: Sparkles, color: "bg-blue-500/10 text-blue-500", label: "Update" },
-    event: { icon: Calendar, color: "bg-green-500/10 text-green-500", label: "Event" },
-    warning: { icon: AlertTriangle, color: "bg-red-500/10 text-red-500", label: "Warning" },
+    maintenance: { icon: AlertTriangle, color: "bg-warning/10 text-warning", label: "Maintenance" },
+    update: { icon: Sparkles, color: "bg-primary/10 text-link", label: "Update" },
+    event: { icon: Calendar, color: "bg-success/10 text-success", label: "Event" },
+    warning: { icon: AlertTriangle, color: "bg-destructive/10 text-destructive", label: "Warning" },
     info: { icon: Info, color: "bg-muted text-muted-foreground", label: "Info" },
   }
 
 const statusConfig: Record<string, { color: string; label: string }> = {
-  active: { color: "bg-green-500/10 text-green-500 border-green-500/20", label: "Active" },
-  scheduled: { color: "bg-blue-500/10 text-blue-500 border-blue-500/20", label: "Scheduled" },
+  active: { color: "bg-success/10 text-success border-success/40", label: "Active" },
+  scheduled: { color: "bg-primary/10 text-link border-link/40", label: "Scheduled" },
   expired: { color: "bg-muted text-muted-foreground border-border", label: "Expired" },
-  draft: { color: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20", label: "Draft" },
+  draft: { color: "bg-warning/10 text-warning border-warning/40", label: "Draft" },
 }
 
 export default function AnnouncementsPage() {
@@ -281,10 +281,10 @@ export default function AnnouncementsPage() {
   })
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto w-full max-w-[1440px] space-y-8 p-6 md:p-10">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Announcements</h1>
+          <h1 className="text-[28px] md:text-[34px] font-semibold tracking-[-0.025em]">Announcements</h1>
           <p className="text-muted-foreground">Create and manage platform announcements</p>
         </div>
         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
@@ -363,19 +363,19 @@ export default function AnnouncementsPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active</CardTitle>
-            <Eye className="h-4 w-4 text-green-500" />
+            <Eye className="h-4 w-4 text-success" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{announcements.filter((a) => a.status === "active").length}</div>
+            <div className="text-2xl font-semibold">{announcements.filter((a) => a.status === "active").length}</div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Scheduled</CardTitle>
-            <Calendar className="h-4 w-4 text-blue-500" />
+            <Calendar className="h-4 w-4 text-link" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{announcements.filter((a) => a.status === "scheduled").length}</div>
+            <div className="text-2xl font-semibold">{announcements.filter((a) => a.status === "scheduled").length}</div>
           </CardContent>
         </Card>
         <Card>
@@ -384,7 +384,7 @@ export default function AnnouncementsPage() {
             <EyeOff className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{announcements.filter((a) => a.status === "expired").length}</div>
+            <div className="text-2xl font-semibold">{announcements.filter((a) => a.status === "expired").length}</div>
           </CardContent>
         </Card>
         <Card>
@@ -393,7 +393,7 @@ export default function AnnouncementsPage() {
             <Megaphone className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{announcements.length}</div>
+            <div className="text-2xl font-semibold">{announcements.length}</div>
           </CardContent>
         </Card>
       </div>

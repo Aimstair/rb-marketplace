@@ -251,9 +251,9 @@ export default function VouchesPage() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "valid":
-        return <Badge className="bg-green-500 text-white">Valid</Badge>
+        return <Badge className="bg-success text-white">Valid</Badge>
       case "suspicious":
-        return <Badge className="bg-orange-500 text-white">Suspicious</Badge>
+        return <Badge className="bg-warning text-white">Suspicious</Badge>
       case "invalid":
         return <Badge variant="destructive">Invalid</Badge>
       default:
@@ -264,21 +264,21 @@ export default function VouchesPage() {
   const getSeverityColor = (severity: string) => {
     switch (severity) {
       case "high":
-        return "text-red-500"
+        return "text-destructive"
       case "medium":
-        return "text-orange-500"
+        return "text-warning"
       case "low":
-        return "text-yellow-500"
+        return "text-warning"
       default:
         return "text-muted-foreground"
     }
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="mx-auto w-full max-w-[1440px] space-y-8 p-6 md:p-10">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold">Vouch Moderation</h1>
+        <h1 className="text-[28px] md:text-[34px] font-semibold tracking-[-0.025em]">Vouch Moderation</h1>
         <p className="text-muted-foreground">Detect fake vouches, circular patterns, and vouch abuse</p>
       </div>
 
@@ -289,7 +289,7 @@ export default function VouchesPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total Vouches</p>
-                <p className="text-2xl font-bold">{stats.total}</p>
+                <p className="text-2xl font-semibold">{stats.total}</p>
               </div>
               <Award className="h-8 w-8 text-muted-foreground" />
             </div>
@@ -300,36 +300,36 @@ export default function VouchesPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Valid</p>
-                <p className="text-2xl font-bold text-green-500">{stats.valid}</p>
+                <p className="text-2xl font-semibold text-success">{stats.valid}</p>
               </div>
-              <div className="h-8 w-8 rounded-full bg-green-500/10 flex items-center justify-center">
-                <Award className="h-5 w-5 text-green-500" />
+              <div className="h-8 w-8 rounded-full bg-success/10 flex items-center justify-center">
+                <Award className="h-5 w-5 text-success" />
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-orange-500/50">
+        <Card className="border-warning/40/50">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Suspicious</p>
-                <p className="text-2xl font-bold text-orange-500">{stats.suspicious}</p>
+                <p className="text-2xl font-semibold text-warning">{stats.suspicious}</p>
               </div>
-              <div className="h-8 w-8 rounded-full bg-orange-500/10 flex items-center justify-center">
-                <AlertTriangle className="h-5 w-5 text-orange-500" />
+              <div className="h-8 w-8 rounded-full bg-warning/10 flex items-center justify-center">
+                <AlertTriangle className="h-5 w-5 text-warning" />
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-red-500/50">
+        <Card className="border-destructive/40">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Invalid</p>
-                <p className="text-2xl font-bold text-red-500">{stats.invalid}</p>
+                <p className="text-2xl font-semibold text-destructive">{stats.invalid}</p>
               </div>
-              <div className="h-8 w-8 rounded-full bg-red-500/10 flex items-center justify-center">
-                <XCircle className="h-5 w-5 text-red-500" />
+              <div className="h-8 w-8 rounded-full bg-destructive/10 flex items-center justify-center">
+                <XCircle className="h-5 w-5 text-destructive" />
               </div>
             </div>
           </CardContent>
@@ -340,10 +340,10 @@ export default function VouchesPage() {
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
           {/* Suspicious Patterns Alert */}
-          <Card className="border-orange-500/50">
+          <Card className="border-warning/40/50">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-orange-500" />
+                <AlertTriangle className="h-5 w-5 text-warning" />
                 Detected Suspicious Patterns
               </CardTitle>
               <CardDescription>AI-detected vouch abuse patterns requiring review</CardDescription>
@@ -351,7 +351,7 @@ export default function VouchesPage() {
             <CardContent>
               {loading ? (
                 <div className="flex items-center justify-center py-8">
-                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                  <Loader2 className="w-8 h-8 animate-spin text-link" />
                 </div>
               ) : suspiciousPatterns.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
@@ -361,10 +361,10 @@ export default function VouchesPage() {
               ) : (
                 <div className="space-y-3">
                   {suspiciousPatterns.map((pattern) => (
-                    <div key={pattern.id} className="p-4 border rounded-lg bg-orange-500/5 border-orange-500/20">
+                    <div key={pattern.id} className="p-4 border rounded-lg bg-warning/5 border-warning/40/20">
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex items-center gap-2">
-                          <Network className="h-4 w-4 text-orange-500" />
+                          <Network className="h-4 w-4 text-warning" />
                           <span className="font-medium capitalize">{pattern.type} Pattern</span>
                           <Badge className={getSeverityColor(pattern.severity)} variant="outline">
                             {pattern.severity}
@@ -421,13 +421,13 @@ export default function VouchesPage() {
             <CardContent className="overflow-hidden">
               {loading ? (
                 <div className="flex items-center justify-center py-12">
-                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                  <Loader2 className="w-8 h-8 animate-spin text-link" />
                 </div>
               ) : (
                 <ChartContainer
                   config={{
-                    vouches: { label: "Total Vouches", color: "hsl(var(--chart-1))" },
-                    invalid: { label: "Invalid", color: "hsl(var(--chart-4))" },
+                    vouches: { label: "Total Vouches", color: "var(--chart-1)" },
+                    invalid: { label: "Invalid", color: "var(--chart-4)" },
                   }}
                   className="h-[200px] min-w-0"
                 >
@@ -437,8 +437,8 @@ export default function VouchesPage() {
                       <XAxis dataKey="date" className="text-xs" />
                       <YAxis className="text-xs" />
                       <ChartTooltip content={<ChartTooltipContent />} />
-                      <Line type="monotone" dataKey="vouches" stroke="hsl(var(--chart-1))" strokeWidth={2} />
-                      <Line type="monotone" dataKey="invalid" stroke="hsl(var(--chart-4))" strokeWidth={2} />
+                      <Line type="monotone" dataKey="vouches" stroke="var(--chart-1)" strokeWidth={2} />
+                      <Line type="monotone" dataKey="invalid" stroke="var(--chart-4)" strokeWidth={2} />
                     </LineChart>
                   </ResponsiveContainer>
                 </ChartContainer>
@@ -482,7 +482,7 @@ export default function VouchesPage() {
               <ScrollArea className="h-[400px]">
                 {loading ? (
                   <div className="flex items-center justify-center py-12">
-                    <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                    <Loader2 className="w-8 h-8 animate-spin text-link" />
                   </div>
                 ) : vouches.length === 0 ? (
                   <div className="p-8 text-center text-muted-foreground">
@@ -497,8 +497,8 @@ export default function VouchesPage() {
                         onClick={() => setSelectedVouch(vouch)}
                         className={`p-4 border rounded-lg cursor-pointer transition-colors hover:bg-muted/50 ${
                           selectedVouch?.id === vouch.id ? "border-primary bg-muted/50" : ""
-                        } ${vouch.status === "suspicious" ? "border-orange-500/50" : ""} ${
-                          vouch.status === "invalid" ? "border-red-500/50 bg-red-500/5" : ""
+                        } ${vouch.status === "suspicious" ? "border-warning/40/50" : ""} ${
+                          vouch.status === "invalid" ? "border-destructive/40 bg-destructive/5" : ""
                         }`}
                       >
                         <div className="flex items-center justify-between mb-2">
@@ -607,7 +607,7 @@ export default function VouchesPage() {
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Rating</p>
                     <div className="flex items-center gap-1">
-                      <Star className="h-4 w-4 fill-yellow-500 text-yellow-500" />
+                      <Star className="h-4 w-4 fill-warning text-warning" />
                       <span className="text-sm">{selectedVouch.rating}/5</span>
                     </div>
                   </div>
@@ -686,23 +686,23 @@ export default function VouchesPage() {
               <div>
                 <div className="flex justify-between text-sm mb-1">
                   <span>Valid Rate</span>
-                  <span className="text-green-500">{Math.round((stats.valid / stats.total) * 100)}%</span>
+                  <span className="text-success">{Math.round((stats.valid / stats.total) * 100)}%</span>
                 </div>
                 <Progress value={(stats.valid / stats.total) * 100} className="h-2" />
               </div>
               <div>
                 <div className="flex justify-between text-sm mb-1">
                   <span>Suspicious Rate</span>
-                  <span className="text-orange-500">{Math.round((stats.suspicious / stats.total) * 100)}%</span>
+                  <span className="text-warning">{Math.round((stats.suspicious / stats.total) * 100)}%</span>
                 </div>
-                <Progress value={(stats.suspicious / stats.total) * 100} className="h-2 [&>div]:bg-orange-500" />
+                <Progress value={(stats.suspicious / stats.total) * 100} className="h-2 [&>div]:bg-warning" />
               </div>
               <div>
                 <div className="flex justify-between text-sm mb-1">
                   <span>Invalid Rate</span>
-                  <span className="text-red-500">{Math.round((stats.invalid / stats.total) * 100)}%</span>
+                  <span className="text-destructive">{Math.round((stats.invalid / stats.total) * 100)}%</span>
                 </div>
-                <Progress value={(stats.invalid / stats.total) * 100} className="h-2 [&>div]:bg-red-500" />
+                <Progress value={(stats.invalid / stats.total) * 100} className="h-2 [&>div]:bg-destructive" />
               </div>
             </CardContent>
           </Card>
@@ -797,7 +797,7 @@ export default function VouchesPage() {
                       <p className="font-medium">{reviewingVouch.transaction.item}</p>
                       <p className="text-sm text-muted-foreground">{formatTimeAgo(reviewingVouch.transaction.date)}</p>
                     </div>
-                    <p className="text-lg font-bold text-primary">₱{reviewingVouch.transaction.price.toLocaleString()}</p>
+                    <p className="text-lg font-semibold text-link">₱{reviewingVouch.transaction.price.toLocaleString()}</p>
                   </div>
                 </div>
               )}
@@ -818,7 +818,7 @@ export default function VouchesPage() {
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Rating</p>
                     <div className="flex items-center gap-1">
-                      <Star className="h-4 w-4 fill-yellow-500 text-yellow-500" />
+                      <Star className="h-4 w-4 fill-warning text-warning" />
                       <span className="text-sm">{reviewingVouch.rating}/5</span>
                     </div>
                   </div>
@@ -878,7 +878,7 @@ export default function VouchesPage() {
           </DialogHeader>
           {reviewingPattern && (
             <div className="space-y-6">
-              <div className="p-4 bg-orange-500/10 border border-orange-500/20 rounded-lg">
+              <div className="p-4 bg-warning/10 border border-warning/40/20 rounded-lg">
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-medium">Pattern Type</span>
                   <Badge variant="outline" className={getSeverityColor(reviewingPattern.severity)}>
@@ -904,7 +904,7 @@ export default function VouchesPage() {
 
               <div className="p-4 border rounded-lg">
                 <p className="text-sm text-muted-foreground mb-1">Affected Vouches</p>
-                <p className="text-2xl font-bold">{reviewingPattern.vouchCount}</p>
+                <p className="text-2xl font-semibold">{reviewingPattern.vouchCount}</p>
               </div>
             </div>
           )}

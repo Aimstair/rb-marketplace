@@ -129,13 +129,13 @@ const permissionGroups = [
 ]
 
 const colorOptions = [
-  { value: "bg-red-500", label: "Red" },
-  { value: "bg-blue-500", label: "Blue" },
-  { value: "bg-green-500", label: "Green" },
-  { value: "bg-yellow-500", label: "Yellow" },
-  { value: "bg-purple-500", label: "Purple" },
-  { value: "bg-pink-500", label: "Pink" },
-  { value: "bg-indigo-500", label: "Indigo" },
+  { value: "bg-destructive", label: "Red" },
+  { value: "bg-primary", label: "Blue" },
+  { value: "bg-success", label: "Green" },
+  { value: "bg-warning", label: "Yellow" },
+  { value: "bg-primary", label: "Purple" },
+  { value: "bg-primary", label: "Pink" },
+  { value: "bg-primary", label: "Indigo" },
 ]
 
 export default function PermissionsPage() {
@@ -154,7 +154,7 @@ export default function PermissionsPage() {
   // Create role form
   const [newRoleName, setNewRoleName] = useState("")
   const [newRoleDescription, setNewRoleDescription] = useState("")
-  const [newRoleColor, setNewRoleColor] = useState("bg-blue-500")
+  const [newRoleColor, setNewRoleColor] = useState("bg-primary")
 
   // Add user form
   const [addUserUsername, setAddUserUsername] = useState("")
@@ -208,7 +208,7 @@ export default function PermissionsPage() {
         }
         setNewRoleName("")
         setNewRoleDescription("")
-        setNewRoleColor("bg-blue-500")
+        setNewRoleColor("bg-primary")
         setIsCreateRoleOpen(false)
       } else {
         alert(result.error || "Failed to create role")
@@ -280,17 +280,17 @@ export default function PermissionsPage() {
   if (loading) {
     return (
       <div className="p-6 flex items-center justify-center py-12">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <Loader2 className="w-8 h-8 animate-spin text-link" />
       </div>
     )
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="mx-auto w-full max-w-[1440px] space-y-8 p-6 md:p-10">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Permission Roles</h1>
+          <h1 className="text-[28px] md:text-[34px] font-semibold tracking-[-0.025em]">Permission Roles</h1>
           <p className="text-muted-foreground">Create and manage custom roles with fine-grained permissions</p>
         </div>
         <Dialog open={isCreateRoleOpen} onOpenChange={setIsCreateRoleOpen}>

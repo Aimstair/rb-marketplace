@@ -1,15 +1,17 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import Image from "next/image"
-import { Search, Filter, ThumbsUp, ThumbsDown, ChevronLeft, ChevronRight, StarIcon, Star, MessageCircle } from "lucide-react"
-import Navigation from "@/components/navigation"
+import { ChevronLeft, ChevronRight, SlidersHorizontal } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import Link from "next/link"
-import { useSearchParams } from "next/navigation"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { useRouter, useSearchParams } from "next/navigation"
+import { Container } from "@/components/site/container"
+import { SearchInput } from "@/components/search/search-input"
+import { Chip, ChipRow, Segmented } from "@/components/filters/chip"
+import { ListingCard, ListingCardSkeleton, ListingGrid } from "@/components/listing/listing-card"
 import { getListings, getFilterOptions } from "@/app/actions/listings"
 import type { ListingResponse } from "@/lib/schemas"
 
@@ -20,7 +22,8 @@ interface FilterOption {
   value: string
 }
 
-const ITEMS_PER_PAGE = 9
+// Divisible by 4 and 5 so full grid rows at every desktop width
+const ITEMS_PER_PAGE = 20
 
 const sortOptions = [
   { label: "Newest", value: "newest" },
@@ -49,6 +52,7 @@ export default function MarketplacePageClient({
   initialItemTypeOptions,
 }: MarketplacePageClientProps) {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const skipInitialListingsFetch = useRef(true)
   
   // Filter States
@@ -124,6 +128,20 @@ export default function MarketplacePageClient({
     setSelectedItemType("All")
   }, [mainCategory])
 
+  // Apply ?game= (matched by name or display name) once the game options are known.
+  // Declared after the category reset above so it wins on first render.
+  const appliedGameParam = useRef<string | null>(null)
+  useEffect(() => {
+    const gameParam = searchParams.get("game")
+    if (!gameParam || appliedGameParam.current === gameParam || gameOptions.length === 0) return
+    const needle = gameParam.toLowerCase()
+    const match = gameOptions.find((g) => g.value.toLowerCase() === needle || g.label.toLowerCase() === needle)
+    if (match) {
+      appliedGameParam.current = gameParam
+      setSelectedGame(match.value)
+    }
+  }, [searchParams, gameOptions])
+
   useEffect(() => {
     setCurrentPage(1)
   }, [debouncedSearchQuery, mainCategory, selectedGame, selectedItemType, sortBy, priceRange])
@@ -192,449 +210,260 @@ export default function MarketplacePageClient({
     setPriceRange({ min: 0, max: 1000000 })
   }
 
+  const sortLabel = sortOptions.find((o) => o.value === sortBy)?.label ?? "Newest"
+  const advancedFilterCount = [
+    selectedGame !== "All Games",
+    selectedItemType !== "All" && mainCategory === "Games",
+    priceRange.min > 0 || priceRange.max < 1000000,
+  ].filter(Boolean).length
+
   return (
     <main className="min-h-screen bg-background">
-      <Navigation />
-      {/* Header */}
-      <section className="bg-linear-to-r from-primary/10 to-primary/5 py-12">
-          <div className="container max-w-[1920px] mx-auto px-6">
-            <h1 className="text-4xl font-bold mb-2">Item Marketplace</h1>
-            <p className="text-muted-foreground">
-              {isLoading ? "Loading..." : `Buy and sell in-game items safely and securely with our trusted community from over ${totalListings} available listing${totalListings !== 1 ? "s" : ""}`}
-            </p>
-          </div>
-        </section>
-        
-      <div className="container max-w-[1920px] mx-auto px-6 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          {/* Filters Sidebar - Desktop */}
-          <div className="hidden lg:block lg:col-span-1">
-            <Card className="p-6 sticky top-24">
-              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <Filter className="w-4 h-4" />
-                Filters
-              </h3>
+      <Container className="pt-10 pb-16 md:pt-14 md:pb-20">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <h1 className="text-title">Roblox items</h1>
+          <Segmented
+            value="items"
+            options={[
+              { value: "items", label: "Items" },
+              { value: "currency", label: "Currency" },
+            ]}
+            onChange={(v) => v === "currency" && router.push("/currency")}
+          />
+        </div>
 
-              {/* Search */}
-              <div className="mb-6">
-                <label className="text-sm font-medium mb-2 block">Search</label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    type="text"
-                    placeholder="Search items..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9"
-                  />
-                </div>
-              </div>
+        <SearchInput
+          className="mt-6"
+          value={searchQuery}
+          onValueChange={setSearchQuery}
+          placeholder={`Search ${totalListings.toLocaleString()} items`}
+          aria-label="Search items"
+        />
 
-              {/* Main Categories - Dynamic */}
-              <div className="mb-6">
-                <label className="text-sm font-medium mb-3 block">Categories</label>
-                <div className="space-y-1">
-                  {areFiltersLoading ? (
-                    <div className="h-20 animate-pulse bg-muted rounded" />
-                  ) : (
-                    getDisplayCategories().map((cat) => (
-                      <button
-                        key={cat.id}
-                        onClick={() => setMainCategory(cat.value)}
-                        className={`w-full text-left px-3 py-2 rounded transition flex items-center gap-2 ${
-                          mainCategory === cat.value ? "bg-primary text-primary-foreground" : "hover:bg-secondary"
-                        }`}
-                      >
-                        {cat.value === "Featured" && <StarIcon className="w-4 h-4" />}
-                        {cat.label}
-                      </button>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              {/* Game Selection - Dynamic */}
-              {(mainCategory === "Games" || mainCategory === "Accounts" || mainCategory === "All") && (
-                <div className="mb-6">
-                  <label className="text-sm font-medium mb-3 block">Game</label>
-                  {areFiltersLoading ? (
-                    <div className="h-10 animate-pulse bg-muted rounded" />
-                  ) : (
-                    <select
-                      value={selectedGame}
-                      onChange={(e) => setSelectedGame(e.target.value)}
-                      className="w-full px-3 py-2 border rounded-lg bg-background text-sm"
-                    >
-                      {getDisplayGames().map((game) => (
-                        <option key={game.id} value={game.value}>
-                          {game.label}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-              )}
-
-              {/* Item Type Selection - Dynamic */}
-              {mainCategory === "Games" && (
-                <div className="mb-6">
-                  <label className="text-sm font-medium mb-3 block">Item Type</label>
-                  {areFiltersLoading ? (
-                    <div className="h-10 animate-pulse bg-muted rounded" />
-                  ) : (
-                    <select
-                      value={selectedItemType}
-                      onChange={(e) => setSelectedItemType(e.target.value)}
-                      className="w-full px-3 py-2 border rounded-lg bg-background text-sm"
-                    >
-                      {getDisplayItemTypes().map((type) => (
-                        <option key={type.id} value={type.value}>
-                          {type.label}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-              )}
-
-              {/* Price Range */}
-              <div className="mb-6">
-                <label className="text-sm font-medium mb-3 block">Price Range</label>
-                <div className="space-y-2">
-                  <div>
-                    <label className="text-xs text-muted-foreground">Min (₱)</label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={1000000}
-                      value={priceRange.min}
-                      onChange={(e) => setPriceRange({ ...priceRange, min: Math.max(0, Number(e.target.value)) })}
-                      className="text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground">Max (₱)</label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={1000000}
-                      value={priceRange.max}
-                      onChange={(e) => setPriceRange({ ...priceRange, max: Math.min(1000000, Number(e.target.value)) })}
-                      className="text-sm"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Sort */}
-              <div className="border-t pt-6">
-                <label className="text-sm font-medium mb-3 block">Sort By</label>
-                <div className="space-y-1">
-                  {sortOptions.map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => setSortBy(opt.value)}
-                      className={`w-full text-left px-3 py-2 rounded transition text-sm ${
-                        sortBy === opt.value ? "bg-primary text-primary-foreground" : "hover:bg-secondary"
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </Card>
-          </div>
-
-          {/* Main Content */}
-          <div className="lg:col-span-3">
-            {/* Mobile Filter Toggle & Sort */}
-            <div className="lg:hidden flex gap-2 mb-6">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowFilters(!showFilters)}
-                className="flex items-center gap-2"
-              >
-                <Filter className="w-4 h-4" />
-                Filters
-              </Button>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="flex-1 px-3 py-2 rounded-md border border-border bg-background text-foreground text-sm"
-              >
-                {sortOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
+        {/* Filter bar */}
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <ChipRow className="min-w-0 flex-1">
+            {areFiltersLoading
+              ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-9 w-24 rounded-full" />)
+              : getDisplayCategories().map((cat) => (
+                  <Chip key={cat.id} selected={mainCategory === cat.value} onClick={() => setMainCategory(cat.value)}>
+                    {cat.label}
+                  </Chip>
                 ))}
-              </select>
-            </div>
+            <Chip selected={advancedFilterCount > 0} onClick={() => setShowFilters(true)}>
+              <SlidersHorizontal className="size-3.5" strokeWidth={1.75} />
+              Filters{advancedFilterCount > 0 ? ` · ${advancedFilterCount}` : ""}
+            </Chip>
+          </ChipRow>
 
-            {/* Mobile Filters Dropdown */}
-            {showFilters && (
-              <div className="lg:hidden mb-6 p-6 border rounded-lg bg-card">
-                <div className="space-y-4">
-                  {/* Search */}
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">Search</label>
-                    <Input
-                      type="text"
-                      placeholder="Search items..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                  </div>
+          <Select value={sortBy} onValueChange={setSortBy}>
+            <SelectTrigger
+              aria-label="Sort listings"
+              className="h-9 border-0 bg-transparent px-2 text-sm text-muted-foreground hover:text-foreground"
+            >
+              <span>
+                Sort by <span className="text-foreground">{sortLabel}</span>
+              </span>
+            </SelectTrigger>
+            <SelectContent align="end">
+              {sortOptions.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-                  {/* Categories */}
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">Category</label>
-                    <div className="flex flex-wrap gap-2">
-                      {getDisplayCategories().map((cat) => (
-                        <Button
-                          key={cat.id}
-                          size="sm"
-                          variant={mainCategory === cat.value ? "default" : "outline"}
-                          onClick={() => setMainCategory(cat.value)}
-                        >
-                          {cat.label}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Game */}
-                  {(mainCategory === "Games" || mainCategory === "Accounts" || mainCategory === "All") && (
-                    <div>
-                      <label className="text-sm font-medium mb-2 block">Game</label>
-                      <select
-                        value={selectedGame}
-                        onChange={(e) => setSelectedGame(e.target.value)}
-                        className="w-full px-3 py-2 rounded-md border bg-background text-sm"
-                      >
-                        {getDisplayGames().map((game) => (
-                          <option key={game.id} value={game.value}>
-                            {game.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
-                  {/* Item Type */}
-                  {mainCategory === "Games" && (
-                    <div>
-                      <label className="text-sm font-medium mb-2 block">Item Type</label>
-                      <div className="flex flex-wrap gap-2">
-                        {getDisplayItemTypes().map((type) => (
-                          <Button
-                            key={type.id}
-                            size="sm"
-                            variant={selectedItemType === type.value ? "default" : "outline"}
-                            onClick={() => setSelectedItemType(type.value)}
-                          >
-                            {type.label}
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Price Range */}
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">Price Range (₱0 - ₱1,000,000)</label>
-                    <div className="flex gap-2">
-                      <Input
-                        type="number"
-                        placeholder="Min"
-                        value={priceRange.min}
-                        onChange={(e) => setPriceRange({ ...priceRange, min: Math.max(0, Number(e.target.value)) })}
-                      />
-                      <Input
-                        type="number"
-                        placeholder="Max"
-                        value={priceRange.max}
-                        onChange={(e) =>
-                          setPriceRange({ ...priceRange, max: Math.min(1000000, Number(e.target.value)) })
-                        }
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
+        {/* Result line + active filters */}
+        <div className="mt-5 mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 text-[13px] text-muted-foreground">
+          <span className="tabular-nums">
+            {isLoading ? (
+              <Skeleton className="inline-block h-3 w-16 align-middle" />
+            ) : (
+              `${totalListings.toLocaleString()} item${totalListings !== 1 ? "s" : ""}`
             )}
+          </span>
+          {activeFilters.map((filter, idx) =>
+            filter ? (
+              <span key={idx} className="rounded-full bg-secondary px-2.5 py-0.5 text-foreground/90">
+                {filter.name}: {filter.value}
+              </span>
+            ) : null,
+          )}
+          {(activeFilters.length > 0 || searchQuery) && (
+            <button onClick={clearFilters} className="text-link hover:underline underline-offset-2">
+              Clear all
+            </button>
+          )}
+        </div>
 
-            {/* Active Filters Display */}
-            {activeFilters.length > 0 && (
-              <div className="mb-6 flex flex-wrap items-center gap-2">
-                <span className="text-sm text-muted-foreground">Active filters:</span>
-                {activeFilters.map((filter, idx) => 
-                  filter ? (
-                    <Badge key={idx} variant="secondary">
-                      {filter.name}: {filter.value}
-                    </Badge>
-                  ) : null
+        {/* Listings */}
+        {isLoading ? (
+          <ListingGrid>
+            {Array.from({ length: 10 }).map((_, i) => (
+              <ListingCardSkeleton key={i} />
+            ))}
+          </ListingGrid>
+        ) : listings.length > 0 ? (
+          <>
+            <ListingGrid>
+              {listings.map((listing, i) => (
+                <ListingCard
+                  key={listing.id}
+                  id={listing.id}
+                  title={listing.title}
+                  game={listing.game}
+                  price={listing.price}
+                  image={listing.image}
+                  sellerName={listing.seller.username}
+                  vouches={listing.vouch}
+                  featured={listing.featured}
+                  note={listing.condition || undefined}
+                  priority={i < 4}
+                />
+              ))}
+            </ListingGrid>
+
+            {totalPages > 1 && (
+              <nav aria-label="Pagination" className="mt-12 flex items-center justify-center gap-1.5">
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  aria-label="Previous page"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="size-4" />
+                </Button>
+                {getPageWindow(currentPage, totalPages).map((page, i) =>
+                  page === "gap" ? (
+                    <span key={`gap-${i}`} className="px-1 text-muted-foreground">
+                      …
+                    </span>
+                  ) : (
+                    <Button
+                      key={page}
+                      variant={currentPage === page ? "default" : "ghost"}
+                      size="icon"
+                      aria-current={currentPage === page ? "page" : undefined}
+                      onClick={() => setCurrentPage(page)}
+                      className="tabular-nums"
+                    >
+                      {page}
+                    </Button>
+                  ),
                 )}
                 <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={clearFilters}
-                  className="text-xs"
+                  variant="secondary"
+                  size="icon"
+                  aria-label="Next page"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
                 >
-                  Clear All
+                  <ChevronRight className="size-4" />
                 </Button>
-              </div>
+              </nav>
             )}
+          </>
+        ) : (
+          <div className="rounded-lg bg-card px-6 py-16 text-center">
+            <p className="text-lg font-semibold">No items match these filters</p>
+            <p className="mt-1 text-sm text-muted-foreground">Try a different search, or clear the filters.</p>
+            <Button onClick={clearFilters} variant="secondary" className="mt-5">
+              Clear filters
+            </Button>
+          </div>
+        )}
+      </Container>
 
-            {/* Results count */}
-            <div className="flex justify-between items-center mb-6">
-              <p className="text-sm text-muted-foreground">
-                {isLoading ? "Loading..." : `Showing ${listings.length > 0 ? (currentPage - 1) * ITEMS_PER_PAGE + 1 : 0}-${Math.min(currentPage * ITEMS_PER_PAGE, totalListings)} of ${totalListings} results`}
-              </p>
-            </div>
-
-            {/* Listings Grid */}
-            {isLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {Array.from({ length: ITEMS_PER_PAGE }).map((_, i) => (
-                  <Card key={i} className="overflow-hidden animate-pulse h-96">
-                    <div className="aspect-video bg-muted"></div>
-                    <div className="p-4 space-y-3">
-                      <div className="h-4 bg-muted rounded w-3/4"></div>
-                      <div className="h-3 bg-muted rounded w-1/2"></div>
-                      <div className="h-8 bg-muted rounded"></div>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            ) : listings.length > 0 ? (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {listings.map((listing) => (
-                    <Link key={listing.id} href={`/listing/${listing.id}`}>
-                      <Card className="overflow-hidden hover:shadow-lg transition-all duration-300 cursor-pointer group h-full flex flex-col">
-                        {/* Image */}
-                        <div className="relative aspect-video bg-muted overflow-hidden">
-                          <Image
-                            src={listing.image || "/placeholder.svg"}
-                            alt={listing.title}
-                            fill
-                            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                            className="object-cover group-hover:scale-110 transition-transform duration-300"
-                          />
-                          <Badge className="absolute top-3 right-3 bg-primary text-primary-foreground">
-                            {listing.condition}
-                          </Badge>
-                          {listing.featured && (
-                            <Badge className="absolute top-3 left-3 bg-yellow-500 text-white">
-                              <StarIcon className="w-3 h-3 mr-1" />
-                              Featured
-                            </Badge>
-                          )}
-                        </div>
-
-                        {/* Content */}
-                        <div className="p-4 flex grow flex-col">
-                          <h3 className="font-bold line-clamp-2 mb-2 group-hover:text-primary transition">
-                            {listing.title}
-                          </h3>
-
-                          <div className="flex gap-2 mb-3 flex-wrap">
-                            <Badge variant="secondary" className="text-xs">
-                              {listing.category}
-                            </Badge>
-                            <Badge variant="outline" className="text-xs">
-                              {listing.game}
-                            </Badge>
-                            {listing.itemType && listing.category === "Games" && (
-                              <Badge variant="outline" className="text-xs">
-                                {listing.itemType}
-                              </Badge>
-                            )}
-                          </div>
-
-                          {/* Price */}
-                          <div className="mb-3">
-                            <p className="text-2xl font-bold text-primary">₱{listing.price.toLocaleString()}</p>
-                          </div>
-
-                          {/* Seller Info & Votes */}
-                          <div className="flex items-center justify-between text-sm mb-4 pb-4 border-b mt-auto">
-                            <span className="text-muted-foreground">{listing.seller.username}</span>
-                            <div className="flex items-center gap-1">
-                              <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                              <span className="font-semibold text-sm">{listing.vouch}</span>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center justify-between text-sm mb-4">
-                            <div className="flex items-center gap-3">
-                              <span className="flex items-center gap-1 text-green-600">
-                                <ThumbsUp className="w-4 h-4" />
-                                {listing.upvotes}
-                              </span>
-                              <span className="flex items-center gap-1 text-red-600">
-                                <ThumbsDown className="w-4 h-4" />
-                                {listing.downvotes}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Contact Button */}
-                          <button className="w-full flex items-center justify-center gap-2 py-2 rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition text-sm font-medium">
-                            <MessageCircle className="w-4 h-4" />
-                            Message
-                          </button>
-                        </div>
-                      </Card>
-                    </Link>
+      {/* Filters sheet */}
+      <Sheet open={showFilters} onOpenChange={setShowFilters}>
+        <SheetContent side="right" className="w-full sm:max-w-md flex flex-col gap-0 p-0">
+          <SheetHeader className="px-6 pt-6 pb-2">
+            <SheetTitle className="text-xl font-semibold">Filters</SheetTitle>
+          </SheetHeader>
+          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-7">
+            {(mainCategory === "Games" || mainCategory === "Accounts" || mainCategory === "All") && (
+              <div>
+                <p className="mb-3 text-sm font-medium">Game</p>
+                <div className="flex flex-wrap gap-2">
+                  {getDisplayGames().map((game) => (
+                    <Chip key={game.id} selected={selectedGame === game.value} onClick={() => setSelectedGame(game.value)}>
+                      {game.label}
+                    </Chip>
                   ))}
                 </div>
-
-                {totalPages > 1 && (
-                  <div className="flex items-center justify-center gap-2 mt-8">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                      disabled={currentPage === 1}
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                      <Button
-                        key={page}
-                        variant={currentPage === page ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setCurrentPage(page)}
-                        className="w-8"
-                      >
-                        {page}
-                      </Button>
-                    ))}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                      disabled={currentPage === totalPages}
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="text-center py-12">
-                <p className="text-lg text-muted-foreground mb-4">No listings found</p>
-                <Button onClick={clearFilters} variant="outline">
-                  Clear Filters
-                </Button>
               </div>
             )}
+
+            {mainCategory === "Games" && (
+              <div>
+                <p className="mb-3 text-sm font-medium">Item type</p>
+                <div className="flex flex-wrap gap-2">
+                  {getDisplayItemTypes().map((type) => (
+                    <Chip
+                      key={type.id}
+                      selected={selectedItemType === type.value}
+                      onClick={() => setSelectedItemType(type.value)}
+                    >
+                      {type.label}
+                    </Chip>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <p className="mb-3 text-sm font-medium">Price</p>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="mb-1.5 block text-xs text-muted-foreground">Min (₱)</span>
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    max={1000000}
+                    value={priceRange.min}
+                    onChange={(e) => setPriceRange({ ...priceRange, min: Math.max(0, Number(e.target.value)) })}
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-xs text-muted-foreground">Max (₱)</span>
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    max={1000000}
+                    value={priceRange.max}
+                    onChange={(e) => setPriceRange({ ...priceRange, max: Math.min(1000000, Number(e.target.value)) })}
+                  />
+                </label>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+          <div className="grid grid-cols-2 gap-3 border-t border-border px-6 py-4">
+            <Button variant="secondary" onClick={clearFilters}>
+              Reset
+            </Button>
+            <Button onClick={() => setShowFilters(false)}>
+              {isLoading ? "Updating…" : `Show ${totalListings.toLocaleString()} items`}
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
     </main>
   )
+}
+
+/** Page numbers to show: first, last, and a window around the current page. */
+function getPageWindow(current: number, total: number): (number | "gap")[] {
+  const pages = new Set([1, total, current - 1, current, current + 1].filter((p) => p >= 1 && p <= total))
+  const sorted = [...pages].sort((a, b) => a - b)
+  const out: (number | "gap")[] = []
+  sorted.forEach((p, i) => {
+    if (i > 0 && p - sorted[i - 1] > 1) out.push("gap")
+    out.push(p)
+  })
+  return out
 }

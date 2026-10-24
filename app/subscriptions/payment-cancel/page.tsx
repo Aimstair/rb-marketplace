@@ -29,11 +29,11 @@ export default function PaymentCancelPage() {
     <div className="min-h-screen flex items-center justify-center bg-background">
       <div className="text-center space-y-4 max-w-md">
         <div className="flex justify-center">
-          <div className="rounded-full bg-red-500/10 p-6">
-            <X className="w-16 h-16 text-red-500" />
+          <div className="rounded-full bg-destructive/10 p-6">
+            <X className="w-16 h-16 text-destructive" />
           </div>
         </div>
-        <h1 className="text-2xl font-bold">Payment Cancelled</h1>
+        <h1 className="text-2xl font-semibold">Payment Cancelled</h1>
         <p className="text-muted-foreground">
           Your payment was cancelled. No charges have been made.
         </p>

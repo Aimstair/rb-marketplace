@@ -1,10 +1,8 @@
 "use client"
 
-import { Card } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
 import Link from "next/link"
-import { Star, Shield } from "lucide-react"
+import { BadgeCheck, Check } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
 
 interface TopTrader {
   id: string
@@ -21,74 +19,59 @@ interface TopVouchedSellersProps {
   isLoading?: boolean
 }
 
+const formatDate = (date: Date) =>
+  new Date(date).toLocaleDateString("en-US", { month: "short", year: "numeric" })
+
 export default function TopVouchedSellers({ sellers = [], isLoading = false }: TopVouchedSellersProps) {
   if (isLoading) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 gap-[18px] sm:grid-cols-2 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <Card key={i} className="p-6 text-center">
-            <Skeleton className="w-24 h-24 rounded-full mx-auto mb-4" />
-            <Skeleton className="h-6 w-24 mx-auto mb-4" />
-            <Skeleton className="h-4 w-32 mx-auto mb-4" />
-            <Skeleton className="h-10 w-full" />
-          </Card>
+          <div key={i} className="flex items-center gap-3 rounded-lg bg-card p-4">
+            <Skeleton className="size-12 rounded-full" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-3 w-32" />
+            </div>
+          </div>
         ))}
       </div>
     )
   }
 
   if (sellers.length === 0) {
-    return (
-      <div className="text-center py-8 text-muted-foreground">
-        <p>No top traders available</p>
-      </div>
-    )
-  }
-
-  const formatDate = (date: Date) => {
-    const d = new Date(date)
-    return d.toLocaleDateString("en-US", { month: "short", year: "numeric" })
+    return <p className="text-muted-foreground">No top traders yet.</p>
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+    <div className="grid grid-cols-1 gap-[18px] sm:grid-cols-2 lg:grid-cols-4">
       {sellers.map((seller) => (
-        <Card key={seller.id} className="p-6 text-center hover:shadow-lg transition-all">
-          {/* Avatar */}
+        <Link
+          key={seller.id}
+          href={`/profile/${seller.id}`}
+          className="lift flex items-center gap-3 rounded-lg bg-card p-4 hover:bg-[#232325]"
+        >
           <img
             src={seller.avatar || "/placeholder.svg"}
-            alt={seller.username}
-            className="w-24 h-24 rounded-full mx-auto mb-4 object-cover"
+            alt=""
+            className="size-12 shrink-0 rounded-full bg-secondary object-cover"
           />
-
-          {/* Username with Badge */}
-          <div className="mb-2 flex items-center justify-center gap-2">
-            <h3 className="font-bold text-lg">{seller.username}</h3>
-            {seller.verified && <Shield className="w-4 h-4 text-primary" />}
+          <div className="min-w-0">
+            <p className="flex items-center gap-1 truncate font-semibold">
+              <span className="truncate">{seller.username}</span>
+              {seller.verified && (
+                <BadgeCheck className="size-4 shrink-0 text-link" strokeWidth={1.75} aria-label="Verified" />
+              )}
+            </p>
+            <p className="flex items-center gap-1 text-xs text-muted-foreground">
+              <span className="flex items-center gap-0.5 text-success tabular-nums">
+                <Check className="size-3" strokeWidth={2.5} />
+                {seller.vouch}
+              </span>
+              · {seller.listings} listings · Since {formatDate(seller.joinDate)}
+            </p>
           </div>
-
-          {/* Vouch Count */}
-          <div className="flex items-center justify-center gap-1 mb-3">
-            <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
-            <span className="font-bold">{seller.vouch}</span>
-            <span className="text-muted-foreground">vouches</span>
-          </div>
-
-          {/* Meta */}
-          <div className="text-sm text-muted-foreground mb-4 space-y-1">
-            <p>Joined {formatDate(seller.joinDate)}</p>
-            <p>{seller.listings} active listings</p>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex gap-2">
-            <Link href={`/profile/${seller.id}`} className="flex-1">
-              <Button variant="outline" className="w-full bg-transparent">
-                View Profile
-              </Button>
-            </Link>
-          </div>
-        </Card>
+        </Link>
       ))}
     </div>
   )

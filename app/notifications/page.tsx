@@ -1,15 +1,16 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import Navigation from "@/components/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { useRouter } from "next/navigation"
 import { Card } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Bell, MessageCircle, ShoppingBag, AlertCircle, CheckCircle, Loader2, Trash2 } from "lucide-react"
 import { getNotifications, markAsRead, markAllAsRead } from "@/app/actions/notifications"
 import type { NotificationData } from "@/app/actions/notifications"
+import { ListPageSkeleton } from "@/components/site/skeletons"
 
 export default function NotificationsPage() {
   const { user } = useAuth()
@@ -37,7 +38,8 @@ export default function NotificationsPage() {
     setLoading(false)
   }
 
-  if (!user) return null
+  // Session still loading (or redirecting to login): keep the page shape instead of a blank gap
+  if (!user) return <ListPageSkeleton />
 
   const filteredNotifications = notifications.filter((n) => (filter === "all" ? true : !n.isRead))
   const unreadCount = notifications.filter((n) => !n.isRead).length
@@ -75,13 +77,13 @@ export default function NotificationsPage() {
   const getIcon = (type: string) => {
     switch (type) {
       case "MESSAGE":
-        return <MessageCircle className="w-5 h-5 text-blue-500" />
+        return <MessageCircle className="w-5 h-5 text-link" />
       case "ORDER_NEW":
-        return <ShoppingBag className="w-5 h-5 text-purple-500" />
+        return <ShoppingBag className="w-5 h-5 text-link" />
       case "ORDER_UPDATE":
-        return <CheckCircle className="w-5 h-5 text-emerald-500" />
+        return <CheckCircle className="w-5 h-5 text-success" />
       case "SYSTEM":
-        return <AlertCircle className="w-5 h-5 text-orange-500" />
+        return <AlertCircle className="w-5 h-5 text-warning" />
       default:
         return <Bell className="w-5 h-5" />
     }
@@ -100,12 +102,11 @@ export default function NotificationsPage() {
 
   return (
     <>
-      <Navigation />
-      <main className="container max-w-[1920px] mx-auto px-6 py-8">
+      <main className="mx-auto w-full max-w-[1440px] px-5 md:px-8 lg:px-10 pt-10 pb-16 md:pt-14 md:pb-20">
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-bold">Notifications</h1>
-            <p className="text-muted-foreground">
+            <h1 className="text-title">Notifications</h1>
+            <p className="mt-2 text-[17px] text-muted-foreground">
               {unreadCount > 0
                 ? `You have ${unreadCount} unread notification${unreadCount !== 1 ? "s" : ""}`
                 : "You're all caught up!"}
@@ -136,16 +137,22 @@ export default function NotificationsPage() {
         {/* Notifications List */}
         <div className="space-y-3">
           {loading ? (
-            <Card className="p-12 text-center">
-              <Loader2 className="w-8 h-8 mx-auto text-muted-foreground mb-4 animate-spin" />
-              <p className="text-sm text-muted-foreground">Loading notifications...</p>
-            </Card>
+            Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex items-start gap-4 rounded-[20px] bg-card p-4" aria-hidden="true">
+                <Skeleton className="size-10 shrink-0 rounded-full" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-1/2" />
+                  <Skeleton className="h-3 w-4/5" />
+                  <Skeleton className="h-3 w-24" />
+                </div>
+              </div>
+            ))
           ) : filteredNotifications.length > 0 ? (
             filteredNotifications.map((notification) => (
               <Card
                 key={notification.id}
-                className={`p-4 transition cursor-pointer hover:shadow-md ${
-                  !notification.isRead ? "border-l-4 border-l-primary bg-primary/5" : ""
+                className={`p-4 transition cursor-pointer ${
+                  !notification.isRead ? "border-l-4 border-l-primary bg-link/[0.06]" : ""
                 }`}
                 onClick={() => handleMarkAsRead(notification.id, notification.link)}
               >

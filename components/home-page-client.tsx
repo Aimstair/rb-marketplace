@@ -4,15 +4,14 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
-import { Search, TrendingUp, Shield, Users, Zap, Gift, Clock3 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card } from "@/components/ui/card"
-import Navigation from "@/components/navigation"
-import FeaturedListings from "@/components/featured-listings"
+import { Skeleton } from "@/components/ui/skeleton"
 import TrendingGames from "@/components/trending-games"
 import TopVouchedSellers from "@/components/top-vouched-sellers"
-import { getLandingStats, getPopularGames, getTopTraders } from "@/app/actions/trends"
+import { Container, Section, SectionHeader } from "@/components/site/container"
+import { SearchInput } from "@/components/search/search-input"
+import { ListingCard, ListingCardSkeleton, ListingGrid, formatPeso } from "@/components/listing/listing-card"
+import { getLandingStats, getPopularGames, getTopTraders, getTrendingListings } from "@/app/actions/trends"
 import { checkAndExpireSubscriptions } from "@/app/actions/subscriptions"
 import { getGiveawayHomeData, joinGiveaway } from "@/app/actions/giveaways"
 import { useSession } from "next-auth/react"
@@ -33,6 +32,17 @@ interface TopTrader {
   joinDate: Date
   listings: number
   verified: boolean
+}
+
+interface TrendingListing {
+  id: string
+  title: string
+  game: string
+  price: number
+  image: string
+  listingType?: "ITEM" | "CURRENCY"
+  seller: { username: string; vouch: number }
+  views: number
 }
 
 interface GiveawayActiveData {
@@ -85,16 +95,27 @@ function truncateCopy(value: string | null | undefined, max = 120): string {
   return `${value.slice(0, max)}...`
 }
 
-export default function HomePage() {
+export interface HomeInitialData {
+  stats: { totalUsers: number; totalListings: number; totalVolume: number; activeTraders: number }
+  games: PopularGame[]
+  traders: TopTrader[]
+  trending: TrendingListing[]
+}
+
+export default function HomePage({ initialData }: { initialData?: HomeInitialData }) {
   const router = useRouter()
   const { data: session } = useSession()
   const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState("")
-  const [stats, setStats] = useState({ totalUsers: 0, totalListings: 0, totalVolume: 0, activeTraders: 0 })
-  const [games, setGames] = useState<PopularGame[]>([])
-  const [traders, setTraders] = useState<TopTrader[]>([])
-  const [gamesLoading, setGamesLoading] = useState(true)
-  const [tradersLoading, setTradersLoading] = useState(true)
+  const [stats, setStats] = useState(
+    initialData?.stats ?? { totalUsers: 0, totalListings: 0, totalVolume: 0, activeTraders: 0 },
+  )
+  const [games, setGames] = useState<PopularGame[]>(initialData?.games ?? [])
+  const [traders, setTraders] = useState<TopTrader[]>(initialData?.traders ?? [])
+  const [gamesLoading, setGamesLoading] = useState(!initialData)
+  const [tradersLoading, setTradersLoading] = useState(!initialData)
+  const [trending, setTrending] = useState<TrendingListing[]>(initialData?.trending ?? [])
+  const [trendingLoading, setTrendingLoading] = useState(!initialData)
   const [giveawayLoading, setGiveawayLoading] = useState(true)
   const [giveawayActionLoading, setGiveawayActionLoading] = useState(false)
   const [giveawayData, setGiveawayData] = useState<{
@@ -128,15 +149,21 @@ export default function HomePage() {
     }
   }, [session?.user?.id])
 
-  // Load homepage payload in one batch to reduce mount-time render churn.
+  // Fallback only: the server normally provides this data (see app/page.tsx).
   useEffect(() => {
+    if (initialData) return
     const loadHomepageData = async () => {
       try {
-        const [statsResult, gamesResult, tradersResult] = await Promise.all([
+        const [statsResult, gamesResult, tradersResult, trendingResult] = await Promise.all([
           getLandingStats(),
-          getPopularGames(6),
+          getPopularGames(8),
           getTopTraders(4),
+          getTrendingListings(6),
         ])
+
+        if (trendingResult.success && trendingResult.data) {
+          setTrending(trendingResult.data)
+        }
 
         if (statsResult.success && statsResult.data) {
           setStats(statsResult.data)
@@ -154,6 +181,7 @@ export default function HomePage() {
       } finally {
         setGamesLoading(false)
         setTradersLoading(false)
+        setTrendingLoading(false)
       }
     }
 
@@ -237,332 +265,316 @@ export default function HomePage() {
   const hoursLeft = Math.floor(timeLeftMs / (1000 * 60 * 60))
   const minutesLeft = Math.floor((timeLeftMs % (1000 * 60 * 60)) / (1000 * 60))
 
+  const spotlight = trending.find((l) => l.listingType !== "CURRENCY") ?? trending[0] ?? null
+  const trendingGrid = trending.filter((l) => l.id !== spotlight?.id).slice(0, 5)
+  const listingHref = (l: TrendingListing) =>
+    l.listingType === "CURRENCY" ? `/currency/${l.id}` : `/listing/${l.id}`
+  const joinDisabled =
+    giveawayActionLoading ||
+    Boolean(giveawayData?.joined) ||
+    Boolean(session?.user?.id && giveawayData?.eligibility && !giveawayData.eligibility.eligible)
+
   return (
     <main className="min-h-screen bg-background">
-      <Navigation />
-
-      {/* Hero Section with Search */}
-      <section className="bg-linear-to-br from-primary/10 to-primary/5 py-12 md:py-20">
-        <div className="container max-w-[1920px] mx-auto px-6">
-          <div className="max-w-3xl mx-auto">
-            <h1 className="text-4xl md:text-5xl font-bold text-center mb-4 text-balance">
-              Trade In-Game Items Safely & Anonymously
-            </h1>
-            <p className="text-center text-muted-foreground mb-8 text-lg">
-              Connect with buyers and sellers in the gaming community. No hidden fees, just trusted trading.
+      {/* Spotlight hero */}
+      <section className="pt-12 pb-10 md:pt-20 md:pb-16">
+        <Container className="grid items-center gap-10 md:grid-cols-2">
+          <div className="flex flex-col gap-5">
+            <p className="text-[15px] font-semibold text-link">
+              {spotlight ? "Trending this week" : "Roblox marketplace Philippines"}
             </p>
-
-            {/* Search Bar */}
-            <form onSubmit={handleSearch} className="relative mb-8">
-              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-              <Input
-                type="text"
-                placeholder="Search items, games, or sellers..."
+            <h1 className="text-display text-sheen">
+              The Roblox marketplace.
+              <br />
+              Traded with trust.
+            </h1>
+            <p className="max-w-[46ch] text-[19px] leading-snug text-muted-foreground">
+              {spotlight ? (
+                <>
+                  {spotlight.title} from {spotlight.seller.username}
+                  {spotlight.seller.vouch > 0 ? `, ${spotlight.seller.vouch} vouches` : ""}.{" "}
+                  {spotlight.listingType === "CURRENCY" ? "" : `${formatPeso(spotlight.price)}.`}
+                </>
+              ) : (
+                "Buy and sell MM2 knives, Adopt Me pets and Blox Fruits from vouched sellers. Pay with GCash or PayPal."
+              )}
+            </p>
+            <form onSubmit={handleSearch} className="max-w-[520px]">
+              <SearchInput
+                size="lg"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-12 pr-4 py-3 text-lg"
+                onValueChange={setSearchQuery}
+                placeholder="Search items, pets, fruits…"
+                aria-label="Search the marketplace"
               />
             </form>
-
-            {/* CTA Buttons */}
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link href="/marketplace">
-                <Button size="lg" className="w-full sm:w-auto">
-                  Browse Items
-                </Button>
-              </Link>
-              <Link href="/sell">
-                <Button size="lg" variant="outline" className="w-full sm:w-auto bg-transparent">
-                  Start Selling
-                </Button>
+            <div className="flex flex-wrap items-center gap-6">
+              <Button asChild size="lg">
+                <Link href={spotlight ? listingHref(spotlight) : "/marketplace"}>
+                  {spotlight ? "View item" : "Browse items"}
+                </Link>
+              </Button>
+              <Link
+                href={spotlight ? "/marketplace" : "/sell"}
+                className="text-[17px] text-link hover:underline underline-offset-2"
+              >
+                {spotlight ? "Browse all items ›" : "Sell an item ›"}
               </Link>
             </div>
           </div>
-        </div>
+
+          <Link
+            href={spotlight ? listingHref(spotlight) : "/marketplace"}
+            aria-label={spotlight ? `View ${spotlight.title}` : "Browse items"}
+            className="glow-spot relative mx-auto aspect-square w-full max-w-[520px] overflow-hidden rounded-[28px]"
+          >
+            {trendingLoading ? (
+              <Skeleton className="absolute inset-[18%] rounded-3xl" />
+            ) : spotlight?.image ? (
+              <Image
+                src={spotlight.image}
+                alt={spotlight.title}
+                fill
+                priority
+                sizes="(max-width: 768px) 90vw, 520px"
+                className="drop-glow object-contain p-[16%]"
+              />
+            ) : (
+              <span className="absolute inset-0 grid place-items-center text-sm text-muted-foreground">
+                RbMarket
+              </span>
+            )}
+          </Link>
+        </Container>
       </section>
 
-      {/* Quick Stats */}
-      <section className="py-8 border-b bg-card/50">
-        <div className="container max-w-[1920px] mx-auto px-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-            <div className="text-center">
-              <div className="text-3xl font-bold text-primary mb-2">{stats.totalListings.toLocaleString()}</div>
-              <p className="text-muted-foreground">Active Listings</p>
-            </div>
-            <div className="text-center">
-              <div className="text-3xl font-bold text-primary mb-2">{stats.totalUsers.toLocaleString()}</div>
-              <p className="text-muted-foreground">Community Members</p>
-            </div>
-            <div className="text-center">
-              <div className="text-3xl font-bold text-primary mb-2">₱{(stats.totalVolume / 1000).toFixed(1)}k</div>
-              <p className="text-muted-foreground">Trade Volume</p>
-            </div>
-            <div className="text-center">
-              <div className="text-3xl font-bold text-primary mb-2">{stats.activeTraders.toLocaleString()}</div>
-              <p className="text-muted-foreground">Active Traders</p>
-            </div>
-          </div>
-        </div>
-      </section>
+      {/* Games */}
+      <Container>
+        <TrendingGames games={games} isLoading={gamesLoading} />
+      </Container>
 
-      {/* Giveaway Panel */}
-      <section className="py-10 border-b bg-linear-to-br from-amber-50 to-rose-50 dark:from-card dark:to-card/60">
-        <div className="container max-w-[1920px] mx-auto px-6">
-          <div className="mb-6">
-            <h2 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
-              <Gift className="w-7 h-7 text-amber-500" />
-              Giveaway Hub
-            </h2>
-            <p className="text-muted-foreground">Join active giveaways, track queue, and view latest winners.</p>
-          </div>
-
-          {giveawayLoading ? (
-            <Card className="p-6">
-              <p className="text-sm text-muted-foreground">Loading giveaway data...</p>
-            </Card>
-          ) : !giveawayData?.active ? (
-            <Card className="p-6">
-              <p className="font-medium">No active giveaway right now.</p>
-              <p className="text-sm text-muted-foreground mt-1">Check back soon or watch queued giveaways below.</p>
-            </Card>
+      {/* Trending listings */}
+      <Section className="pt-10 md:pt-14">
+        <Container>
+          <SectionHeader title="Trending now" href="/marketplace" />
+          {trendingLoading ? (
+            <ListingGrid>
+              {Array.from({ length: 5 }).map((_, i) => (
+                <ListingCardSkeleton key={i} />
+              ))}
+            </ListingGrid>
+          ) : trendingGrid.length > 0 ? (
+            <ListingGrid>
+              {trendingGrid.map((l) => (
+                <ListingCard
+                  key={l.id}
+                  id={l.id}
+                  href={listingHref(l)}
+                  title={l.title}
+                  game={l.game}
+                  price={l.price}
+                  image={l.image}
+                  sellerName={l.seller.username}
+                  vouches={l.seller.vouch}
+                  note={l.listingType === "CURRENCY" ? "Rate per peso" : `${l.views.toLocaleString()} views`}
+                />
+              ))}
+            </ListingGrid>
           ) : (
-            <div className="grid gap-4 lg:grid-cols-3">
-              <Card className="p-6 lg:col-span-2 border-amber-200/80 lg:h-[540px]">
-                <div className="grid h-full gap-4 md:grid-cols-5">
-                  <div className="md:col-span-2 md:h-full">
-                    <div className="relative aspect-video md:aspect-auto md:h-full rounded-lg border overflow-hidden bg-muted">
-                      {giveawayData.active.rewardImageUrl ? (
-                        <Image
-                          src={giveawayData.active.rewardImageUrl}
-                          alt={giveawayData.active.title}
-                          fill
-                          sizes="(max-width: 768px) 100vw, 40vw"
-                          className="object-cover"
-                        />
-                      ) : (
-                        <div className="h-full w-full flex items-center justify-center text-sm text-muted-foreground">
-                          Reward image coming soon
-                        </div>
-                      )}
-                    </div>
+            <p className="rounded-lg bg-card px-6 py-12 text-center text-muted-foreground">
+              No listings yet. Be the first to{" "}
+              <Link href="/sell" className="text-link hover:underline">
+                sell an item
+              </Link>
+              .
+            </p>
+          )}
+        </Container>
+      </Section>
+
+      {/* Trust band */}
+      <Section surface>
+        <Container className="grid gap-10 md:grid-cols-3">
+          <div>
+            <p className="text-[30px] font-semibold tracking-[-0.02em] tabular-nums">
+              {stats.totalListings.toLocaleString()}
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Live listings from {stats.activeTraders.toLocaleString()} active traders and{" "}
+              {stats.totalUsers.toLocaleString()} members.
+            </p>
+          </div>
+          <div>
+            <p className="text-[30px] font-semibold tracking-[-0.02em]">Hall of Shame</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Reported scammers are public, with evidence.{" "}
+              <Link href="/hall-of-shame" className="text-link hover:underline underline-offset-2">
+                Check a trader ›
+              </Link>
+            </p>
+          </div>
+          <div>
+            <p className="text-[30px] font-semibold tracking-[-0.02em]">GCash · PayPal</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Pay the way you already do, or cross-trade. Every completed trade earns a vouch.
+            </p>
+          </div>
+        </Container>
+      </Section>
+
+      {/* Giveaway */}
+      <Section>
+        <Container>
+          <SectionHeader title="Giveaways" href="/notifications" linkLabel="Your notifications" />
+          {giveawayLoading ? (
+            <Skeleton className="h-[320px] w-full rounded-lg" />
+          ) : !giveawayData?.active ? (
+            <div className="rounded-lg bg-card px-6 py-10">
+              <p className="font-semibold">No giveaway is running right now.</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {giveawayData?.queued.length
+                  ? `Next up: ${giveawayData.queued[0].title}${
+                      giveawayData.queued[0].startsAt
+                        ? `, starting ${new Date(giveawayData.queued[0].startsAt).toLocaleString()}`
+                        : ""
+                    }.`
+                  : "Check back soon."}
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-[18px] lg:grid-cols-3">
+              <div className="grid overflow-hidden rounded-lg bg-card md:grid-cols-5 lg:col-span-2">
+                <div className="flex flex-col gap-4 p-6 md:col-span-3 md:p-8">
+                  <div>
+                    <p className="text-[13px] font-semibold text-link">Now running</p>
+                    <h3 className="mt-1 text-[26px] font-semibold leading-tight tracking-[-0.02em]">
+                      {giveawayData.active.title}
+                    </h3>
+                    {giveawayData.active.rewardLabel && (
+                      <p className="mt-1 text-sm text-muted-foreground">Reward: {giveawayData.active.rewardLabel}</p>
+                    )}
                   </div>
-
-                  <div className="md:col-span-3 flex h-full flex-col">
-                    <div className="space-y-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <p className="text-xs uppercase tracking-wide text-muted-foreground">Active Giveaway</p>
-                          <h3 className="text-xl font-bold mt-1">{giveawayData.active.title}</h3>
-                          {giveawayData.active.rewardLabel && (
-                            <p className="text-sm text-muted-foreground mt-1">Reward: {giveawayData.active.rewardLabel}</p>
-                          )}
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xs text-muted-foreground">Joined</p>
-                          <p className="text-2xl font-bold">{giveawayData.active.joinedCount}</p>
-                        </div>
-                      </div>
-
-                      {giveawayData.active.description && (
-                        <p className="text-sm text-muted-foreground">{truncateCopy(giveawayData.active.description, 200)}</p>
-                      )}
-
-                      <div className="flex flex-wrap items-center gap-3 text-sm">
-                        <span className="inline-flex items-center gap-1 rounded-full border px-3 py-1 bg-background">
-                          <Clock3 className="w-4 h-4" />
-                          {hoursLeft}h {minutesLeft}m left
-                        </span>
-                        <span className="text-muted-foreground">
-                          Ends: {giveawayData.active.endsAt ? new Date(giveawayData.active.endsAt).toLocaleString() : "-"}
-                        </span>
-                      </div>
-
-                      {session?.user?.id && giveawayData.eligibility && !giveawayData.eligibility.eligible && (
-                        <p className="text-sm text-amber-700 dark:text-amber-300">
-                          Eligibility: {giveawayData.eligibility.completedTransactionsCount}/{giveawayData.eligibility.requiredCount} completed trades in the last 7 days.
-                        </p>
-                      )}
+                  {giveawayData.active.description && (
+                    <p className="text-sm text-muted-foreground">
+                      {truncateCopy(giveawayData.active.description, 200)}
+                    </p>
+                  )}
+                  <dl className="grid grid-cols-2 gap-4 border-t border-border pt-4 text-sm">
+                    <div>
+                      <dt className="text-muted-foreground">Time left</dt>
+                      <dd className="mt-0.5 text-lg font-semibold tabular-nums">
+                        {hoursLeft}h {minutesLeft}m
+                      </dd>
                     </div>
-
-                    <div className="mt-auto pt-4 flex flex-wrap gap-2">
-                      <Button
-                        onClick={handleJoinGiveaway}
-                        disabled={
-                          giveawayActionLoading ||
-                          giveawayData.joined ||
-                          Boolean(session?.user?.id && giveawayData.eligibility && !giveawayData.eligibility.eligible)
-                        }
-                      >
-                        {giveawayData.joined
-                          ? "Already Joined"
-                          : giveawayActionLoading
-                            ? "Joining..."
-                            : "Join Giveaway"}
-                      </Button>
-                      <Link href="/notifications">
-                        <Button variant="outline">Check Notifications</Button>
-                      </Link>
+                    <div>
+                      <dt className="text-muted-foreground">Entries</dt>
+                      <dd className="mt-0.5 text-lg font-semibold tabular-nums">
+                        {giveawayData.active.joinedCount.toLocaleString()}
+                      </dd>
                     </div>
+                  </dl>
+                  {session?.user?.id && giveawayData.eligibility && !giveawayData.eligibility.eligible && (
+                    <p className="text-sm text-warning">
+                      You need {giveawayData.eligibility.requiredCount} completed trades in the last 7 days to enter (
+                      {giveawayData.eligibility.completedTransactionsCount} so far).
+                    </p>
+                  )}
+                  <div className="mt-auto pt-2">
+                    <Button onClick={handleJoinGiveaway} disabled={joinDisabled}>
+                      {giveawayData.joined ? "You're entered" : giveawayActionLoading ? "Joining…" : "Join giveaway"}
+                    </Button>
                   </div>
                 </div>
-              </Card>
-
-              <Card className="p-6 lg:h-[540px] overflow-hidden flex flex-col gap-4">
-                <div className="min-h-0">
-                  <p className="font-semibold">Queued Next</p>
-                  {giveawayData.queued.length === 0 ? (
-                    <p className="text-sm text-muted-foreground mt-1">No queued giveaways.</p>
+                <div className="glow-spot relative min-h-[220px] md:col-span-2">
+                  {giveawayData.active.rewardImageUrl ? (
+                    <Image
+                      src={giveawayData.active.rewardImageUrl}
+                      alt={giveawayData.active.title}
+                      fill
+                      sizes="(max-width: 768px) 100vw, 30vw"
+                      className="drop-glow object-contain p-[12%]"
+                    />
                   ) : (
-                    <div className="space-y-2 mt-2 overflow-y-auto max-h-[220px] pr-1">
-                      {giveawayData.queued.slice(0, 1).map((queued) => (
-                        <div key={queued.id} className="p-2 border rounded-md text-sm space-y-2 bg-background/80">
-                          <div className="relative aspect-video w-full overflow-hidden rounded border bg-muted">
-                            {queued.rewardImageUrl ? (
-                              <Image
-                                src={queued.rewardImageUrl}
-                                alt={queued.title}
-                                fill
-                                sizes="(max-width: 1024px) 100vw, 20vw"
-                                className="object-cover"
-                              />
-                            ) : (
-                              <div className="h-full w-full flex items-center justify-center text-xs text-muted-foreground">
-                                No reward image
-                              </div>
-                            )}
-                          </div>
-                          <p className="font-medium">{queued.title}</p>
-                          {queued.description && (
-                            <p className="text-xs text-muted-foreground">{truncateCopy(queued.description, 80)}</p>
-                          )}
-                          <p className="text-xs text-muted-foreground">Starts: {queued.startsAt ? new Date(queued.startsAt).toLocaleString() : "TBA"}</p>
-                        </div>
-                      ))}
-                    </div>
+                    <span className="absolute inset-0 grid place-items-center text-sm text-muted-foreground">
+                      Reward image coming soon
+                    </span>
                   )}
                 </div>
+              </div>
 
-                <div className="min-h-0 flex-1">
-                  <p className="font-semibold">Latest Winners</p>
-                  {giveawayData.history.length === 0 ? (
-                    <p className="text-sm text-muted-foreground mt-1">No recent completed giveaways.</p>
+              <div className="flex flex-col gap-6 rounded-lg bg-card p-6">
+                <div>
+                  <p className="text-sm font-semibold">Up next</p>
+                  {giveawayData.queued.length === 0 ? (
+                    <p className="mt-1 text-sm text-muted-foreground">Nothing queued yet.</p>
                   ) : (
-                    <div className="space-y-2 mt-2 overflow-y-auto max-h-[220px] pr-1">
-                      {giveawayData.history.slice(0, 2).map((item) => (
-                        <div key={item.id} className="p-2 border rounded-md text-sm space-y-2 bg-background/80">
-                          {item.rewardImageUrl && (
-                            <div className="relative aspect-video w-full overflow-hidden rounded border bg-muted">
-                              <Image
-                                src={item.rewardImageUrl}
-                                alt={item.title}
-                                fill
-                                sizes="(max-width: 1024px) 100vw, 20vw"
-                                className="object-cover"
-                              />
-                            </div>
-                          )}
-                          <p className="font-medium">{item.title}</p>
-                          {item.description && (
-                            <p className="text-xs text-muted-foreground">{truncateCopy(item.description, 72)}</p>
-                          )}
+                    giveawayData.queued.slice(0, 2).map((queued) => (
+                      <div key={queued.id} className="mt-3 flex items-center gap-3">
+                        <GiveawayThumb src={queued.rewardImageUrl} alt={queued.title} />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{queued.title}</p>
                           <p className="text-xs text-muted-foreground">
-                            Winner: {item.winnerUser?.username || "No winner"}
+                            {queued.startsAt ? `Starts ${new Date(queued.startsAt).toLocaleDateString()}` : "Date to be announced"}
                           </p>
                         </div>
-                      ))}
-                    </div>
+                      </div>
+                    ))
                   )}
                 </div>
-              </Card>
+                <div className="border-t border-border pt-5">
+                  <p className="text-sm font-semibold">Latest winners</p>
+                  {giveawayData.history.length === 0 ? (
+                    <p className="mt-1 text-sm text-muted-foreground">No finished giveaways yet.</p>
+                  ) : (
+                    giveawayData.history.slice(0, 3).map((item) => (
+                      <div key={item.id} className="mt-3 flex items-center gap-3">
+                        <GiveawayThumb src={item.rewardImageUrl} alt={item.title} />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{item.title}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {item.winnerUser?.username ? `Won by ${item.winnerUser.username}` : "No winner"}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
           )}
-        </div>
-      </section>
+        </Container>
+      </Section>
 
-      {/* Featured Listings Section */}
-      <section className="py-16">
-        <div className="container max-w-[1920px] mx-auto px-6">
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h2 className="text-3xl font-bold mb-2">Featured Listings</h2>
-              <p className="text-muted-foreground">Popular items trending now</p>
-            </div>
-            <Link href="/marketplace?sort=featured">
-              <Button variant="ghost">View All</Button>
-            </Link>
-          </div>
-          <FeaturedListings />
-        </div>
-      </section>
-
-      {/* Trending Games Section */}
-      <section className="py-16 bg-card/50">
-        <div className="container max-w-[1920px] mx-auto px-6">
-          <div className="mb-8">
-            <h2 className="text-3xl font-bold mb-2 flex items-center gap-2">
-              <TrendingUp className="w-8 h-8" />
-              Trending Games
-            </h2>
-            <p className="text-muted-foreground">Most popular items being traded</p>
-          </div>
-          <TrendingGames games={games} isLoading={gamesLoading} />
-        </div>
-      </section>
-
-      {/* Top Vouched Sellers Section */}
-      <section className="py-16">
-        <div className="container max-w-[1920px] mx-auto px-6">
-          <div className="mb-8">
-            <h2 className="text-3xl font-bold mb-2 flex items-center gap-2">
-              <Shield className="w-8 h-8" />
-              Top Vouched Sellers
-            </h2>
-            <p className="text-muted-foreground">Trusted community members</p>
-          </div>
+      {/* Top sellers */}
+      <Section surface>
+        <Container>
+          <SectionHeader title="Top vouched sellers" />
           <TopVouchedSellers sellers={traders} isLoading={tradersLoading} />
-        </div>
-      </section>
+        </Container>
+      </Section>
 
-      {/* Trust & Safety Features */}
-      <section className="py-16 bg-linear-to-br from-primary/5 to-primary/10">
-        <div className="container max-w-[1920px] mx-auto px-6">
-          <h2 className="text-3xl font-bold text-center mb-12">Why Trade Here?</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <Card className="p-6 text-center hover:shadow-lg transition-shadow">
-              <Shield className="w-12 h-12 mx-auto mb-4 text-primary" />
-              <h3 className="text-xl font-bold mb-2">Anonymous & Safe</h3>
-              <p className="text-muted-foreground">Keep your identity private while trading with confidence</p>
-            </Card>
-
-            <Card className="p-6 text-center hover:shadow-lg transition-shadow">
-              <Users className="w-12 h-12 mx-auto mb-4 text-primary" />
-              <h3 className="text-xl font-bold mb-2">Community Vouches</h3>
-              <p className="text-muted-foreground">Build reputation through verified trades and vouch count</p>
-            </Card>
-
-            <Card className="p-6 text-center hover:shadow-lg transition-shadow">
-              <Zap className="w-12 h-12 mx-auto mb-4 text-primary" />
-              <h3 className="text-xl font-bold mb-2">Your Terms</h3>
-              <p className="text-muted-foreground">Choose your payment method: GCash, PayPal, Robux, or cross-trade</p>
-            </Card>
-          </div>
-        </div>
-      </section>
-
-      {/* Footer CTA */}
-      <section className="py-16 bg-primary text-primary-foreground">
-        <div className="container max-w-[1920px] mx-auto px-6 text-center">
-          <h2 className="text-3xl font-bold mb-4">Ready to Start Trading?</h2>
-          <p className="mb-8 text-lg opacity-90 max-w-2xl mx-auto">
-            Join thousands of Roblox players buying and selling items securely every day.
+      {/* Closing CTA */}
+      <Section className="text-center">
+        <Container className="flex flex-col items-center gap-5">
+          <h2 className="text-title">Start selling today.</h2>
+          <p className="max-w-[44ch] text-[17px] text-muted-foreground">
+            List an item in a minute. Buyers message you directly, and every completed trade builds your vouches.
           </p>
-          <Link href="/auth/signup">
-            <Button size="lg" variant="secondary">
-              Create Free Account
-            </Button>
-          </Link>
-        </div>
-      </section>
+          <Button asChild size="lg">
+            <Link href={session?.user ? "/sell" : "/auth/signup"}>
+              {session?.user ? "Sell an item" : "Create a free account"}
+            </Link>
+          </Button>
+        </Container>
+      </Section>
     </main>
+  )
+}
+
+function GiveawayThumb({ src, alt }: { src?: string | null; alt: string }) {
+  return (
+    <span className="relative size-12 shrink-0 overflow-hidden rounded-xl bg-secondary">
+      {src && <Image src={src} alt={alt} fill sizes="48px" className="object-cover" />}
+    </span>
   )
 }

@@ -22,9 +22,10 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    // Sidebar is sticky inside the flex row, so collapsing it gives the width back to the content
+    <div className="flex min-h-screen bg-background">
       <AdminSidebar />
-      <main className="ml-64 min-h-screen overflow-auto">{children}</main>
+      <main className="min-w-0 flex-1">{children}</main>
     </div>
   )
 }

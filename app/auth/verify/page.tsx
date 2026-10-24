@@ -1,13 +1,14 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { verifyEmail, resendVerificationCode } from "@/app/actions/auth"
-import { Mail, ArrowLeft, Loader2 } from "lucide-react"
+import type React from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
+import { useRouter, useSearchParams } from "next/navigation"
+import { REGEXP_ONLY_DIGITS } from "input-otp"
+import { Button } from "@/components/ui/button"
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
+import { AuthError, AuthShell } from "@/components/site/auth-shell"
+import { verifyEmail, resendVerificationCode } from "@/app/actions/auth"
 import { useToast } from "@/hooks/use-toast"
 
 export default function VerifyEmailPage() {
@@ -17,195 +18,126 @@ export default function VerifyEmailPage() {
   const email = searchParams.get("email") || ""
 
   const [code, setCode] = useState("")
+  const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
   const [resending, setResending] = useState(false)
-  const [canResend, setCanResend] = useState(true)
   const [countdown, setCountdown] = useState(0)
 
   useEffect(() => {
-    if (!email) {
-      router.push("/auth/login")
-    }
+    if (!email) router.push("/auth/login")
   }, [email, router])
 
   useEffect(() => {
-    if (countdown > 0) {
-      const timer = setTimeout(() => setCountdown(countdown - 1), 1000)
-      return () => clearTimeout(timer)
-    } else {
-      setCanResend(true)
-    }
+    if (countdown <= 0) return
+    const timer = setTimeout(() => setCountdown((c) => c - 1), 1000)
+    return () => clearTimeout(timer)
   }, [countdown])
 
-  const handleVerify = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    if (code.length !== 6) {
-      toast({
-        title: "Invalid Code",
-        description: "Please enter a 6-digit verification code",
-        variant: "destructive",
-      })
-      return
-    }
-
+  const submitCode = async (value: string) => {
+    if (value.length !== 6 || loading) return
+    setError("")
     setLoading(true)
-
     try {
-      const result = await verifyEmail(email, code)
-
+      const result = await verifyEmail(email, value)
       if (result.success) {
-        toast({
-          title: "Email Verified!",
-          description: "Your email has been verified successfully. You can now log in.",
-        })
+        toast({ title: "Email confirmed", description: "You can log in now." })
         router.push("/auth/login")
       } else {
-        toast({
-          title: "Verification Failed",
-          description: result.error || "Invalid or expired verification code",
-          variant: "destructive",
-        })
+        setError(result.error || "That code is wrong or has expired.")
+        setCode("")
       }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "An unexpected error occurred. Please try again.",
-        variant: "destructive",
-      })
+    } catch {
+      setError("Something went wrong. Try again in a moment.")
     } finally {
       setLoading(false)
     }
   }
 
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    submitCode(code)
+  }
+
   const handleResend = async () => {
-    if (!canResend) return
-
+    if (countdown > 0 || resending) return
     setResending(true)
-    setCanResend(false)
-
+    setError("")
     try {
       const result = await resendVerificationCode(email)
-
       if (result.success) {
-        toast({
-          title: "Code Resent",
-          description: "A new verification code has been sent to your email",
-        })
-        setCountdown(60) // 60 second cooldown
+        toast({ title: "New code sent", description: `Check ${email}.` })
+        setCountdown(60)
       } else {
-        toast({
-          title: "Failed to Resend",
-          description: result.error || "Failed to resend verification code",
-          variant: "destructive",
-        })
-        setCanResend(true)
+        setError(result.error || "We couldn't send a new code.")
       }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "An unexpected error occurred. Please try again.",
-        variant: "destructive",
-      })
-      setCanResend(true)
+    } catch {
+      setError("Something went wrong. Try again in a moment.")
     } finally {
       setResending(false)
     }
   }
 
-  const handleCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/\D/g, "").slice(0, 6)
-    setCode(value)
-  }
-
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-blue-50 dark:from-gray-900 dark:to-gray-800 px-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1">
-          <div className="flex items-center justify-center mb-4">
-            <div className="h-16 w-16 rounded-full bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
-              <Mail className="h-8 w-8 text-purple-600 dark:text-purple-400" />
-            </div>
-          </div>
-          <CardTitle className="text-2xl text-center">Verify Your Email</CardTitle>
-          <CardDescription className="text-center">
-            We sent a 6-digit verification code to<br />
-            <span className="font-medium text-foreground">{email}</span>
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleVerify} className="space-y-4">
-            <div className="space-y-2">
-              <label htmlFor="code" className="text-sm font-medium">
-                Verification Code
-              </label>
-              <Input
-                id="code"
-                type="text"
-                placeholder="000000"
-                value={code}
-                onChange={handleCodeChange}
-                maxLength={6}
-                className="text-center text-2xl font-mono tracking-widest"
-                disabled={loading}
-                autoFocus
-              />
-              <p className="text-xs text-muted-foreground text-center">
-                Enter the 6-digit code from your email
-              </p>
-            </div>
-
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={loading || code.length !== 6}
+    <AuthShell
+      title="Check your email"
+      subtitle={
+        <>
+          Enter the 6-digit code we sent to <span className="text-foreground">{email}</span>.
+        </>
+      }
+      topLink={
+        <Link href="/auth/login" className="text-link hover:underline underline-offset-2">
+          Back to log in
+        </Link>
+      }
+      footer={
+        <>
+          Didn't get it?{" "}
+          {countdown > 0 ? (
+            <span className="tabular-nums">You can resend in {countdown}s.</span>
+          ) : (
+            <button
+              type="button"
+              onClick={handleResend}
+              disabled={resending}
+              className="text-link hover:underline underline-offset-2 disabled:opacity-60"
             >
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Verifying...
-                </>
-              ) : (
-                "Verify Email"
-              )}
-            </Button>
-
-            <div className="text-center space-y-2">
-              <p className="text-sm text-muted-foreground">
-                Didn't receive the code?
-              </p>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleResend}
-                disabled={!canResend || resending}
-                className="w-full"
-              >
-                {resending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Sending...
-                  </>
-                ) : countdown > 0 ? (
-                  `Resend Code (${countdown}s)`
-                ) : (
-                  "Resend Code"
-                )}
-              </Button>
-            </div>
-
-            <div className="pt-4 text-center">
-              <Link
-                href="/auth/login"
-                className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Login
-              </Link>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+              {resending ? "Sending…" : "Resend code"}
+            </button>
+          )}
+        </>
+      }
+    >
+      <AuthError>{error}</AuthError>
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <InputOTP
+          maxLength={6}
+          pattern={REGEXP_ONLY_DIGITS}
+          value={code}
+          onChange={(value) => {
+            setCode(value)
+            if (error) setError("")
+          }}
+          onComplete={submitCode}
+          disabled={loading}
+          autoFocus
+          aria-label="Verification code"
+          containerClassName="justify-between"
+        >
+          <InputOTPGroup className="w-full justify-between gap-2">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <InputOTPSlot
+                key={i}
+                index={i}
+                className="h-14 w-12 flex-1 rounded-xl border border-input bg-card text-[22px] font-semibold first:rounded-xl last:rounded-xl sm:w-14"
+              />
+            ))}
+          </InputOTPGroup>
+        </InputOTP>
+        <Button type="submit" size="lg" className="w-full" disabled={loading || code.length !== 6}>
+          {loading ? "Checking…" : "Confirm email"}
+        </Button>
+      </form>
+    </AuthShell>
   )
 }

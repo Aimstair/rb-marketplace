@@ -1,5 +1,5 @@
 import type { Metadata } from "next"
-import { CollectionPageJsonLd, OrganizationJsonLd } from "@/components/json-ld"
+import { CollectionPageJsonLd } from "@/components/json-ld"
 
 const DEFAULT_SITE_URL = "https://rbmarket.app"
 
@@ -14,9 +14,9 @@ function getSiteUrl(): string {
 
 export function generateMetadata(): Metadata {
   const siteUrl = getSiteUrl()
-  const title = "Hall of Shame Reports and Scam Records | RbMarket"
+  const title = "Roblox Scammer List Philippines: Hall of Shame"
   const description =
-    "Review community-maintained scam reports, aliases, and payment identifiers to make safer Roblox trades on RbMarket."
+    "Check a Roblox trader before you pay. Moderated scam reports with aliases, Roblox usernames and GCash numbers, searchable for free on RbMarket."
 
   return {
     metadataBase: new URL(siteUrl),
@@ -59,11 +59,11 @@ export function generateMetadata(): Metadata {
 export default function HallOfShameLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
-      <OrganizationJsonLd />
       <CollectionPageJsonLd
         name="RbMarket Hall of Shame"
         description="Collection of community-maintained scam reports and incident records for safer Roblox trading."
         path="/hall-of-shame"
+        crumbs={[{ name: "Hall of Shame", path: "/hall-of-shame" }]}
       />
       {children}
     </>

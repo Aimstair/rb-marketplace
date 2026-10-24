@@ -1,141 +1,66 @@
 import { Metadata } from "next"
+import { unstable_cache } from "next/cache"
 import { prisma } from "@/lib/prisma"
+import { truncate } from "@/lib/seo"
 
-const DEFAULT_SITE_URL = "https://rbmarket.app"
+const sellerAndGame = {
+  seller: { select: { username: true } },
+  game: { select: { displayName: true } },
+} as const
 
-function getSiteUrl(): string {
-  const candidate = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || DEFAULT_SITE_URL
-  try {
-    return new URL(candidate).toString().replace(/\/$/, "")
-  } catch {
-    return DEFAULT_SITE_URL
-  }
-}
+// Metadata lookups are cached so a warm page view runs no extra query
+const getCachedItemListingMeta = unstable_cache(
+  async (id: string) => prisma.itemListing.findUnique({ where: { id }, include: sellerAndGame }),
+  ["listing-itemListing-meta-v1"],
+  { revalidate: 60 },
+)
+
+const getCachedCurrencyListingMeta2 = unstable_cache(
+  async (id: string) => prisma.currencyListing.findUnique({ where: { id }, include: sellerAndGame }),
+  ["listing-currencyListing-meta-v1"],
+  { revalidate: 60 },
+)
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   try {
-    // Await params since it's a Promise in Next.js 15+
     const { id } = await params
-    
-    // Try to fetch from ItemListing first
-    let listing = await prisma.itemListing.findUnique({
-      where: { id },
-      include: {
-        seller: {
-          select: {
-            username: true,
-          },
-        },
-        game: {
-          select: {
-            displayName: true,
-          },
-        },
-      },
-    })
-
-    let gameName = listing?.game?.displayName || "Roblox"
-    let price = listing?.price || 0
-    let category = "item"
-
-    // If not found in ItemListing, try CurrencyListing
-    if (!listing) {
-      const currencyListing = await prisma.currencyListing.findUnique({
-        where: { id },
-        include: {
-          seller: {
-            select: {
-              username: true,
-            },
-          },
-          game: {
-            select: {
-              displayName: true,
-            },
-          },
-        },
-      })
-
-      if (currencyListing) {
-        listing = currencyListing as any
-        gameName = currencyListing.game?.displayName || "Roblox"
-        price = (currencyListing as any).ratePerPeso || 0
-        category = "currency"
-      }
-    }
+    const item = await getCachedItemListingMeta(id)
+    const listing = item ?? (await getCachedCurrencyListingMeta2(id))
 
     if (!listing) {
       return {
-        title: "Listing Not Found - RB Marketplace",
+        title: "Listing not found",
         description: "The listing you're looking for doesn't exist.",
-        robots: {
-          index: false,
-          follow: false,
-        },
+        robots: { index: false, follow: false },
       }
     }
 
-    const siteUrl = getSiteUrl()
-    const listingStatus = String((listing as any).status || "").toLowerCase()
-    const isIndexable = listingStatus === "available"
-    const formattedPrice = price.toLocaleString()
+    const gameName = listing.game?.displayName || "Roblox"
+    const isIndexable = String(listing.status || "").toLowerCase() === "available"
+    const priceLabel = item
+      ? `₱${item.price.toLocaleString("en-PH")}`
+      : `${Number((listing as { ratePerPeso?: number }).ratePerPeso || 0).toLocaleString("en-PH")} per ₱1`
     const rawDescription = (listing.description || "").trim()
-    const snippet = rawDescription ? `${rawDescription.slice(0, 120)}${rawDescription.length > 120 ? "..." : ""}` : "Trusted Roblox marketplace listing."
-    const description = `Buy ${listing.title} from ${listing.seller.username} for ₱${formattedPrice} on RbMarket — Roblox’s trusted buy and sell marketplace. ${snippet}`
+    const title = `${listing.title} (${gameName}) for ${priceLabel}`
+    const description = truncate(
+      `Buy ${listing.title} for ${gameName} at ${priceLabel} from ${listing.seller.username}. Pay with GCash or PayPal on RbMarket, the Roblox marketplace in the Philippines.${rawDescription ? ` ${rawDescription}` : ""}`,
+      160,
+    )
+    const images = listing.image ? [{ url: listing.image, alt: `${listing.title} (${gameName})` }] : undefined
 
     return {
-      title: `Buy ${listing.title} on Roblox Marketplace | RbMarket`,
+      title,
       description,
-      metadataBase: new URL(siteUrl),
-      alternates: {
-        canonical: `/listing/${id}`,
-      },
-      robots: {
-        index: isIndexable,
-        follow: isIndexable,
-      },
-      keywords: [
-        listing.title,
-        gameName,
-        category,
-        "Roblox",
-        "Roblox marketplace",
-        "Roblox buy and sell",
-        "Roblox sell for cash",
-        ...(category === "item" ? ["Roblox sell pets", "sell Roblox items"] : ["Roblox sell units", "sell Roblox currency"]),
-        `buy ${listing.title}`,
-        `sell ${gameName} items`,
-        "RbMarket",
-      ],
-      openGraph: {
-        title: `Buy ${listing.title} on Roblox Marketplace | RbMarket`,
-        description,
-        type: "website",
-        url: `${siteUrl}/listing/${id}`,
-        images: listing.image
-          ? [
-              {
-                url: listing.image,
-                width: 1200,
-                height: 630,
-                alt: listing.title,
-              },
-            ]
-          : [],
-      },
-      twitter: {
-        card: "summary_large_image",
-        title: `Buy ${listing.title} on Roblox Marketplace | RbMarket`,
-        description,
-        images: listing.image ? [listing.image] : [],
-      },
+      alternates: { canonical: `/listing/${id}` },
+      // Sold listings drop out of the index but still pass link value to the seller and game
+      robots: { index: isIndexable, follow: true },
+      keywords: [listing.title, `buy ${listing.title}`, `${listing.title} price`, `${gameName} items for sale`, "Roblox marketplace Philippines"],
+      openGraph: { title, description, type: "website", url: `/listing/${id}`, images },
+      twitter: { card: "summary_large_image", title, description, images: listing.image ? [listing.image] : undefined },
     }
   } catch (error) {
     console.error("Error generating listing metadata:", error)
-    return {
-      title: "Listing - RB Marketplace",
-      description: "Browse items on RB Marketplace",
-    }
+    return { title: "Roblox item listing" }
   }
 }
 

@@ -1,9 +1,9 @@
 "use client"
 
-import { Card } from "@/components/ui/card"
-import { Skeleton } from "@/components/ui/skeleton"
 import Link from "next/link"
-import { TrendingUp } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
+import { ChipRow } from "@/components/filters/chip"
+import { gamePath } from "@/lib/seo"
 
 interface TrendingGame {
   game: string
@@ -17,40 +17,42 @@ interface TrendingGamesProps {
   isLoading?: boolean
 }
 
+// Quiet, distinct hues for the game initial dots
+const DOT_HUES = ["#ff453a", "#ff9f0a", "#2997ff", "#30d158", "#bf5af2", "#64d2ff", "#ffd60a", "#ff375f"]
+
+/** Horizontal row of popular games, each linking to its game page. */
 export default function TrendingGames({ games = [], isLoading = false }: TrendingGamesProps) {
   if (isLoading) {
     return (
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      <ChipRow>
         {Array.from({ length: 6 }).map((_, i) => (
-          <Card key={i} className="overflow-hidden">
-            <Skeleton className="w-full aspect-square" />
-          </Card>
+          <Skeleton key={i} className="h-10 w-36 shrink-0 rounded-full" />
         ))}
-      </div>
+      </ChipRow>
     )
   }
 
-  if (games.length === 0) {
-    return (
-      <div className="text-center py-8 text-muted-foreground">
-        <p>No trending games available</p>
-      </div>
-    )
-  }
+  if (games.length === 0) return null
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+    <ChipRow>
       {games.map((game, idx) => (
-        <Link key={`${game.game}-${idx}`} href={`/marketplace?game=${encodeURIComponent(game.game)}`}>
-          <Card className="overflow-hidden hover:shadow-lg transition-all cursor-pointer group">
-            <div className="relative aspect-square bg-gradient-to-br from-primary/20 to-primary/10 flex flex-col items-center justify-center">
-              <TrendingUp className="w-8 h-8 text-primary mb-2" />
-              <p className="text-foreground font-bold text-center px-2 text-sm">{game.game}</p>
-              <p className="text-muted-foreground text-xs mt-1">{game.listings} listings</p>
-            </div>
-          </Card>
+        <Link
+          key={`${game.game}-${idx}`}
+          href={gamePath(game.game)}
+          className="flex h-10 shrink-0 items-center gap-2.5 rounded-full bg-secondary py-1.5 pl-1.5 pr-4 text-sm font-medium transition-colors hover:bg-[#3a3a3c]"
+        >
+          <span
+            className="grid size-7 place-items-center rounded-full text-xs font-semibold text-black"
+            style={{ background: DOT_HUES[idx % DOT_HUES.length] }}
+            aria-hidden="true"
+          >
+            {game.game.charAt(0).toUpperCase()}
+          </span>
+          {game.game}
+          <span className="text-xs font-normal text-muted-foreground tabular-nums">{game.listings}</span>
         </Link>
       ))}
-    </div>
+    </ChipRow>
   )
 }

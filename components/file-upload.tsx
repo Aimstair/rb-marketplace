@@ -148,7 +148,7 @@ export function FileUpload({ endpoint, value, onChange, onRemove, cropPreset }: 
 
         <div className="w-full rounded-lg border-2 border-dashed border-border bg-background p-5">
           <div className="flex flex-col items-center justify-center gap-3 text-center">
-            <div className="rounded-full bg-primary/10 p-3 text-primary">
+            <div className="rounded-full bg-primary/10 p-3 text-link">
               <Upload className="h-5 w-5" />
             </div>
             <div>
@@ -218,9 +218,9 @@ export function FileUpload({ endpoint, value, onChange, onRemove, cropPreset }: 
         appearance={{
           button:
             "bg-primary text-primary-foreground hover:bg-primary/90 ut-uploading:bg-primary/50 ut-uploading:cursor-not-allowed after:bg-primary",
-          allowedContent: "flex h-16 flex-col items-center justify-center px-2 text-primary",
+          allowedContent: "flex h-16 flex-col items-center justify-center px-2 text-link",
           label: "text-sm font-semibold text-foreground",
-          container: "w-full rounded-lg border-2 border-dashed border-border bg-background ut-uploading:border-primary ut-uploading:bg-primary/5 transition-colors",
+          container: "w-full rounded-lg border-2 border-dashed border-border bg-background ut-uploading:border-primary ut-uploading:bg-link/[0.06] transition-colors",
           uploadIcon: "text-muted-foreground",
         }}
       />

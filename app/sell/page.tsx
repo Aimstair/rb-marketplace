@@ -5,7 +5,6 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { X, Plus, Coins, Package } from "lucide-react"
-import Navigation from "@/components/navigation"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -15,6 +14,7 @@ import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
 import { createListing, createCurrencyListing, createNewCurrencyListing, getFilterOptions } from "@/app/actions/listings"
 import { getGames, getGamesWithItemTypes, getGamesWithCurrencies, getCurrenciesForGame, getCategories, getItemTypesForGameAndCategory, type GameOption, type CurrencyOption, type GameItemOption } from "@/app/actions/games"
+import { FormPageSkeleton } from "@/components/site/skeletons"
 
 const paymentMethods = ["GCash", "PayPal", "Robux Gift Cards", "Cross-Trade", "Venmo"]
 
@@ -141,8 +141,9 @@ export default function SellPage() {
     fetchItemTypes()
   }, [itemFormData.game, itemFormData.category])
 
+  // Session still loading (or redirecting to login): keep the page shape instead of a blank gap
   if (!user) {
-    return null
+    return <FormPageSkeleton />
   }
 
   const handleItemChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -372,60 +373,61 @@ export default function SellPage() {
 
   return (
     <main className="min-h-screen bg-background">
-      <Navigation />
 
-      <div className="container max-w-[1920px] mx-auto px-6 py-8">
+      <div className="mx-auto w-full max-w-[1440px] px-5 md:px-8 lg:px-10 pt-10 pb-16 md:pt-14 md:pb-20">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">Create a Listing</h1>
+          <h1 className="text-title mb-2">Create a Listing</h1>
           <p className="text-muted-foreground">Share your item or currency with the community and start trading</p>
         </div>
 
-        <Card className="p-2 mb-8 inline-flex gap-2">
-          <Button
-            variant={listingType === "item" ? "default" : "ghost"}
-            onClick={() => setListingType("item")}
-            className="gap-2"
-          >
-            <Package className="w-4 h-4" />
-            Item Listing
-          </Button>
-          <Button
-            variant={listingType === "currency" ? "default" : "ghost"}
-            onClick={() => setListingType("currency")}
-            className="gap-2"
-          >
-            <Coins className="w-4 h-4" />
-            Currency Listing
-          </Button>
-        </Card>
+        <div role="tablist" aria-label="Listing type" className="mb-8 inline-flex rounded-full bg-secondary p-[3px] text-sm font-medium">
+          {([
+            { value: "item", label: "Item", icon: Package },
+            { value: "currency", label: "Currency", icon: Coins },
+          ] as const).map(({ value, label, icon: Icon }) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={listingType === value}
+              onClick={() => setListingType(value)}
+              className={`flex items-center gap-2 rounded-full px-5 py-2 transition-colors ${
+                listingType === value ? "bg-[#48484a] text-foreground" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Icon className="size-4" strokeWidth={1.75} />
+              {label}
+            </button>
+          ))}
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Form */}
           <div className="lg:col-span-2">
             {/* Error Alert */}
             {error && (
-              <Card className="p-4 mb-6 bg-destructive/10 border-destructive/20">
-                <p className="text-sm text-destructive">{error}</p>
-              </Card>
+              <div role="alert" className="mb-6 rounded-lg bg-destructive/10 px-5 py-4 text-sm text-destructive">
+                {error}
+              </div>
             )}
 
             {/* Success Alert */}
             {success && (
-              <Card className="p-4 mb-6 bg-green-500/10 border-green-500/20">
-                <p className="text-sm text-green-700">Listing created successfully! Redirecting...</p>
-              </Card>
+              <div role="status" className="mb-6 rounded-lg bg-success/10 px-5 py-4 text-sm text-success">
+                Listing created. Taking you to it now…
+              </div>
             )}
 
             <form onSubmit={handleSubmit} className="space-y-6">
               {listingType === "item" ? (
                 <>
                   {/* Item Form */}
-                  <Card className="p-6">
-                    <h2 className="text-xl font-bold mb-4">Item Details</h2>
+                  <Card className="gap-0 p-6 sm:p-8">
+                    <h2 className="mb-5 text-[21px] font-semibold tracking-[-0.015em]">Item Details</h2>
                     <div className="space-y-4">
                       <div>
-                        <label className="text-sm font-semibold mb-2 block">Item Title *</label>
+                        <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Item Title *</label>
                         <Input
                           type="text"
                           name="title"
@@ -433,46 +435,46 @@ export default function SellPage() {
                           value={itemFormData.title}
                           onChange={handleItemChange}
                           maxLength={100}
-                          className={itemErrors.title ? "border-red-500" : ""}
+                          className={itemErrors.title ? "border-destructive/40" : ""}
                         />
                         {itemErrors.title && (
-                          <p className="text-xs text-red-500 mt-1">{itemErrors.title}</p>
+                          <p className="text-xs text-destructive mt-1">{itemErrors.title}</p>
                         )}
                         <p className="text-xs text-muted-foreground mt-1">{itemFormData.title.length}/100</p>
                       </div>
 
                       <div>
-                        <label className="text-sm font-semibold mb-2 block">Description *</label>
+                        <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Description *</label>
                         <textarea
                           name="description"
                           placeholder="Describe the item in detail. Include any special features, condition, etc."
                           value={itemFormData.description}
                           onChange={handleItemChange}
                           maxLength={2000}
-                          className={`w-full px-3 py-2 border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary resize-none ${
-                            itemErrors.description ? "border-red-500" : "border-border"
+                          className={`w-full rounded-xl border bg-card px-3.5 py-2.5 text-[15px] outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/40 resize-none ${
+                            itemErrors.description ? "border-destructive/40" : "border-border"
                           }`}
                           rows={6}
                         />
                         {itemErrors.description && (
-                          <p className="text-xs text-red-500 mt-1">{itemErrors.description}</p>
+                          <p className="text-xs text-destructive mt-1">{itemErrors.description}</p>
                         )}
                         <p className="text-xs text-muted-foreground mt-1">{itemFormData.description.length}/2000</p>
                       </div>
                     </div>
                   </Card>
 
-                  <Card className="p-6">
-                    <h2 className="text-xl font-bold mb-4">Category</h2>
+                  <Card className="gap-0 p-6 sm:p-8">
+                    <h2 className="mb-5 text-[21px] font-semibold tracking-[-0.015em]">Category</h2>
                     <div className="space-y-4">
                       <div>
-                        <label className="text-sm font-semibold mb-2 block">Category *</label>
+                        <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Category *</label>
                         <select
                           name="category"
                           value={itemFormData.category}
                           onChange={handleItemChange}
-                          className={`w-full px-3 py-2 border rounded-lg bg-background ${
-                            itemErrors.category ? "border-red-500" : "border-border"
+                          className={`w-full h-10 rounded-xl border border-input bg-card px-3.5 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/40 ${
+                            itemErrors.category ? "border-destructive/40" : "border-border"
                           }`}
                         >
                           <option value="">Select category</option>
@@ -483,19 +485,19 @@ export default function SellPage() {
                           ))}
                         </select>
                         {itemErrors.category && (
-                          <p className="text-xs text-red-500 mt-1">{itemErrors.category}</p>
+                          <p className="text-xs text-destructive mt-1">{itemErrors.category}</p>
                         )}
                       </div>
 
                       {itemFormData.category && (itemFormData.category === "Games" || itemFormData.category === "Accounts") && (
                         <div>
-                          <label className="text-sm font-semibold mb-2 block">Game *</label>
+                          <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Game *</label>
                           <select
                             name="game"
                             value={itemFormData.game}
                             onChange={handleItemChange}
-                            className={`w-full px-3 py-2 border rounded-lg bg-background ${
-                              itemErrors.game ? "border-red-500" : "border-border"
+                            className={`w-full h-10 rounded-xl border border-input bg-card px-3.5 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/40 ${
+                              itemErrors.game ? "border-destructive/40" : "border-border"
                             }`}
                           >
                             <option value="">Select game</option>
@@ -506,20 +508,20 @@ export default function SellPage() {
                             ))}
                           </select>
                           {itemErrors.game && (
-                            <p className="text-xs text-red-500 mt-1">{itemErrors.game}</p>
+                            <p className="text-xs text-destructive mt-1">{itemErrors.game}</p>
                           )}
                         </div>
                       )}
 
                       {itemFormData.category === "Games" && itemFormData.game && (
                         <div>
-                          <label className="text-sm font-semibold mb-2 block">Item Type *</label>
+                          <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Item Type *</label>
                           <select
                             name="itemType"
                             value={itemFormData.itemType}
                             onChange={handleItemChange}
-                            className={`w-full px-3 py-2 border rounded-lg bg-background ${
-                              itemErrors.itemType ? "border-red-500" : "border-border"
+                            className={`w-full h-10 rounded-xl border border-input bg-card px-3.5 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/40 ${
+                              itemErrors.itemType ? "border-destructive/40" : "border-border"
                             }`}
                             disabled={availableItemTypes.length === 0}
                           >
@@ -527,13 +529,13 @@ export default function SellPage() {
                               {availableItemTypes.length === 0 ? "Loading item types..." : "Select item type"}
                             </option>
                             {availableItemTypes.map((type) => (
-                              <option key={type.id} value={type.itemType}>
+                              <option key={type.id} value={type.name}>
                                 {type.displayName}
                               </option>
                             ))}
                           </select>
                           {itemErrors.itemType && (
-                            <p className="text-xs text-red-500 mt-1">{itemErrors.itemType}</p>
+                            <p className="text-xs text-destructive mt-1">{itemErrors.itemType}</p>
                           )}
                           {availableItemTypes.length === 0 && (
                             <p className="text-xs text-muted-foreground mt-1">
@@ -545,11 +547,11 @@ export default function SellPage() {
                     </div>
                   </Card>
 
-                  <Card className="p-6">
-                    <h2 className="text-xl font-bold mb-4">Pricing & Stock</h2>
+                  <Card className="gap-0 p-6 sm:p-8">
+                    <h2 className="mb-5 text-[21px] font-semibold tracking-[-0.015em]">Pricing & Stock</h2>
                     <div className="space-y-4">
                       <div>
-                        <label className="text-sm font-semibold mb-2 block">Pricing Mode *</label>
+                        <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Pricing Mode *</label>
                         <div className="flex gap-4 mb-4">
                           <label className="flex items-center gap-2 cursor-pointer">
                             <input
@@ -577,7 +579,7 @@ export default function SellPage() {
                       </div>
 
                       <div>
-                        <label className="text-sm font-semibold mb-2 block">
+                        <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">
                           {itemFormData.pricingMode === "per-item" ? "Price per Item (PHP)" : "Items per PHP"} *
                         </label>
                         <Input
@@ -588,10 +590,10 @@ export default function SellPage() {
                           onChange={handleItemChange}
                           min="0"
                           step="0.1"
-                          className={itemErrors.price ? "border-red-500" : ""}
+                          className={itemErrors.price ? "border-destructive/40" : ""}
                         />
                         {itemErrors.price && (
-                          <p className="text-xs text-red-500 mt-1">{itemErrors.price}</p>
+                          <p className="text-xs text-destructive mt-1">{itemErrors.price}</p>
                         )}
                         <p className="text-xs text-muted-foreground mt-1">
                           {itemFormData.pricingMode === "per-item" 
@@ -602,7 +604,7 @@ export default function SellPage() {
                       </div>
 
                       <div>
-                        <label className="text-sm font-semibold mb-2 block">Quantity *</label>
+                        <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Quantity *</label>
                         <Input
                           type="number"
                           name="stock"
@@ -610,10 +612,10 @@ export default function SellPage() {
                           value={itemFormData.stock}
                           onChange={handleItemChange}
                           min="1"
-                          className={itemErrors.stock ? "border-red-500" : ""}
+                          className={itemErrors.stock ? "border-destructive/40" : ""}
                         />
                         {itemErrors.stock && (
-                          <p className="text-xs text-red-500 mt-1">{itemErrors.stock}</p>
+                          <p className="text-xs text-destructive mt-1">{itemErrors.stock}</p>
                         )}
                         <p className="text-xs text-muted-foreground mt-1">
                           How many units are you selling? (e.g., 5 items at ₱{itemFormData.price || "X"} each, or 1 bundle of 5 items for ₱{itemFormData.price || "X"})
@@ -622,11 +624,11 @@ export default function SellPage() {
                     </div>
                   </Card>
 
-                  <Card className="p-6">
-                    <h2 className="text-xl font-bold mb-4">Images</h2>
+                  <Card className="gap-0 p-6 sm:p-8">
+                    <h2 className="mb-5 text-[21px] font-semibold tracking-[-0.015em]">Images</h2>
                     <div className="space-y-4">
                       <div>
-                        <label className="text-sm font-semibold mb-2 block">Item Image *</label>
+                        <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Item Image *</label>
                         <FileUpload
                           endpoint="listingImage"
                           cropPreset="listing"
@@ -643,15 +645,15 @@ export default function SellPage() {
                           }}
                         />
                         {itemErrors.image && (
-                          <p className="text-xs text-red-500 mt-1">{itemErrors.image}</p>
+                          <p className="text-xs text-destructive mt-1">{itemErrors.image}</p>
                         )}
                         <p className="text-xs text-muted-foreground mt-1">Upload a clear image of your item</p>
                       </div>
                     </div>
                   </Card>
 
-                  <Card className="p-6">
-                    <h2 className="text-xl font-bold mb-4">Payment & Proof</h2>
+                  <Card className="gap-0 p-6 sm:p-8">
+                    <h2 className="mb-5 text-[21px] font-semibold tracking-[-0.015em]">Payment & Proof</h2>
                     <div className="space-y-4">
                       <div>
                         <label className="text-sm font-semibold mb-3 block">Accept Payment Via *</label>
@@ -678,7 +680,7 @@ export default function SellPage() {
                           ))}
                         </div>
                         {itemErrors.paymentMethods && (
-                          <p className="text-xs text-red-500 mt-2">{itemErrors.paymentMethods}</p>
+                          <p className="text-xs text-destructive mt-2">{itemErrors.paymentMethods}</p>
                         )}
                       </div>
 
@@ -697,17 +699,17 @@ export default function SellPage() {
                 </>
               ) : (
                 <>
-                  <Card className="p-6">
-                    <h2 className="text-xl font-bold mb-4">Currency Details</h2>
+                  <Card className="gap-0 p-6 sm:p-8">
+                    <h2 className="mb-5 text-[21px] font-semibold tracking-[-0.015em]">Currency Details</h2>
                     <div className="space-y-4">
                       <div>
-                        <label className="text-sm font-semibold mb-2 block">Game *</label>
+                        <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Game *</label>
                         <select
                           name="game"
                           value={currencyFormData.game}
                           onChange={handleCurrencyChange}
-                          className={`w-full px-3 py-2 border rounded-lg bg-background ${
-                            currencyErrors.game ? "border-red-500" : "border-border"
+                          className={`w-full h-10 rounded-xl border border-input bg-card px-3.5 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/40 ${
+                            currencyErrors.game ? "border-destructive/40" : "border-border"
                           }`}
                         >
                           <option value="">Select a game</option>
@@ -718,19 +720,19 @@ export default function SellPage() {
                           ))}
                         </select>
                         {currencyErrors.game && (
-                          <p className="text-xs text-red-500 mt-1">{currencyErrors.game}</p>
+                          <p className="text-xs text-destructive mt-1">{currencyErrors.game}</p>
                         )}
                       </div>
 
                       {currencyFormData.game && availableCurrencies.length > 0 && (
                         <div>
-                          <label className="text-sm font-semibold mb-2 block">Currency Type *</label>
+                          <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Currency Type *</label>
                           <select
                             name="currencyType"
                             value={currencyFormData.currencyType}
                             onChange={handleCurrencyChange}
-                            className={`w-full px-3 py-2 border rounded-lg bg-background ${
-                              currencyErrors.currencyType ? "border-red-500" : "border-border"
+                            className={`w-full h-10 rounded-xl border border-input bg-card px-3.5 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/40 ${
+                              currencyErrors.currencyType ? "border-destructive/40" : "border-border"
                             }`}
                           >
                             <option value="">Select currency type</option>
@@ -741,13 +743,13 @@ export default function SellPage() {
                             ))}
                           </select>
                           {currencyErrors.currencyType && (
-                            <p className="text-xs text-red-500 mt-1">{currencyErrors.currencyType}</p>
+                            <p className="text-xs text-destructive mt-1">{currencyErrors.currencyType}</p>
                           )}
                         </div>
                       )}
 
                       <div>
-                        <label className="text-sm font-semibold mb-2 block">Pricing Mode *</label>
+                        <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Pricing Mode *</label>
                         <div className="flex gap-4 mb-4">
                           <label className="flex items-center gap-2 cursor-pointer">
                             <input
@@ -776,7 +778,7 @@ export default function SellPage() {
 
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="text-sm font-semibold mb-2 block">
+                          <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">
                             {currencyFormData.pricingMode === "per-peso" ? "Currency per PHP" : "PHP per Currency"} *
                           </label>
                           <div className="flex items-center gap-2">
@@ -788,7 +790,7 @@ export default function SellPage() {
                               onChange={handleCurrencyChange}
                               min="0"
                               step="0.1"
-                              className={currencyErrors.ratePerPeso ? "border-red-500" : ""}
+                              className={currencyErrors.ratePerPeso ? "border-destructive/40" : ""}
                             />
                             {currencyFormData.pricingMode === "per-peso" ? (
                               <span className="text-sm text-muted-foreground whitespace-nowrap">{currencyFormData.currencyType || "currency"} per ₱1</span>
@@ -797,7 +799,7 @@ export default function SellPage() {
                             )}
                           </div>
                           {currencyErrors.ratePerPeso && (
-                            <p className="text-xs text-red-500 mt-1">{currencyErrors.ratePerPeso}</p>
+                            <p className="text-xs text-destructive mt-1">{currencyErrors.ratePerPeso}</p>
                           )}
                           <p className="text-xs text-muted-foreground mt-1">
                             {currencyFormData.pricingMode === "per-peso" 
@@ -808,7 +810,7 @@ export default function SellPage() {
                         </div>
 
                         <div>
-                          <label className="text-sm font-semibold mb-2 block">Stock Available *</label>
+                          <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Stock Available *</label>
                           <Input
                             type="number"
                             name="stock"
@@ -816,10 +818,10 @@ export default function SellPage() {
                             value={currencyFormData.stock}
                             onChange={handleCurrencyChange}
                             min="0"
-                            className={currencyErrors.stock ? "border-red-500" : ""}
+                            className={currencyErrors.stock ? "border-destructive/40" : ""}
                           />
                           {currencyErrors.stock && (
-                            <p className="text-xs text-red-500 mt-1">{currencyErrors.stock}</p>
+                            <p className="text-xs text-destructive mt-1">{currencyErrors.stock}</p>
                           )}
                           <p className="text-xs text-muted-foreground mt-1">
                             Total {currencyFormData.currencyType || "currency"} you have for sale
@@ -828,31 +830,31 @@ export default function SellPage() {
                       </div>
 
                       <div>
-                        <label className="text-sm font-semibold mb-2 block">Additional Notes</label>
+                        <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Additional Notes</label>
                         <textarea
                           name="description"
                           placeholder="Any additional information about your currency listing (delivery time, restrictions, etc.)"
                           value={currencyFormData.description}
                           onChange={handleCurrencyChange}
                           maxLength={500}
-                          className={`w-full px-3 py-2 border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary resize-none ${
-                            currencyErrors.description ? "border-red-500" : "border-border"
+                          className={`w-full rounded-xl border bg-card px-3.5 py-2.5 text-[15px] outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/40 resize-none ${
+                            currencyErrors.description ? "border-destructive/40" : "border-border"
                           }`}
                           rows={4}
                         />
                         {currencyErrors.description && (
-                          <p className="text-xs text-red-500 mt-1">{currencyErrors.description}</p>
+                          <p className="text-xs text-destructive mt-1">{currencyErrors.description}</p>
                         )}
                         <p className="text-xs text-muted-foreground mt-1">{currencyFormData.description.length}/500</p>
                       </div>
                     </div>
                   </Card>
 
-                  <Card className="p-6">
-                    <h2 className="text-xl font-bold mb-4">Currency Image</h2>
+                  <Card className="gap-0 p-6 sm:p-8">
+                    <h2 className="mb-5 text-[21px] font-semibold tracking-[-0.015em]">Currency Image</h2>
                     <div className="space-y-4">
                       <div>
-                        <label className="text-sm font-semibold mb-2 block">Currency Image *</label>
+                        <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Currency Image *</label>
                         <FileUpload
                           endpoint="listingImage"
                           cropPreset="listing"
@@ -869,7 +871,7 @@ export default function SellPage() {
                           }}
                         />
                         {currencyErrors.image && (
-                          <p className="text-xs text-red-500 mt-1">{currencyErrors.image}</p>
+                          <p className="text-xs text-destructive mt-1">{currencyErrors.image}</p>
                         )}
                         <p className="text-xs text-muted-foreground mt-1">
                           Upload a clear image of your currency
@@ -878,8 +880,8 @@ export default function SellPage() {
                     </div>
                   </Card>
 
-                  <Card className="p-6">
-                    <h2 className="text-xl font-bold mb-4">Payment Methods</h2>
+                  <Card className="gap-0 p-6 sm:p-8">
+                    <h2 className="mb-5 text-[21px] font-semibold tracking-[-0.015em]">Payment Methods</h2>
                     <div>
                       <label className="text-sm font-semibold mb-3 block">Accept Payment Via *</label>
                       <div className="flex flex-wrap gap-2">
@@ -905,7 +907,7 @@ export default function SellPage() {
                         ))}
                       </div>
                       {currencyErrors.paymentMethods && (
-                        <p className="text-xs text-red-500 mt-2">{currencyErrors.paymentMethods}</p>
+                        <p className="text-xs text-destructive mt-2">{currencyErrors.paymentMethods}</p>
                       )}
                     </div>
                   </Card>
@@ -939,8 +941,8 @@ export default function SellPage() {
           {/* Preview & Tips */}
           <div className="space-y-6">
             {/* Preview */}
-            <Card className="p-6">
-              <h2 className="text-xl font-bold mb-4">Listing Preview</h2>
+            <Card className="gap-0 p-6 sm:p-8">
+              <h2 className="mb-5 text-[21px] font-semibold tracking-[-0.015em]">Listing Preview</h2>
               {listingType === "item" ? (
                 <div className="border rounded-lg overflow-hidden">
                   <div className="aspect-video bg-muted flex items-center justify-center">
@@ -959,7 +961,7 @@ export default function SellPage() {
                   </div>
                   <div className="p-4">
                     <p className="font-semibold truncate">{itemFormData.title || "Item Title"}</p>
-                    <p className="text-primary font-bold mt-1">
+                    <p className="text-link font-semibold mt-1">
                       {itemFormData.price ? `₱${Number(itemFormData.price).toLocaleString()}` : "₱0"}
                     </p>
                     <div className="flex flex-wrap gap-1 mt-2">
@@ -990,7 +992,7 @@ export default function SellPage() {
                       />
                     ) : (
                       <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-                        <Coins className="w-6 h-6 text-primary" />
+                        <Coins className="w-6 h-6 text-link" />
                       </div>
                     )}
                     <div>
@@ -1007,7 +1009,7 @@ export default function SellPage() {
                   </div>
                   <div className="bg-muted rounded-lg p-3">
                     <p className="text-sm text-muted-foreground">Rate</p>
-                    <p className="font-bold text-lg text-primary">
+                    <p className="font-semibold text-lg text-link">
                       {currencyFormData.ratePerPeso
                         ? `${currencyFormData.ratePerPeso} ${currencyFormData.currencyType || "currency"} per ₱1`
                         : "Set your rate"}
@@ -1018,35 +1020,35 @@ export default function SellPage() {
             </Card>
 
             {/* Tips */}
-            <Card className="p-6">
-              <h2 className="text-xl font-bold mb-4">Listing Tips</h2>
+            <Card className="gap-0 p-6 sm:p-8">
+              <h2 className="mb-5 text-[21px] font-semibold tracking-[-0.015em]">Listing Tips</h2>
               <ul className="space-y-3 text-sm text-muted-foreground">
                 <li className="flex items-start gap-2">
-                  <span className="text-primary">•</span>
+                  <span className="text-link">•</span>
                   Use clear, high-quality images
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-primary">•</span>
+                  <span className="text-link">•</span>
                   Write detailed descriptions
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-primary">•</span>
+                  <span className="text-link">•</span>
                   Set competitive prices
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-primary">•</span>
+                  <span className="text-link">•</span>
                   Respond quickly to inquiries
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-primary">•</span>
+                  <span className="text-link">•</span>
                   Always provide proof of ownership
                 </li>
               </ul>
             </Card>
 
             {/* Safety */}
-            <Card className="p-6 bg-primary/5 border-primary/20">
-              <h2 className="text-xl font-bold mb-4">Safety First</h2>
+            <Card className="p-6 bg-link/[0.06]">
+              <h2 className="mb-5 text-[21px] font-semibold tracking-[-0.015em]">Safety First</h2>
               <p className="text-sm text-muted-foreground">
                 Never share your Roblox password or personal information. Use our secure messaging system for all
                 communications.

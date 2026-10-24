@@ -12,14 +12,14 @@ export default function MaintenancePage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="max-w-md w-full">
+      <Card className="w-full max-w-md rounded-[24px] py-8">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
-            <div className="p-4 bg-yellow-500/10 rounded-full">
-              <AlertTriangle className="h-12 w-12 text-yellow-500" />
+            <div className="p-4 bg-warning/10 rounded-full">
+              <AlertTriangle className="h-12 w-12 text-warning" />
             </div>
           </div>
-          <CardTitle className="text-2xl">Site Under Maintenance</CardTitle>
+          <CardTitle className="text-[28px] font-semibold tracking-[-0.02em]">We'll be right back</CardTitle>
           <CardDescription>
             We're currently performing scheduled maintenance to improve your experience.
           </CardDescription>

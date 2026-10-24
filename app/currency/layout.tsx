@@ -13,8 +13,8 @@ function getSiteUrl(): string {
 
 export async function generateMetadata(): Promise<Metadata> {
   const siteUrl = getSiteUrl()
-  const title = "Currency Marketplace - Roblox Game Currencies"
-  const description = "Find Roblox game currency offers with transparent exchange rates, seller vouches, and stock visibility on RB Marketplace."
+  const title = "Buy Roblox In-Game Currency with GCash: Live Rates"
+  const description = "Compare live rates per ₱1 for Roblox in-game currency like Sheckles, Gems and Coins. Vouched sellers, stock and order limits shown, pay with GCash or PayPal."
 
   return {
     title,
@@ -23,7 +23,7 @@ export async function generateMetadata(): Promise<Metadata> {
     alternates: {
       canonical: "/currency",
     },
-    keywords: ["Roblox currency", "buy game currency", "currency marketplace", "Robux trading"],
+    keywords: ["buy Roblox currency Philippines", "Grow a Garden Sheckles for sale", "Roblox in-game currency GCash", "Roblox currency rates"],
     openGraph: {
       title,
       description,

@@ -1,18 +1,13 @@
 import type { Metadata } from "next"
 import { getFilterOptions, getListings } from "@/app/actions/listings"
 import MarketplacePageClient from "./marketplace-page-client"
-import { MarketplaceJsonLd } from "@/components/json-ld"
-
-const DEFAULT_SITE_URL = "https://rbmarket.app"
-
-function getSiteUrl(): string {
-  const candidate = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || DEFAULT_SITE_URL
-  try {
-    return new URL(candidate).toString().replace(/\/$/, "")
-  } catch {
-    return DEFAULT_SITE_URL
-  }
-}
+import Link from "next/link"
+import { ItemListJsonLd, WebPageJsonLd } from "@/components/json-ld"
+import { Container, Section } from "@/components/site/container"
+import { FaqSection } from "@/components/seo/faq-section"
+import { getSeoGames } from "@/lib/games"
+import { GENERAL_FAQ } from "@/lib/seo-content"
+import { gamePath } from "@/lib/seo"
 
 function firstParamValue(value: string | string[] | undefined): string {
   if (Array.isArray(value)) {
@@ -40,54 +35,21 @@ export async function generateMetadata({
   const rawSearch = firstParamValue(resolvedSearchParams.search) || firstParamValue(resolvedSearchParams.item)
   const normalizedSearch = rawSearch.trim()
   const effectiveSearch = normalizeSearchTerm(normalizedSearch)
-  const siteUrl = getSiteUrl()
   const title = effectiveSearch
-    ? `Marketplace Search: ${effectiveSearch} - RB Marketplace`
-    : "Roblox Marketplace — Buy & Sell Roblox Pets, Items & Units | RbMarket"
+    ? `${effectiveSearch} for sale: Roblox Marketplace`
+    : "Roblox Items for Sale Philippines: Pets & Limiteds"
   const description = effectiveSearch
-    ? `Browse Roblox item listings matching "${effectiveSearch}" on RB Marketplace.`
-    : "Browse the RbMarket Roblox marketplace to buy and sell Roblox pets, game items, and in-game units for cash. Find trusted sellers, list your pets, and sell your Roblox items safely."
-
-  const canonicalPath = effectiveSearch
-    ? `/marketplace?search=${encodeURIComponent(effectiveSearch)}`
-    : "/marketplace"
+    ? `Roblox listings matching "${effectiveSearch}" on RbMarket, priced in pesos. Pay vouched sellers with GCash or PayPal.`
+    : "Browse Roblox items, pets and limiteds for sale from vouched sellers in the Philippines. Prices in pesos, pay with GCash or PayPal, and list your own items for free."
 
   return {
     title,
     description,
-    metadataBase: new URL(siteUrl),
-    alternates: {
-      canonical: canonicalPath,
-    },
-    keywords: effectiveSearch
-      ? [effectiveSearch, "Roblox marketplace", "Roblox buy and sell"]
-      : [
-          "Roblox marketplace",
-          "Roblox buy and sell",
-          "Roblox sell for cash",
-          "Roblox sell pets",
-          "Roblox sell units",
-          "buy Roblox items",
-          "sell Roblox items for cash",
-          "Roblox pet marketplace",
-          "Roblox currency marketplace",
-          "RbMarket",
-        ],
-    openGraph: {
-      title,
-      description,
-      url: `${siteUrl}${canonicalPath}`,
-      type: "website",
-    },
-    twitter: {
-      card: "summary_large_image",
-      title,
-      description,
-    },
-    robots: {
-      index: normalizedSearch !== "{search_term_string}",
-      follow: normalizedSearch !== "{search_term_string}",
-    },
+    alternates: effectiveSearch ? undefined : { canonical: "/marketplace" },
+    // Internal search results stay out of the index (thin, near-duplicate pages); links are still followed
+    robots: { index: !effectiveSearch && !normalizedSearch, follow: true },
+    openGraph: { title, description, url: "/marketplace", type: "website" },
+    twitter: { card: "summary_large_image", title, description },
   }
 }
 
@@ -100,7 +62,7 @@ export default async function MarketplacePage({
   const rawSearch = firstParamValue(resolvedSearchParams.search) || firstParamValue(resolvedSearchParams.item)
   const effectiveSearch = normalizeSearchTerm(rawSearch)
 
-  const [initialResult, initialCategoryOptions, initialGameOptions, initialItemTypeOptions] = await Promise.all([
+  const [initialResult, initialCategoryOptions, initialGameOptions, initialItemTypeOptions, games] = await Promise.all([
     getListings({
       search: effectiveSearch,
       mainCategory: "All",
@@ -109,16 +71,30 @@ export default async function MarketplacePage({
       sortBy: "newest",
       priceRange: { min: 0, max: 1000000 },
       page: 1,
-      itemsPerPage: 9,
+      itemsPerPage: 20,
     }),
     getFilterOptions("CATEGORY"),
     getFilterOptions("GAME"),
     getFilterOptions("ITEM_TYPE"),
+    getSeoGames().catch(() => []),
   ])
 
   return (
     <>
-      <MarketplaceJsonLd itemCount={initialResult.total} />
+      <WebPageJsonLd
+        type="CollectionPage"
+        name="Roblox items for sale"
+        description="Roblox items, pets and limiteds for sale on RbMarket, priced in Philippine pesos."
+        path="/marketplace"
+        crumbs={[{ name: "Marketplace", path: "/marketplace" }]}
+      />
+      {initialResult.listings.length > 0 && (
+        <ItemListJsonLd
+          name="Latest Roblox items for sale"
+          path="/marketplace"
+          items={initialResult.listings.map((l) => ({ name: l.title, path: `/listing/${l.id}`, image: l.image }))}
+        />
+      )}
       <MarketplacePageClient
         initialSearchQuery={effectiveSearch}
         initialListings={initialResult.listings}
@@ -127,48 +103,28 @@ export default async function MarketplacePage({
         initialGameOptions={initialGameOptions}
         initialItemTypeOptions={initialItemTypeOptions}
       />
-      {/* Server-rendered SEO content block — indexed by Google, visually hidden */}
       {!effectiveSearch && (
-        <section
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            width: "1px",
-            height: "1px",
-            padding: 0,
-            margin: "-1px",
-            overflow: "hidden",
-            clip: "rect(0,0,0,0)",
-            whiteSpace: "nowrap",
-            border: 0,
-          }}
-        >
-          <h1>Roblox Marketplace — Buy &amp; Sell Roblox Items for Cash</h1>
-          <p>
-            RbMarket is the go-to Roblox marketplace for players who want to buy and sell Roblox
-            pets, game items, and in-game units for real cash. Whether you’re looking to sell your
-            Roblox pets, trade rare items, or exchange in-game currency units, RbMarket connects
-            you with trusted sellers across all major Roblox games.
-          </p>
-          <h2>Roblox Buy and Sell — How It Works</h2>
-          <p>
-            Browse thousands of listings from verified Roblox sellers. Use filters to find pets,
-            items, accessories, gamepasses, and in-game currency units by game, category, and price.
-            Message sellers directly and confirm trades through our secure workflow.
-          </p>
-          <h2>Sell Roblox Pets for Cash</h2>
-          <p>
-            List your Roblox pets and rare items on RbMarket and sell them for cash. Our
-            peer-to-peer Roblox marketplace lets you set your own price, connect with buyers, and
-            get paid safely. Sell pets from Blox Fruits, Pet Simulator X, and other top Roblox games.
-          </p>
-          <h2>Sell Roblox Units &amp; Currency</h2>
-          <p>
-            Have in-game currency units to spare? Sell Roblox game currency and units on RbMarket.
-            Find buyers looking for Blox Fruits fragments, Pet Simulator X gems, and other in-game
-            units across popular Roblox games. Get cash for your Roblox currency today.
-          </p>
-        </section>
+        <Section surface>
+          <Container>
+            <h2 className="text-section">Shop by game</h2>
+            <p className="mt-2 max-w-[60ch] text-[15px] text-muted-foreground">
+              Every game has its own page with live listings, the lowest price and currency offers.
+            </p>
+            <ul className="mt-6 flex flex-wrap gap-2">
+              {games.map((game) => (
+                <li key={game.slug}>
+                  <Link
+                    href={gamePath(game.displayName)}
+                    className="inline-flex h-9 items-center gap-2 rounded-full bg-secondary px-4 text-sm font-medium transition-colors hover:bg-[#3a3a3c]"
+                  >
+                    {game.displayName} items
+                  </Link>
+                </li>
+              ))}
+            </ul>
+            <FaqSection entries={GENERAL_FAQ.slice(6)} title="Marketplace questions" className="mt-14 md:mt-20" />
+          </Container>
+        </Section>
       )}
     </>
   )

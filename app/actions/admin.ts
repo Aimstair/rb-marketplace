@@ -5,6 +5,9 @@ import { prisma } from "@/lib/prisma"
 import { createNotification } from "@/app/actions/notifications"
 import { auth } from "@/auth"
 import { headers } from "next/headers"
+import { updateTag } from "next/cache"
+import { SYSTEM_SETTINGS_TAG } from "@/lib/system-settings"
+import { getSessionUser } from "@/lib/session-user"
 import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit"
 
 const ONE_MINUTE_MS = 60 * 1000
@@ -1582,13 +1585,19 @@ export async function createSupportTicket(data: {
       return { success: false, error: adminRateLimit.error } as any
     }
 
+    // Identity comes from the session; the client-supplied userId is ignored
+    const sessionUser = await getSessionUser()
+    if (!sessionUser) {
+      return { success: false, error: "Please log in to contact support" }
+    }
+
     if (!data.subject || !data.message) {
       return { success: false, error: "Subject and message are required" }
     }
 
     const ticket = await prisma.supportTicket.create({
       data: {
-        userId: data.userId,
+        userId: sessionUser.id,
         subject: data.subject,
         message: data.message,
         category: data.category || "GENERAL",
@@ -1633,14 +1642,16 @@ export async function getMyTickets(userId: string): Promise<{
   error?: string
 }> {
   try {
-    const adminRateLimit = await enforceAdminCoreRateLimit("getMyTickets", false)
-    if (!adminRateLimit.allowed) {
-      return { success: false, error: adminRateLimit.error } as any
+    // Only ever return the caller's own tickets; the userId argument is ignored
+    const sessionUser = await getSessionUser()
+    if (!sessionUser) {
+      return { success: false, error: "Unauthorized" }
     }
 
     const tickets = await prisma.supportTicket.findMany({
-      where: { userId },
-      orderBy: { createdAt: "desc" }
+      where: { userId: sessionUser.id },
+      orderBy: { createdAt: "desc" },
+      take: 50,
     })
 
     return { success: true, data: tickets }
@@ -1832,13 +1843,22 @@ export async function addTicketReply(
       return { success: false, error: "Message cannot be empty" }
     }
 
+    // Never trust the client for who is replying or whether they are staff
+    const sessionUser = await getSessionUser()
+    if (!sessionUser) {
+      return { success: false, error: "Unauthorized" }
+    }
+    const callerIsAdmin = sessionUser.role === "admin"
+    void userId
+    void isAdmin
+
     // Verify ticket exists
     const ticket = await prisma.supportTicket.findUnique({
       where: { id: ticketId },
-      include: { user: true }
+      include: { user: { select: { id: true } } }
     })
 
-    if (!ticket) {
+    if (!ticket || (!callerIsAdmin && ticket.userId !== sessionUser.id)) {
       return { success: false, error: "Ticket not found" }
     }
 
@@ -1846,9 +1866,9 @@ export async function addTicketReply(
     const reply = await prisma.supportTicketMessage.create({
       data: {
         ticketId,
-        userId,
+        userId: sessionUser.id,
         message: message.trim(),
-        isAdmin
+        isAdmin: callerIsAdmin
       },
       include: {
         user: {
@@ -1868,17 +1888,17 @@ export async function addTicketReply(
     })
 
     // Create notification for the other party
-    const notificationUserId = isAdmin ? ticket.userId : ticket.user.id
-    if (notificationUserId !== userId) {
+    const notificationUserId = ticket.userId
+    if (callerIsAdmin && notificationUserId !== sessionUser.id) {
       await prisma.notification.create({
         data: {
           userId: notificationUserId,
           type: "SYSTEM",
-          title: isAdmin ? "Support Ticket Response" : "New Ticket Reply",
-          message: isAdmin 
+          title: callerIsAdmin ? "Support Ticket Response" : "New Ticket Reply",
+          message: callerIsAdmin 
             ? `A support team member replied to your ticket "${ticket.subject}"`
             : `User replied to ticket "${ticket.subject}"`,
-          link: isAdmin ? "/settings?tab=support" : "/admin/support",
+          link: callerIsAdmin ? "/settings?tab=support" : "/admin/support",
           isRead: false
         }
       })
@@ -1910,9 +1930,16 @@ export async function getTicketMessages(ticketId: string): Promise<{
   error?: string
 }> {
   try {
-    const adminRateLimit = await enforceAdminCoreRateLimit("getTicketMessages", false)
-    if (!adminRateLimit.allowed) {
-      return { success: false, error: adminRateLimit.error } as any
+    const sessionUser = await getSessionUser()
+    if (!sessionUser) {
+      return { success: false, error: "Unauthorized" }
+    }
+    if (sessionUser.role !== "admin") {
+      const owned = await prisma.supportTicket.findFirst({
+        where: { id: ticketId, userId: sessionUser.id },
+        select: { id: true },
+      })
+      if (!owned) return { success: false, error: "Ticket not found" }
     }
 
     const messages = await prisma.supportTicketMessage.findMany({
@@ -3693,6 +3720,7 @@ export async function updateSystemSettings(
       },
     })
 
+    updateTag(SYSTEM_SETTINGS_TAG)
     return { success: true }
   } catch (err) {
     console.error("Failed to update system settings:", err)
@@ -3738,6 +3766,7 @@ export async function resetSystemSettings(): Promise<AdminResult> {
       },
     })
 
+    updateTag(SYSTEM_SETTINGS_TAG)
     return { success: true }
   } catch (err) {
     console.error("Failed to reset system settings:", err)

@@ -98,14 +98,14 @@ export default function DisputesPage() {
   }
 
   const openStatus = (status: string) => {
-    return status === "OPEN" ? "bg-yellow-500/10 text-yellow-500 border-yellow-500/20" : "bg-green-500/10 text-green-500 border-green-500/20"
+    return status === "OPEN" ? "bg-warning/10 text-warning border-warning/40" : "bg-success/10 text-success border-success/40"
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Disputes</h1>
+          <h1 className="text-[28px] md:text-[34px] font-semibold tracking-[-0.025em]">Disputes</h1>
           <p className="text-muted-foreground">Manage trade disputes and resolution requests</p>
         </div>
       </div>
@@ -115,30 +115,30 @@ export default function DisputesPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Open</CardTitle>
-            <Clock className="h-4 w-4 text-yellow-500" />
+            <Clock className="h-4 w-4 text-warning" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{disputes.filter((d) => d.status === "OPEN").length}</div>
+            <div className="text-2xl font-semibold">{disputes.filter((d) => d.status === "OPEN").length}</div>
             <p className="text-xs text-muted-foreground">Awaiting resolution</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Resolved</CardTitle>
-            <CheckCircle className="h-4 w-4 text-green-500" />
+            <CheckCircle className="h-4 w-4 text-success" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{disputes.filter((d) => d.status === "RESOLVED").length}</div>
+            <div className="text-2xl font-semibold">{disputes.filter((d) => d.status === "RESOLVED").length}</div>
             <p className="text-xs text-muted-foreground">Completed</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Disputes</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-orange-500" />
+            <AlertTriangle className="h-4 w-4 text-warning" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{disputes.length}</div>
+            <div className="text-2xl font-semibold">{disputes.length}</div>
             <p className="text-xs text-muted-foreground">All time</p>
           </CardContent>
         </Card>
@@ -148,7 +148,7 @@ export default function DisputesPage() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">₱{disputes.reduce((sum, d) => sum + d.transaction.price, 0).toLocaleString()}</div>
+            <div className="text-2xl font-semibold">₱{disputes.reduce((sum, d) => sum + d.transaction.price, 0).toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">In disputes</p>
           </CardContent>
         </Card>
@@ -240,10 +240,10 @@ export default function DisputesPage() {
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium">{dispute.transaction.listing.title}</span>
                         <span className="text-sm text-muted-foreground">•</span>
-                        <span className="text-sm font-semibold text-green-500">₱{dispute.transaction.price.toLocaleString()}</span>
+                        <span className="text-sm font-semibold text-success">₱{dispute.transaction.price.toLocaleString()}</span>
                       </div>
                       <p className="text-sm text-muted-foreground">{dispute.reason}</p>
-                      {dispute.resolution && <p className="text-sm text-green-600">Resolution: {dispute.resolution}</p>}
+                      {dispute.resolution && <p className="text-sm text-success">Resolution: {dispute.resolution}</p>}
                     </div>
 
                     {/* Meta */}

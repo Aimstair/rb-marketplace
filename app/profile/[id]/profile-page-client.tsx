@@ -26,13 +26,14 @@ import {
   MessageSquare,
   Loader2,
 } from "lucide-react"
-import Navigation from "@/components/navigation"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Skeleton } from "@/components/ui/skeleton"
+import { ProfileSkeleton } from "@/components/site/skeletons"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ListingCard, ListingGrid } from "@/components/listing/listing-card"
 import { Progress } from "@/components/ui/progress"
 import {
   Dialog,
@@ -52,15 +53,26 @@ import { createReport } from "@/app/actions/admin"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
-import { PersonJsonLd } from "@/components/json-ld"
+import { ProfileJsonLd } from "@/components/json-ld"
 
-export default function ProfilePageClient({ profileId }: { profileId: string }) {
+export default function ProfilePageClient({
+  profileId,
+  initialResult,
+}: {
+  profileId: string
+  /** Loaded on the server so the profile renders immediately */
+  initialResult?: Awaited<ReturnType<typeof getProfile>>
+}) {
   const router = useRouter()
   const id = profileId
   const { toast } = useToast()
-  const [profile, setProfile] = useState<UserProfileData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [profile, setProfile] = useState<UserProfileData | null>(
+    initialResult?.success ? (initialResult.data ?? null) : null,
+  )
+  const [loading, setLoading] = useState(!initialResult)
+  const [error, setError] = useState<string | null>(
+    initialResult && !initialResult.success ? initialResult.error || "Profile not found" : null,
+  )
   const [copied, setCopied] = useState(false)
   const [showMoreVouches, setShowMoreVouches] = useState(false)
   const [showReportDialog, setShowReportDialog] = useState(false)
@@ -68,7 +80,7 @@ export default function ProfilePageClient({ profileId }: { profileId: string }) 
   const [listingFilter, setListingFilter] = useState("all")
   const [listingSort, setListingSort] = useState("newest")
   const [isBlocked, setIsBlocked] = useState(false)
-  const [isFollowing, setIsFollowing] = useState(false)
+  const [isFollowing, setIsFollowing] = useState(Boolean(initialResult?.data?.isFollowing))
   const [followLoading, setFollowLoading] = useState(false)
   const [reportReason, setReportReason] = useState("")
   const [reportDetails, setReportDetails] = useState("")
@@ -78,6 +90,7 @@ export default function ProfilePageClient({ profileId }: { profileId: string }) 
   const [transactionSearch, setTransactionSearch] = useState("")
 
   useEffect(() => {
+    if (initialResult) return
     const loadProfile = async () => {
       try {
         setLoading(true)
@@ -182,48 +195,16 @@ export default function ProfilePageClient({ profileId }: { profileId: string }) 
 
   // Loading state
   if (loading) {
-    return (
-      <main className="min-h-screen bg-background">
-        <Navigation />
-        <div className="relative">
-          {/* Banner Skeleton */}
-          <Skeleton className="h-48 md:h-64 lg:h-80 w-full" />
-          
-          <div className="container max-w-[1920px] mx-auto px-6">
-            <div className="relative -mt-16 sm:-mt-24 mb-6">
-              <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 items-start sm:items-end">
-                <Skeleton className="w-32 h-32 sm:w-40 sm:h-40 lg:w-48 lg:h-48 rounded-full border-4 border-background" />
-                <div className="flex-1 w-full space-y-2 pb-4">
-                  <Skeleton className="h-8 w-48" />
-                  <Skeleton className="h-4 w-32" />
-                </div>
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              <div className="lg:col-span-1 space-y-6">
-                <Skeleton className="h-48 w-full rounded-xl" />
-                <Skeleton className="h-48 w-full rounded-xl" />
-              </div>
-              <div className="lg:col-span-2">
-                <Skeleton className="h-10 w-full mb-6" />
-                <Skeleton className="h-64 w-full rounded-xl" />
-              </div>
-            </div>
-          </div>
-        </div>
-      </main>
-    )
+    return <ProfileSkeleton />
   }
 
   // Error state
   if (error || !profile) {
     return (
       <main className="min-h-screen bg-background">
-        <Navigation />
-        <div className="container max-w-[1920px] mx-auto px-6 py-12 flex flex-col items-center justify-center min-h-96">
+        <div className="mx-auto w-full max-w-[1440px] px-5 md:px-8 lg:px-10 py-12 flex flex-col items-center justify-center min-h-96">
           <div className="text-center">
-            <h1 className="text-4xl font-bold mb-2">404</h1>
+            <h1 className="text-title mb-2">404</h1>
             <p className="text-xl text-muted-foreground mb-6">{error || "Profile not found"}</p>
             <Link href="/marketplace">
               <Button>Back to Marketplace</Button>
@@ -291,38 +272,34 @@ export default function ProfilePageClient({ profileId }: { profileId: string }) 
 
   return (
     <main className="min-h-screen bg-background">
-      <PersonJsonLd
+      <ProfileJsonLd
         name={profile.username}
         profilePath={`/profile/${profile.id}`}
         description={profile.bio || `${profile.username}'s RbMarket trading profile.`}
         image={profile.avatar}
         sameAs={socialUrls}
-        isVerified={profile.isVerified}
-        reviewCount={profile.vouchCount}
-        ratingValue={profile.averageRating}
+        vouchCount={profile.vouchCount}
       />
-      <Navigation />
 
       {/* Profile Banner */}
-      <div className="relative h-48 md:h-64 bg-linear-to-r from-primary/20 to-primary/5 overflow-hidden">
-        <img
-          src={profile.banner || "/placeholder.svg"}
-          alt="Profile Banner"
-          className="w-full h-full object-cover opacity-50"
-        />
-        <div className="absolute inset-0 bg-linear-to-t from-background to-transparent" />
+      <div className="relative h-40 md:h-56 overflow-hidden bg-surface">
+        {profile.banner && (
+          <img src={profile.banner} alt="" className="h-full w-full object-cover opacity-60" />
+        )}
+        {/* Fade the banner into the page so the header card reads cleanly */}
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/30 to-background" />
       </div>
 
-      <div className="container max-w-[1920px] mx-auto px-6 -mt-20 relative z-10">
+      <div className="mx-auto w-full max-w-[1440px] px-5 md:px-8 lg:px-10 -mt-20 relative z-10">
         {/* Banned Warning Banner */}
         {profile.isBanned && (
-          <Card className="mb-4 border-red-500 bg-red-50 dark:bg-red-950/20">
+          <Card className="mb-4 border-destructive/40 bg-destructive/10">
             <CardContent className="p-4">
-              <div className="flex items-center gap-3 text-red-700 dark:text-red-400">
+              <div className="flex items-center gap-3 text-destructive">
                 <Ban className="w-5 h-5 shrink-0" />
                 <div>
                   <p className="font-semibold">This user has been banned</p>
-                  <p className="text-sm text-red-600 dark:text-red-500">
+                  <p className="text-sm text-destructive">
                     This account has been suspended due to violations of platform policies.
                   </p>
                 </div>
@@ -332,14 +309,14 @@ export default function ProfilePageClient({ profileId }: { profileId: string }) 
         )}
         
         {/* Profile Header */}
-        <Card className="p-6 mb-6">
+        <Card className="mb-8 rounded-[24px] p-6 md:p-8">
           <div className="flex flex-col md:flex-row gap-6 items-start">
             {/* Avatar */}
             <div className="relative">
               <img
                 src={profile.avatar || "/placeholder.svg"}
                 alt={profile.username}
-                className="w-32 h-32 rounded-full object-cover border-4 border-background shadow-lg"
+                className="size-28 md:size-32 rounded-full bg-secondary object-cover ring-4 ring-card"
               />
               {profile.isVerified && (
                 <div className="absolute bottom-2 right-2 bg-primary text-primary-foreground rounded-full p-1">
@@ -351,15 +328,15 @@ export default function ProfilePageClient({ profileId }: { profileId: string }) 
             {/* Profile Info */}
             <div className="flex-1">
               <div className="flex flex-wrap items-center gap-3 mb-2">
-                <h1 className="text-2xl md:text-3xl font-bold">{profile.username}</h1>
+                <h1 className="text-title">{profile.username}</h1>
                 {profile.isBanned && (
-                  <Badge variant="destructive" className="bg-red-500 text-white">
+                  <Badge variant="destructive" className="bg-destructive text-white">
                     <Ban className="w-3 h-3 mr-1" />
                     Banned
                   </Badge>
                 )}
                 {profile.isVerified && (
-                  <Badge variant="outline" className="text-primary border-primary">
+                  <Badge>
                     <Shield className="w-3 h-3 mr-1" />
                     Verified
                   </Badge>
@@ -377,32 +354,32 @@ export default function ProfilePageClient({ profileId }: { profileId: string }) 
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
                 <div>
                   <p className="text-xs text-muted-foreground">Joined</p>
-                  <p className="font-semibold text-sm flex items-center gap-1">
+                  <p className="text-[17px] font-semibold tabular-nums flex items-center gap-1">
                     <Calendar className="w-3 h-3" />
                     {new Date(profile.joinDate).toLocaleDateString("en-US", { month: "short", year: "numeric" })}
                   </p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Last Active</p>
-                  <p className="font-semibold text-sm flex items-center gap-1">
-                    <Clock className="w-3 h-3 text-green-500" />
+                  <p className="text-[17px] font-semibold tabular-nums flex items-center gap-1">
+                    <Clock className="w-3 h-3 text-success" />
                     Now
                   </p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Vouches</p>
-                  <p className="font-semibold text-sm flex items-center gap-1">
-                    <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
+                  <p className="text-[17px] font-semibold tabular-nums flex items-center gap-1">
+                    <Check className="w-3.5 h-3.5 text-success" strokeWidth={2.5} />
                     {profile.vouchCount || 0}
                   </p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Successful Trades</p>
-                  <p className="font-semibold text-sm">{profile.soldItems || 0}</p>
+                  <p className="text-[17px] font-semibold tabular-nums">{profile.soldItems || 0}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Response Rate</p>
-                  <p className="font-semibold text-sm">{profile.responseRate || 0}%</p>
+                  <p className="text-[17px] font-semibold tabular-nums">{profile.responseRate || 0}%</p>
                 </div>
               </div>
 
@@ -463,10 +440,7 @@ export default function ProfilePageClient({ profileId }: { profileId: string }) 
                         <Flag className="w-4 h-4 mr-2" />
                         Report User
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setShowBlockDialog(true)} className="text-destructive">
-                        <Ban className="w-4 h-4 mr-2" />
-                        {isBlocked ? "Unblock User" : "Block User"}
-                      </DropdownMenuItem>
+                      {/* Block is hidden until blocking is stored server-side; it only changed local state. */}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 )}
@@ -474,10 +448,10 @@ export default function ProfilePageClient({ profileId }: { profileId: string }) 
             </div>
 
             {/* Stats Card */}
-            <Card className="p-4 min-w-[200px] hidden lg:block">
-              <h3 className="text-sm font-semibold text-muted-foreground mb-3">TRADING SCORE</h3>
+            <div className="hidden min-w-[220px] rounded-2xl bg-secondary/50 p-5 lg:block">
+              <h3 className="mb-3 text-[13px] font-medium text-muted-foreground">Trading score</h3>
               <div className="flex items-center gap-2 mb-3">
-                <span className="text-3xl font-bold text-primary">
+                <span className="text-3xl font-semibold text-link">
                   {profile.vouchCount > 0 ? profile.averageRating.toFixed(1) : "N/A"}
                 </span>
                 <div className="flex">
@@ -486,7 +460,7 @@ export default function ProfilePageClient({ profileId }: { profileId: string }) 
                       key={i} 
                       className={`w-4 h-4 ${
                         i < Math.round(profile.averageRating || 0)
-                          ? "fill-yellow-400 text-yellow-400"
+                          ? "fill-warning text-warning"
                           : "text-muted-foreground"
                       }`}
                     />
@@ -496,7 +470,7 @@ export default function ProfilePageClient({ profileId }: { profileId: string }) 
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Active Listings</span>
-                  <span className="font-semibold text-green-600">{profile.listings?.filter((l: any) => l.status === "available").length || 0}</span>
+                  <span className="font-semibold text-success">{profile.listings?.filter((l: any) => l.status === "available").length || 0}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Followers</span>
@@ -504,10 +478,10 @@ export default function ProfilePageClient({ profileId }: { profileId: string }) 
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Scam Reports</span>
-                  <span className="font-semibold text-green-600">0</span>
+                  <span className="font-semibold text-success">0</span>
                 </div>
               </div>
-            </Card>
+            </div>
           </div>
         </Card>
 
@@ -551,39 +525,22 @@ export default function ProfilePageClient({ profileId }: { profileId: string }) 
             </div>
 
             {/* Listings Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <ListingGrid>
               {filteredListings.map((listing: any) => (
-                <Link key={listing.id} href={`/listing/${listing.id}`}>
-                  <Card className="overflow-hidden hover:shadow-lg transition-all cursor-pointer group h-full">
-                    <div className="relative h-40 bg-muted overflow-hidden">
-                      <img
-                        src={listing.image || "/placeholder.svg"}
-                        alt={listing.title}
-                        className="w-full h-full object-cover group-hover:scale-110 transition-transform"
-                      />
-                      {listing.status === "sold" && (
-                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                          <Badge className="bg-red-500 text-white text-lg px-4 py-2">SOLD</Badge>
-                        </div>
-                      )}
-                    </div>
-                    <div className="p-4">
-                      <h3 className="font-bold line-clamp-1 mb-1">{listing.title}</h3>
-                      <p className="text-xs text-muted-foreground mb-2">{listing.game || "Roblox"}</p>
-                      <div className="flex items-center justify-between">
-                        <p className="text-xl font-bold text-primary">G�{listing.price?.toLocaleString() || "0"}</p>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <Eye className="w-3 h-3" />
-                            {listing.views || 0}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
-                </Link>
+                <ListingCard
+                  key={listing.id}
+                  id={listing.id}
+                  title={listing.title}
+                  game={listing.game || "Roblox"}
+                  price={listing.price || 0}
+                  image={listing.image}
+                  sellerName={profile.username}
+                  vouches={profile.vouchCount || 0}
+                  note={listing.status === "sold" ? "Sold" : `${(listing.views || 0).toLocaleString()} views`}
+                  className={listing.status === "sold" ? "opacity-60" : undefined}
+                />
               ))}
-            </div>
+            </ListingGrid>
 
             {filteredListings.length === 0 && (
               <Card className="p-12 text-center">
@@ -597,9 +554,9 @@ export default function ProfilePageClient({ profileId }: { profileId: string }) 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Vouch Summary */}
               <Card className="p-6 lg:col-span-1">
-                <h3 className="font-bold mb-4">Vouch Summary</h3>
+                <h3 className="font-semibold mb-4">Vouch Summary</h3>
                 <div className="text-center mb-4">
-                  <div className="text-5xl font-bold text-primary mb-2">
+                  <div className="text-5xl font-semibold text-link mb-2">
                     {profile.vouchCount > 0 ? profile.averageRating.toFixed(1) : "N/A"}
                   </div>
                   <div className="flex items-center justify-center gap-1 mb-2">
@@ -608,7 +565,7 @@ export default function ProfilePageClient({ profileId }: { profileId: string }) 
                         key={i} 
                         className={`w-4 h-4 ${
                           i < Math.round(profile.averageRating || 0)
-                            ? "fill-yellow-400 text-yellow-400"
+                            ? "fill-warning text-warning"
                             : "text-muted-foreground"
                         }`}
                       />
@@ -655,7 +612,7 @@ export default function ProfilePageClient({ profileId }: { profileId: string }) 
                             <Star
                               key={i}
                               className={`w-3 h-3 ${
-                                i < vouch.rating ? "fill-yellow-400 text-yellow-400" : "text-muted"
+                                i < vouch.rating ? "fill-warning text-warning" : "text-muted"
                               }`}
                             />
                           ))}
@@ -726,10 +683,10 @@ export default function ProfilePageClient({ profileId }: { profileId: string }) 
                     <div className="flex-1">
                       <div className="flex items-start justify-between mb-3">
                         <div>
-                          <h3 className="font-bold text-lg mb-1">{transaction.listingTitle}</h3>
+                          <h3 className="font-semibold text-lg mb-1">{transaction.listingTitle}</h3>
                           <p className="text-sm text-muted-foreground">{transaction.game || "Roblox"}</p>
                         </div>
-                        <Badge className="bg-green-500 text-white">
+                        <Badge className="bg-success text-white">
                           <CheckCircle className="w-3 h-3 mr-1" />
                           Completed
                         </Badge>
@@ -738,7 +695,7 @@ export default function ProfilePageClient({ profileId }: { profileId: string }) 
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
                         <div>
                           <p className="text-xs text-muted-foreground mb-1">Amount</p>
-                          <p className="font-bold text-primary text-lg">G�{transaction.amount?.toLocaleString() || "0"}</p>
+                          <p className="font-semibold text-link text-lg">₱{transaction.amount?.toLocaleString() || "0"}</p>
                         </div>
                         <div>
                           <p className="text-xs text-muted-foreground mb-1">
@@ -746,14 +703,14 @@ export default function ProfilePageClient({ profileId }: { profileId: string }) 
                           </p>
                           <Link 
                             href={`/profile/${profile.id === transaction.sellerId ? transaction.buyerId : transaction.sellerId}`}
-                            className="font-semibold hover:text-primary hover:underline flex items-center gap-1"
+                            className="font-semibold hover:text-link hover:underline flex items-center gap-1"
                           >
                             {profile.id === transaction.sellerId ? transaction.buyerUsername : transaction.sellerUsername}
                           </Link>
                         </div>
                         <div>
                           <p className="text-xs text-muted-foreground mb-1">Date</p>
-                          <p className="font-semibold text-sm">
+                          <p className="text-[17px] font-semibold tabular-nums">
                             {new Date(transaction.completedAt || transaction.createdAt).toLocaleDateString("en-US", {
                               month: "short",
                               day: "numeric",
@@ -791,7 +748,7 @@ export default function ProfilePageClient({ profileId }: { profileId: string }) 
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs text-muted-foreground mb-1">Total Reports</p>
-                    <p className="text-2xl font-bold">{reportStats.total}</p>
+                    <p className="text-2xl font-semibold">{reportStats.total}</p>
                   </div>
                   <Flag className="w-8 h-8 text-muted-foreground" />
                 </div>
@@ -800,27 +757,27 @@ export default function ProfilePageClient({ profileId }: { profileId: string }) 
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs text-muted-foreground mb-1">Pending</p>
-                    <p className="text-2xl font-bold text-orange-500">{reportStats.pending}</p>
+                    <p className="text-2xl font-semibold text-warning">{reportStats.pending}</p>
                   </div>
-                  <Clock className="w-8 h-8 text-orange-500" />
+                  <Clock className="w-8 h-8 text-warning" />
                 </div>
               </Card>
               <Card className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs text-muted-foreground mb-1">Resolved</p>
-                    <p className="text-2xl font-bold text-red-500">{reportStats.resolved}</p>
+                    <p className="text-2xl font-semibold text-destructive">{reportStats.resolved}</p>
                   </div>
-                  <CheckCircle className="w-8 h-8 text-red-500" />
+                  <CheckCircle className="w-8 h-8 text-destructive" />
                 </div>
               </Card>
               <Card className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs text-muted-foreground mb-1">Dismissed</p>
-                    <p className="text-2xl font-bold text-green-500">{reportStats.dismissed}</p>
+                    <p className="text-2xl font-semibold text-success">{reportStats.dismissed}</p>
                   </div>
-                  <Shield className="w-8 h-8 text-green-500" />
+                  <Shield className="w-8 h-8 text-success" />
                 </div>
               </Card>
             </div>
@@ -828,7 +785,7 @@ export default function ProfilePageClient({ profileId }: { profileId: string }) 
             <Card className="p-6 mb-6">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h3 className="font-bold">Reports Against This User</h3>
+                  <h3 className="font-semibold">Reports Against This User</h3>
                   <p className="text-sm text-muted-foreground mt-1">
                     This shows all reports that have been filed against this user and their current status.
                   </p>
@@ -869,7 +826,7 @@ export default function ProfilePageClient({ profileId }: { profileId: string }) 
                                 {new Date(report.createdAt).toLocaleDateString()}
                               </span>
                             </div>
-                            <p className="text-sm font-medium text-primary mb-2">{report.reason}</p>
+                            <p className="text-sm font-medium text-link mb-2">{report.reason}</p>
                             {report.details && (
                               <p className="text-sm text-muted-foreground">{report.details}</p>
                             )}
@@ -885,9 +842,9 @@ export default function ProfilePageClient({ profileId }: { profileId: string }) 
                           }
                           className={
                             report.status === "RESOLVED"
-                              ? "bg-red-500 text-white"
+                              ? "bg-destructive text-white"
                               : report.status === "PENDING"
-                              ? "border-orange-500 text-orange-500"
+                              ? "border-warning/40 text-warning"
                               : ""
                           }
                         >

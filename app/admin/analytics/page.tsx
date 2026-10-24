@@ -32,11 +32,11 @@ import {
 import { useToast } from "@/hooks/use-toast"
 
 const COLORS = [
-  "hsl(var(--chart-1))",
-  "hsl(var(--chart-2))",
-  "hsl(var(--chart-3))",
-  "hsl(var(--chart-4))",
-  "hsl(var(--chart-5))",
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
 ]
 
 export default function AnalyticsPage() {
@@ -155,7 +155,7 @@ export default function AnalyticsPage() {
     return (
       <div className="p-6 flex items-center justify-center h-[600px]">
         <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-primary mx-auto mb-4" />
+          <Loader2 className="w-12 h-12 animate-spin text-link mx-auto mb-4" />
           <p className="text-muted-foreground">Loading analytics...</p>
         </div>
       </div>
@@ -163,11 +163,11 @@ export default function AnalyticsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="mx-auto w-full max-w-[1440px] space-y-8 p-6 md:p-10">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Analytics Dashboard</h1>
+          <h1 className="text-[28px] md:text-[34px] font-semibold tracking-[-0.025em]">Analytics Dashboard</h1>
           <p className="text-muted-foreground">Marketplace performance and insights</p>
         </div>
         <Select value={timeRange} onValueChange={setTimeRange}>
@@ -189,60 +189,60 @@ export default function AnalyticsPage() {
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-blue-500/10 rounded-lg">
-                <Users className="h-5 w-5 text-blue-500" />
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <Users className="h-5 w-5 text-link" />
               </div>
-              <div className="flex items-center text-green-500 text-sm">
+              <div className="flex items-center text-success text-sm">
                 <ArrowUpRight className="h-4 w-4" />
                 {metrics.userGrowth}
               </div>
             </div>
-            <p className="text-2xl font-bold">{metrics.totalUsers.toLocaleString()}</p>
+            <p className="text-2xl font-semibold">{metrics.totalUsers.toLocaleString()}</p>
             <p className="text-sm text-muted-foreground">Total Users</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-green-500/10 rounded-lg">
-                <ShoppingBag className="h-5 w-5 text-green-500" />
+              <div className="p-2 bg-success/10 rounded-lg">
+                <ShoppingBag className="h-5 w-5 text-success" />
               </div>
-              <div className="flex items-center text-green-500 text-sm">
+              <div className="flex items-center text-success text-sm">
                 <ArrowUpRight className="h-4 w-4" />
                 {metrics.listingGrowth}
               </div>
             </div>
-            <p className="text-2xl font-bold">{metrics.activeListings.toLocaleString()}</p>
+            <p className="text-2xl font-semibold">{metrics.activeListings.toLocaleString()}</p>
             <p className="text-sm text-muted-foreground">Active Listings</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-purple-500/10 rounded-lg">
-                <TrendingUp className="h-5 w-5 text-purple-500" />
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <TrendingUp className="h-5 w-5 text-link" />
               </div>
-              <div className="flex items-center text-green-500 text-sm">
+              <div className="flex items-center text-success text-sm">
                 <ArrowUpRight className="h-4 w-4" />
                 {metrics.tradeGrowth}
               </div>
             </div>
-            <p className="text-2xl font-bold">{metrics.currentTrades.toLocaleString()}</p>
+            <p className="text-2xl font-semibold">{metrics.currentTrades.toLocaleString()}</p>
             <p className="text-sm text-muted-foreground">Trades This Month</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-emerald-500/10 rounded-lg">
-                <DollarSign className="h-5 w-5 text-emerald-500" />
+              <div className="p-2 bg-success/10 rounded-lg">
+                <DollarSign className="h-5 w-5 text-success" />
               </div>
-              <div className="flex items-center text-green-500 text-sm">
+              <div className="flex items-center text-success text-sm">
                 <ArrowUpRight className="h-4 w-4" />
                 {metrics.revenueGrowth}
               </div>
             </div>
-            <p className="text-2xl font-bold">₱{metrics.monthlyRevenue.toLocaleString()}</p>
+            <p className="text-2xl font-semibold">₱{metrics.monthlyRevenue.toLocaleString()}</p>
             <p className="text-sm text-muted-foreground">Revenue This Month</p>
           </CardContent>
         </Card>
@@ -258,8 +258,8 @@ export default function AnalyticsPage() {
           <CardContent className="overflow-hidden">
             <ChartContainer
               config={{
-                users: { label: "Total Users", color: "hsl(var(--chart-1))" },
-                newUsers: { label: "New Users", color: "hsl(var(--chart-2))" },
+                users: { label: "Total Users", color: "var(--chart-1)" },
+                newUsers: { label: "New Users", color: "var(--chart-2)" },
               }}
               className="h-[300px] w-full min-w-0"
             >
@@ -267,8 +267,8 @@ export default function AnalyticsPage() {
                 <AreaChart data={userGrowthData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorUsers" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--chart-1))" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="hsl(var(--chart-1))" stopOpacity={0} />
+                      <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="var(--chart-1)" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
@@ -278,7 +278,7 @@ export default function AnalyticsPage() {
                   <Area
                     type="monotone"
                     dataKey="users"
-                    stroke="hsl(var(--chart-1))"
+                    stroke="var(--chart-1)"
                     fillOpacity={1}
                     fill="url(#colorUsers)"
                   />
@@ -296,8 +296,8 @@ export default function AnalyticsPage() {
           <CardContent className="overflow-hidden">
             <ChartContainer
               config={{
-                posted: { label: "Posted", color: "hsl(var(--chart-1))" },
-                sold: { label: "Sold", color: "hsl(var(--chart-2))" },
+                posted: { label: "Posted", color: "var(--chart-1)" },
+                sold: { label: "Sold", color: "var(--chart-2)" },
               }}
               className="h-[300px] w-full min-w-0"
             >
@@ -307,8 +307,8 @@ export default function AnalyticsPage() {
                   <XAxis dataKey="month" className="text-xs" tick={{ fontSize: 12 }} />
                   <YAxis className="text-xs" tick={{ fontSize: 12 }} width={40} />
                   <ChartTooltip content={<ChartTooltipContent />} />
-                  <Bar dataKey="posted" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="sold" fill="hsl(var(--chart-2))" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="posted" fill="var(--chart-1)" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="sold" fill="var(--chart-2)" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </ChartContainer>
@@ -326,9 +326,9 @@ export default function AnalyticsPage() {
           <CardContent className="overflow-hidden">
             <ChartContainer
               config={{
-                subscriptions: { label: "Subscriptions", color: "hsl(var(--chart-1))" },
-                boosts: { label: "Boosts", color: "hsl(var(--chart-2))" },
-                featured: { label: "Featured", color: "hsl(var(--chart-3))" },
+                subscriptions: { label: "Subscriptions", color: "var(--chart-1)" },
+                boosts: { label: "Boosts", color: "var(--chart-2)" },
+                featured: { label: "Featured", color: "var(--chart-3)" },
               }}
               className="h-[300px] w-full min-w-0"
             >
@@ -342,24 +342,24 @@ export default function AnalyticsPage() {
                     type="monotone"
                     dataKey="subscriptions"
                     stackId="1"
-                    stroke="hsl(var(--chart-1))"
-                    fill="hsl(var(--chart-1))"
+                    stroke="var(--chart-1)"
+                    fill="var(--chart-1)"
                     fillOpacity={0.6}
                   />
                   <Area
                     type="monotone"
                     dataKey="boosts"
                     stackId="1"
-                    stroke="hsl(var(--chart-2))"
-                    fill="hsl(var(--chart-2))"
+                    stroke="var(--chart-2)"
+                    fill="var(--chart-2)"
                     fillOpacity={0.6}
                   />
                   <Area
                     type="monotone"
                     dataKey="featured"
                     stackId="1"
-                    stroke="hsl(var(--chart-3))"
-                    fill="hsl(var(--chart-3))"
+                    stroke="var(--chart-3)"
+                    fill="var(--chart-3)"
                     fillOpacity={0.6}
                   />
                 </AreaChart>
@@ -376,7 +376,7 @@ export default function AnalyticsPage() {
           <CardContent className="overflow-hidden">
             <ChartContainer
               config={{
-                value: { label: "Percentage", color: "hsl(var(--chart-1))" },
+                value: { label: "Percentage", color: "var(--chart-1)" },
               }}
               className="h-[250px] w-full min-w-0"
             >
@@ -454,7 +454,7 @@ export default function AnalyticsPage() {
           <CardContent>
             <div className="space-y-4">
               {topFlagged.map((user, index) => (
-                <div key={user.username} className="flex items-center justify-between p-3 bg-red-500/5 rounded-lg">
+                <div key={user.username} className="flex items-center justify-between p-3 bg-destructive/5 rounded-lg">
                   <div className="flex items-center gap-3">
                     <span className="text-sm font-medium text-muted-foreground w-5">#{index + 1}</span>
                     <Avatar className="h-8 w-8">

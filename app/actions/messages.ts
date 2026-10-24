@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
+import { getSessionUser } from "@/lib/session-user"
 import { createNotification } from "./notifications"
 import { unstable_noStore } from "next/cache"
 import { headers } from "next/headers"
@@ -174,9 +175,7 @@ export async function getConversations(): Promise<GetConversationsResult> {
     }
 
     // Find the current user by email from session
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
+    const currentUser = await getSessionUser() // id from the JWT session, no DB lookup
 
     if (!currentUser) {
       return {
@@ -220,6 +219,10 @@ export async function getConversations(): Promise<GetConversationsResult> {
             buyerConfirmed: true,
             sellerConfirmed: true,
           },
+        },
+        // Real unread count, computed in the same query (the latest message alone capped it at 1)
+        _count: {
+          select: { messages: { where: { isRead: false, senderId: { not: currentUser.id } } } },
         },
       },
       orderBy: { updatedAt: "desc" },
@@ -312,9 +315,7 @@ export async function getConversations(): Promise<GetConversationsResult> {
 
     const transformedConversations: ConversationWithLatestMessage[] = conversations.map((conv) => {
       const otherUser = currentUser.id === conv.buyerId ? conv.seller : conv.buyer
-      const unreadMessages = conv.messages.filter(
-        (msg: any) => !msg.isRead && msg.senderId !== currentUser.id
-      )
+      const unreadCount = conv._count.messages
 
       const listing =
         conv.listingId && conv.listingType
@@ -349,7 +350,7 @@ export async function getConversations(): Promise<GetConversationsResult> {
         },
         listing: listing,
         latestMessage: conv.messages[0] || null,
-        unreadCount: unreadMessages.length,
+        unreadCount,
         status,
         transaction: conv.transactions && conv.transactions.length > 0 ? conv.transactions[0] : null,
       }
@@ -373,13 +374,18 @@ export async function getConversations(): Promise<GetConversationsResult> {
  */
 export async function getMessages(conversationId: string): Promise<GetMessagesResult> {
   try {
-    const session = await auth()
-    if (!session?.user?.email) {
+    const sessionUser = await getSessionUser()
+    if (!sessionUser) {
       return { success: false, error: "Unauthorized" }
     }
 
+    // Only participants may read a conversation. The check is part of the same query,
+    // so it costs no extra round trip; non-participants simply get no messages.
     const messages = await prisma.message.findMany({
-      where: { conversationId },
+      where: {
+        conversationId,
+        conversation: { OR: [{ buyerId: sessionUser.id }, { sellerId: sessionUser.id }] },
+      },
       include: {
         sender: {
           select: { username: true, profilePicture: true },
@@ -880,33 +886,22 @@ export async function sendMessage(
  */
 export async function markMessagesAsRead(conversationId: string): Promise<{ success: boolean; error?: string }> {
   try {
-    // Get the current authenticated user
-    const session = await auth()
-    if (!session?.user?.email) {
+    // The session already carries the user id; no lookup by email needed
+    const currentUser = await getSessionUser()
+    if (!currentUser) {
       return {
         success: false,
         error: "You must be logged in",
       }
     }
 
-    // Find the current user by email from session
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
-
-    if (!currentUser) {
-      return {
-        success: false,
-        error: "User account not found",
-      }
-    }
-
-    // Mark all unread messages from other users as read
+    // Mark unread messages from the other person as read, only in the caller's own conversations
     await prisma.message.updateMany({
       where: {
         conversationId,
         isRead: false,
         NOT: { senderId: currentUser.id },
+        conversation: { OR: [{ buyerId: currentUser.id }, { sellerId: currentUser.id }] },
       },
       data: { isRead: true },
     })
@@ -1461,9 +1456,7 @@ export async function getUnreadMessageCount(): Promise<GetUnreadMessageCountResu
       }
     }
 
-    const currentUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
+    const currentUser = await getSessionUser() // id from the JWT session, no DB lookup
 
     if (!currentUser) {
       return {

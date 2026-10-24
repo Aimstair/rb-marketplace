@@ -1,3 +1,264 @@
+import { SITE_DEFINITION, SITE_NAME, SUPPORT_EMAIL, absoluteUrl, gamePath, getSiteUrl } from "@/lib/seo"
+import type { FaqEntry } from "@/lib/seo-content"
+
+type JsonObject = Record<string, unknown>
+
+/** Renders schema.org data. `<` is escaped so user-written text can't close the script tag. */
+export function JsonLdScript({ data }: { data: JsonObject | JsonObject[] }) {
+  const json = JSON.stringify(Array.isArray(data) ? { "@context": "https://schema.org", "@graph": data } : data)
+  return <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: json.replace(/</g, "\\u003c") }} />
+}
+
+const organizationId = () => `${getSiteUrl()}/#organization`
+const websiteId = () => `${getSiteUrl()}/#website`
+
+/**
+ * The site-wide entity graph, rendered once in the root layout: who runs the site, what it is,
+ * and how to search it. Pages refer back to these by @id instead of repeating them.
+ */
+export function SiteJsonLd({ sameAs = [] }: { sameAs?: string[] }) {
+  const siteUrl = getSiteUrl()
+  const organization: JsonObject = {
+    "@type": "Organization",
+    "@id": organizationId(),
+    name: SITE_NAME,
+    alternateName: ["RbMarket.app", "RB Market", "Roblox Market PH"],
+    url: siteUrl,
+    logo: { "@type": "ImageObject", url: absoluteUrl("/logo-512.png"), width: 512, height: 512 },
+    description: SITE_DEFINITION,
+    email: SUPPORT_EMAIL,
+    areaServed: { "@type": "Country", name: "Philippines" },
+    knowsAbout: ["Roblox", "Roblox item trading", "Roblox limiteds", "Grow a Garden", "Steal a Brainrot", "Murder Mystery 2", "Blox Fruits", "Adopt Me"],
+    contactPoint: { "@type": "ContactPoint", contactType: "customer support", email: SUPPORT_EMAIL, availableLanguage: ["English", "Filipino"] },
+  }
+  if (sameAs.length > 0) organization.sameAs = sameAs
+
+  const website: JsonObject = {
+    "@type": "WebSite",
+    "@id": websiteId(),
+    name: SITE_NAME,
+    alternateName: "RbMarket Roblox Marketplace",
+    url: siteUrl,
+    description: SITE_DEFINITION,
+    inLanguage: "en-PH",
+    publisher: { "@id": organizationId() },
+    potentialAction: {
+      "@type": "SearchAction",
+      target: { "@type": "EntryPoint", urlTemplate: `${siteUrl}/marketplace?search={search_term_string}` },
+      "query-input": "required name=search_term_string",
+    },
+  }
+
+  return <JsonLdScript data={[organization, website]} />
+}
+
+interface Crumb {
+  name: string
+  path: string
+}
+
+function breadcrumbList(crumbs: Crumb[]): JsonObject {
+  return {
+    "@type": "BreadcrumbList",
+    itemListElement: crumbs.map((crumb, i) => ({
+      "@type": "ListItem",
+      position: i + 1,
+      name: crumb.name,
+      item: absoluteUrl(crumb.path),
+    })),
+  }
+}
+
+/** Breadcrumb trail, Home first. */
+export function BreadcrumbJsonLd({ crumbs }: { crumbs: Crumb[] }) {
+  return <JsonLdScript data={{ "@context": "https://schema.org", ...breadcrumbList([{ name: "Home", path: "/" }, ...crumbs]) }} />
+}
+
+/** FAQPage data. Only use with questions that are also visible on the page. */
+export function FaqJsonLd({ entries }: { entries: FaqEntry[] }) {
+  return (
+    <JsonLdScript
+      data={{
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        mainEntity: entries.map((entry) => ({
+          "@type": "Question",
+          name: entry.question,
+          acceptedAnswer: { "@type": "Answer", text: entry.answer },
+        })),
+      }}
+    />
+  )
+}
+
+interface WebPageJsonLdProps {
+  name: string
+  description: string
+  path: string
+  type?: "WebPage" | "CollectionPage" | "AboutPage" | "FAQPage"
+  crumbs?: Crumb[]
+}
+
+/** A page node tied to the site graph, with an optional breadcrumb trail. */
+export function WebPageJsonLd({ name, description, path, type = "WebPage", crumbs }: WebPageJsonLdProps) {
+  const url = absoluteUrl(path)
+  const nodes: JsonObject[] = [
+    {
+      "@type": type,
+      "@id": `${url}#webpage`,
+      name,
+      description,
+      url,
+      inLanguage: "en-PH",
+      isPartOf: { "@id": websiteId() },
+      publisher: { "@id": organizationId() },
+    },
+  ]
+  if (crumbs?.length) nodes.push(breadcrumbList([{ name: "Home", path: "/" }, ...crumbs]))
+  return <JsonLdScript data={nodes} />
+}
+
+export function CollectionPageJsonLd(props: Omit<WebPageJsonLdProps, "type">) {
+  return <WebPageJsonLd {...props} type="CollectionPage" />
+}
+
+interface ListedItem {
+  name: string
+  path: string
+  image?: string | null
+}
+
+/** An ordered list of listings, so search engines can read a category page's contents. */
+export function ItemListJsonLd({ name, path, items }: { name: string; path: string; items: ListedItem[] }) {
+  return (
+    <JsonLdScript
+      data={{
+        "@context": "https://schema.org",
+        "@type": "ItemList",
+        name,
+        url: absoluteUrl(path),
+        numberOfItems: items.length,
+        itemListElement: items.map((item, i) => ({
+          "@type": "ListItem",
+          position: i + 1,
+          url: absoluteUrl(item.path),
+          name: item.name,
+          ...(item.image ? { image: absoluteUrl(item.image) } : {}),
+        })),
+      }}
+    />
+  )
+}
+
+interface ProfileJsonLdProps {
+  name: string
+  profilePath: string
+  description?: string
+  image?: string | null
+  sameAs?: string[]
+  createdAt?: string | Date | null
+  vouchCount?: number
+}
+
+/** A trader's profile page, using Google's ProfilePage type. */
+export function ProfileJsonLd({ name, profilePath, description, image, sameAs = [], createdAt, vouchCount }: ProfileJsonLdProps) {
+  const url = absoluteUrl(profilePath)
+  const person: JsonObject = {
+    "@type": "Person",
+    name,
+    alternateName: name,
+    url,
+    ...(description ? { description } : {}),
+    ...(image ? { image: absoluteUrl(image) } : {}),
+    ...(sameAs.length > 0 ? { sameAs } : {}),
+  }
+  if (typeof vouchCount === "number" && vouchCount > 0) {
+    person.interactionStatistic = {
+      "@type": "InteractionCounter",
+      interactionType: "https://schema.org/LikeAction",
+      userInteractionCount: vouchCount,
+      name: "Vouches",
+    }
+  }
+  return (
+    <JsonLdScript
+      data={{
+        "@context": "https://schema.org",
+        "@type": "ProfilePage",
+        url,
+        ...(createdAt ? { dateCreated: new Date(createdAt).toISOString() } : {}),
+        mainEntity: person,
+        isPartOf: { "@id": websiteId() },
+      }}
+    />
+  )
+}
+
+interface PersonJsonLdProps {
+  name: string
+  profilePath: string
+  description?: string
+  alternateName?: string[]
+  sameAs?: string[]
+}
+
+/** A person record without ratings, used for Hall of Shame reports. */
+export function PersonJsonLd({ name, profilePath, description, alternateName = [], sameAs = [] }: PersonJsonLdProps) {
+  const url = absoluteUrl(profilePath)
+  return (
+    <JsonLdScript
+      data={{
+        "@context": "https://schema.org",
+        "@type": "Person",
+        name,
+        url,
+        mainEntityOfPage: url,
+        ...(description ? { description } : {}),
+        ...(alternateName.length > 0 ? { alternateName: alternateName.filter(Boolean) } : {}),
+        ...(sameAs.length > 0 ? { sameAs: sameAs.filter(Boolean) } : {}),
+      }}
+    />
+  )
+}
+
+interface ArticleJsonLdProps {
+  title: string
+  description: string
+  path: string
+  image?: string | null
+  authorName: string
+  publishedAt: string | Date
+  updatedAt?: string | Date
+}
+
+export function ArticleJsonLd({ title, description, path, image, authorName, publishedAt, updatedAt }: ArticleJsonLdProps) {
+  const url = absoluteUrl(path)
+  return (
+    <JsonLdScript
+      data={[
+        {
+          "@type": "BlogPosting",
+          headline: title,
+          description,
+          url,
+          mainEntityOfPage: url,
+          ...(image ? { image: absoluteUrl(image) } : {}),
+          author: { "@type": "Person", name: authorName },
+          publisher: { "@id": organizationId() },
+          datePublished: new Date(publishedAt).toISOString(),
+          dateModified: new Date(updatedAt || publishedAt).toISOString(),
+          inLanguage: "en-PH",
+        },
+        breadcrumbList([
+          { name: "Home", path: "/" },
+          { name: "Guides", path: "/blog" },
+          { name: title, path },
+        ]),
+      ]}
+    />
+  )
+}
+
 interface SeoListing {
   id: string
   title: string
@@ -5,345 +266,70 @@ interface SeoListing {
   description?: string | null
   price?: number | null
   ratePerPeso?: number | null
+  currencyName?: string | null
   stock?: number | null
   listingType?: string | null
+  gameName?: string | null
+  condition?: string | null
   sellerName?: string | null
   sellerUrl?: string | null
-  reviewCount?: number | null
-  ratingValue?: number | null
-  priceCurrency?: string | null
 }
 
-interface JsonLdProps {
-  listing: SeoListing
-  urlPath?: string
+const CONDITIONS: Record<string, string> = {
+  new: "https://schema.org/NewCondition",
+  mint: "https://schema.org/NewCondition",
+  used: "https://schema.org/UsedCondition",
 }
 
-const DEFAULT_SITE_URL = "https://rbmarket.app"
-
-function getSiteUrl(): string {
-  const candidate = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || DEFAULT_SITE_URL
-  try {
-    return new URL(candidate).toString().replace(/\/$/, "")
-  } catch {
-    return DEFAULT_SITE_URL
-  }
-}
-
-function toAbsoluteUrl(baseUrl: string, pathOrUrl?: string | null): string | undefined {
-  if (!pathOrUrl) {
-    return undefined
-  }
-
-  if (/^https?:\/\//i.test(pathOrUrl)) {
-    return pathOrUrl
-  }
-
-  return `${baseUrl}${pathOrUrl.startsWith("/") ? "" : "/"}${pathOrUrl}`
-}
-
-interface OrganizationJsonLdProps {
-  name?: string
-  description?: string
-  logoPath?: string
-  sameAs?: string[]
-}
-
-interface WebsiteJsonLdProps {
-  name?: string
-  description?: string
-}
-
-interface WebPageJsonLdProps {
-  name: string
-  description: string
-  path: string
-  inLanguage?: string
-}
-
-interface CollectionPageJsonLdProps {
-  name: string
-  description: string
-  path: string
-  itemCount?: number
-  inLanguage?: string
-}
-
-interface PersonJsonLdProps {
-  name: string
-  profilePath: string
-  description?: string
-  image?: string | null
-  sameAs?: string[]
-  alternateName?: string[]
-  isVerified?: boolean
-  reviewCount?: number
-  ratingValue?: number
-}
-
-export function OrganizationJsonLd({
-  name = "RbMarket",
-  description = "RbMarket is the trusted peer-to-peer Roblox marketplace to buy and sell Roblox pets, items, and in-game units for cash.",
-  logoPath = "/logo.png",
-  sameAs = [],
-}: OrganizationJsonLdProps) {
-  const siteUrl = getSiteUrl()
-  const jsonLd: Record<string, unknown> = {
-    "@context": "https://schema.org",
-    "@type": "Organization",
-    "@id": `${siteUrl}/#organization`,
-    name,
-    url: siteUrl,
-    logo: toAbsoluteUrl(siteUrl, logoPath),
-    description,
-  }
-
-  if (sameAs.length > 0) {
-    jsonLd.sameAs = sameAs.filter(Boolean)
-  }
-
-  return <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-}
-
-export function WebsiteJsonLd({
-  name = "RbMarket",
-  description = "Buy and sell Roblox pets, game items, and in-game units for cash on RbMarket — the trusted Roblox marketplace.",
-}: WebsiteJsonLdProps) {
-  const siteUrl = getSiteUrl()
-  const jsonLd = {
-    "@context": "https://schema.org",
-    "@type": "WebSite",
-    "@id": `${siteUrl}/#website`,
-    name,
-    url: siteUrl,
-    description,
-    potentialAction: {
-      "@type": "SearchAction",
-      target: {
-        "@type": "EntryPoint",
-        urlTemplate: `${siteUrl}/marketplace?search={search_term_string}`,
-      },
-      "query-input": "required name=search_term_string",
-    },
-  }
-
-  return <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-}
-
-export function WebPageJsonLd({
-  name,
-  description,
-  path,
-  inLanguage = "en",
-}: WebPageJsonLdProps) {
-  const siteUrl = getSiteUrl()
-  const pageUrl = toAbsoluteUrl(siteUrl, path)
-  const jsonLd = {
-    "@context": "https://schema.org",
-    "@type": "WebPage",
-    name,
-    description,
-    url: pageUrl,
-    mainEntityOfPage: pageUrl,
-    isPartOf: {
-      "@id": `${siteUrl}/#website`,
-    },
-    inLanguage,
-  }
-
-  return <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-}
-
-export function CollectionPageJsonLd({
-  name,
-  description,
-  path,
-  itemCount,
-  inLanguage = "en",
-}: CollectionPageJsonLdProps) {
-  const siteUrl = getSiteUrl()
-  const pageUrl = toAbsoluteUrl(siteUrl, path)
-  const jsonLd: Record<string, unknown> = {
-    "@context": "https://schema.org",
-    "@type": "CollectionPage",
-    name,
-    description,
-    url: pageUrl,
-    mainEntityOfPage: pageUrl,
-    isPartOf: {
-      "@id": `${siteUrl}/#website`,
-    },
-    inLanguage,
-  }
-
-  if (typeof itemCount === "number" && Number.isFinite(itemCount) && itemCount >= 0) {
-    jsonLd.numberOfItems = Math.floor(itemCount)
-  }
-
-  return <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-}
-
-export function PersonJsonLd({
-  name,
-  profilePath,
-  description,
-  image,
-  sameAs = [],
-  alternateName = [],
-  isVerified,
-  reviewCount,
-  ratingValue,
-}: PersonJsonLdProps) {
-  const siteUrl = getSiteUrl()
-  const profileUrl = toAbsoluteUrl(siteUrl, profilePath)
-  const safeReviewCount = Number(reviewCount ?? 0)
-  const safeRatingValue = Number(ratingValue ?? 0)
-
-  const jsonLd: Record<string, unknown> = {
-    "@context": "https://schema.org",
-    "@type": "Person",
-    name,
-    url: profileUrl,
-    mainEntityOfPage: profileUrl,
-    description,
-    image: toAbsoluteUrl(siteUrl, image),
-    alternateName: alternateName.filter(Boolean),
-  }
-
-  if (sameAs.length > 0) {
-    jsonLd.sameAs = sameAs.filter(Boolean)
-  }
-
-  if (isVerified) {
-    jsonLd.knowsAbout = ["Roblox item trading", "Roblox currency trading"]
-  }
-
-  if (safeReviewCount > 0 && safeRatingValue > 0) {
-    jsonLd.aggregateRating = {
-      "@type": "AggregateRating",
-      ratingValue: safeRatingValue,
-      reviewCount: safeReviewCount,
-      bestRating: 5,
-      worstRating: 1,
-    }
-  }
-
-  return <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-}
-
-export function JsonLd({ listing, urlPath }: JsonLdProps) {
-  const normalizedBase = getSiteUrl()
-  const derivedPath =
-    urlPath ||
-    (listing.listingType?.toUpperCase() === "CURRENCY"
-      ? `/currency/${listing.id}`
-      : `/listing/${listing.id}`)
-  const price = Number(listing.ratePerPeso ?? listing.price ?? 0)
+/**
+ * Product + Offer + breadcrumb for a listing. Seller vouches are not product reviews, so no
+ * rating is attached here: marking them up as one would misrepresent the item.
+ */
+export function JsonLd({ listing, urlPath }: { listing: SeoListing; urlPath?: string }) {
+  const isCurrency = listing.listingType?.toUpperCase() === "CURRENCY"
+  const path = urlPath || (isCurrency ? `/currency/${listing.id}` : `/listing/${listing.id}`)
+  const url = absoluteUrl(path)
   const stock = Number(listing.stock ?? 0)
-  const reviewCount = Number(listing.reviewCount ?? 0)
-  const ratingValue = Number(listing.ratingValue ?? 0)
-  const priceCurrency = (listing.priceCurrency || "PHP").toUpperCase()
-  const listingLabel = listing.listingType?.toUpperCase() === "CURRENCY" ? "Currency Listing" : "Listing"
+  const rate = Number(listing.ratePerPeso ?? 0)
 
-  const productSchema: Record<string, unknown> = {
+  const offer: JsonObject = {
+    "@type": "Offer",
+    url,
+    priceCurrency: "PHP",
+    price: isCurrency ? 1 : Number(listing.price ?? 0),
+    availability: stock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+    ...(listing.sellerName
+      ? { seller: { "@type": "Person", name: listing.sellerName, ...(listing.sellerUrl ? { url: absoluteUrl(listing.sellerUrl) } : {}) } }
+      : {}),
+  }
+  if (isCurrency && rate > 0) {
+    // Currency is priced as "this many units per ₱1"
+    offer.priceSpecification = {
+      "@type": "UnitPriceSpecification",
+      price: 1,
+      priceCurrency: "PHP",
+      referenceQuantity: { "@type": "QuantitativeValue", value: rate, unitText: listing.currencyName || "units" },
+    }
+  }
+  const condition = CONDITIONS[(listing.condition || "").toLowerCase()]
+  if (condition) offer.itemCondition = condition
+
+  const product: JsonObject = {
     "@type": "Product",
+    "@id": `${url}#product`,
     name: listing.title,
-    image: listing.image || undefined,
-    description: listing.description,
-    offers: {
-      "@type": "Offer",
-      price: Number.isFinite(price) ? price : 0,
-      priceCurrency,
-      availability: stock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
-      url: `${normalizedBase}${derivedPath}`,
-    },
+    url,
+    ...(listing.image ? { image: absoluteUrl(listing.image) } : {}),
+    description: listing.description?.trim() || `${listing.title}${listing.gameName ? ` for ${listing.gameName}` : ""}, sold on ${SITE_NAME}.`,
+    ...(listing.gameName ? { category: `Roblox > ${listing.gameName}` } : {}),
+    offers: offer,
   }
 
-  if (listing.sellerName) {
-    productSchema.seller = {
-      "@type": "Person",
-      name: listing.sellerName,
-      url: listing.sellerUrl ? `${normalizedBase}${listing.sellerUrl}` : undefined,
-    }
-  }
+  const crumbs: Crumb[] = [{ name: "Home", path: "/" }]
+  if (isCurrency) crumbs.push({ name: "Currency", path: "/currency" })
+  else if (listing.gameName) crumbs.push({ name: listing.gameName, path: gamePath(listing.gameName) })
+  else crumbs.push({ name: "Marketplace", path: "/marketplace" })
+  crumbs.push({ name: listing.title, path })
 
-  if (reviewCount > 0 && ratingValue > 0) {
-    productSchema.aggregateRating = {
-      "@type": "AggregateRating",
-      ratingValue,
-      reviewCount,
-      bestRating: 5,
-      worstRating: 1,
-    }
-  }
-
-  const breadcrumbSchema = {
-    "@type": "BreadcrumbList",
-    itemListElement: [
-      {
-        "@type": "ListItem",
-        position: 1,
-        name: "Home",
-        item: `${normalizedBase}/`,
-      },
-      {
-        "@type": "ListItem",
-        position: 2,
-        name: listing.listingType?.toUpperCase() === "CURRENCY" ? "Currency" : "Marketplace",
-        item:
-          listing.listingType?.toUpperCase() === "CURRENCY"
-            ? `${normalizedBase}/currency`
-            : `${normalizedBase}/marketplace`,
-      },
-      {
-        "@type": "ListItem",
-        position: 3,
-        name: listingLabel,
-        item: `${normalizedBase}${derivedPath}`,
-      },
-    ],
-  }
-
-  const jsonLd = {
-    "@context": "https://schema.org",
-    "@graph": [productSchema, breadcrumbSchema],
-  }
-
-  return (
-    <script
-      type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-    />
-  )
-}
-
-interface MarketplaceJsonLdProps {
-  itemCount?: number
-  path?: string
-}
-
-export function MarketplaceJsonLd({
-  itemCount,
-  path = "/marketplace",
-}: MarketplaceJsonLdProps) {
-  const siteUrl = getSiteUrl()
-  const pageUrl = `${siteUrl}${path}`
-  const jsonLd: Record<string, unknown> = {
-    "@context": "https://schema.org",
-    "@type": "ItemList",
-    name: "Roblox Marketplace — Buy & Sell Roblox Pets, Items & Units",
-    description:
-      "Browse and buy Roblox pets, game items, and in-game currency units for cash. The trusted Roblox buy and sell marketplace.",
-    url: pageUrl,
-    mainEntityOfPage: pageUrl,
-    isPartOf: {
-      "@id": `${siteUrl}/#website`,
-    },
-  }
-
-  if (typeof itemCount === "number" && Number.isFinite(itemCount) && itemCount >= 0) {
-    jsonLd.numberOfItems = Math.floor(itemCount)
-  }
-
-  return <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+  return <JsonLdScript data={[product, breadcrumbList(crumbs)]} />
 }

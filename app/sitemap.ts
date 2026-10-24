@@ -1,5 +1,7 @@
 import { MetadataRoute } from "next"
 import { prisma } from "@/lib/prisma"
+import { getSeoGames } from "@/lib/games"
+import { gamePath, getSiteUrl } from "@/lib/seo"
 
 const SITEMAP_BATCH_SIZE = 500
 
@@ -76,7 +78,7 @@ async function fetchAllIndexableCurrencyListings() {
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || "https://rbmarket.app").replace(/\/$/, "")
+  const baseUrl = getSiteUrl()
 
   // Static routes
   const staticRoutes: MetadataRoute.Sitemap = [
@@ -99,6 +101,24 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: new Date(),
     },
     {
+      url: `${baseUrl}/games`,
+      changeFrequency: "daily",
+      priority: 0.9,
+      lastModified: new Date(),
+    },
+    {
+      url: `${baseUrl}/faq`,
+      changeFrequency: "monthly",
+      priority: 0.7,
+      lastModified: new Date("2026-10-25"),
+    },
+    {
+      url: `${baseUrl}/blog`,
+      changeFrequency: "weekly",
+      priority: 0.6,
+      lastModified: new Date(),
+    },
+    {
       url: `${baseUrl}/trends`,
       changeFrequency: "daily",
       priority: 0.8,
@@ -115,6 +135,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "monthly",
       priority: 0.7,
       lastModified: new Date(),
+    },
+    {
+      url: `${baseUrl}/terms`,
+      changeFrequency: "yearly",
+      priority: 0.3,
+      lastModified: new Date("2026-10-24"),
+    },
+    {
+      url: `${baseUrl}/privacy`,
+      changeFrequency: "yearly",
+      priority: 0.3,
+      lastModified: new Date("2026-10-24"),
     },
   ]
 
@@ -139,11 +171,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: listing.updatedAt,
     }))
 
-    // Fetch some active seller profiles
+    // Only traders with something to show: empty profiles are thin pages
     const sellers = await prisma.user.findMany({
       where: {
-        role: "user",
         isBanned: false,
+        OR: [
+          { itemListings: { some: { status: "available" } } },
+          { currencyListings: { some: { status: "available" } } },
+          { vouchesReceived: { some: { status: "VALID" } } },
+        ],
       },
       select: {
         id: true,
@@ -181,7 +217,37 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: entry.updatedAt,
     }))
 
-    return [...staticRoutes, ...itemListingRoutes, ...currencyListingRoutes, ...profileRoutes, ...hallOfShameRoutes]
+    const [games, posts] = await Promise.all([
+      getSeoGames(),
+      prisma.blogPost.findMany({ where: { published: true }, select: { slug: true, updatedAt: true } }),
+    ])
+
+    // Game pages are only indexable once they have live listings (see app/games/[slug])
+    const gameRoutes: MetadataRoute.Sitemap = games
+      .filter((game) => game.itemCount + game.currencyCount > 0)
+      .map((game) => ({
+        url: `${baseUrl}${gamePath(game.displayName)}`,
+        changeFrequency: "daily" as const,
+        priority: 0.85,
+        lastModified: new Date(),
+      }))
+
+    const blogRoutes: MetadataRoute.Sitemap = posts.map((post) => ({
+      url: `${baseUrl}/blog/${post.slug}`,
+      changeFrequency: "monthly" as const,
+      priority: 0.6,
+      lastModified: post.updatedAt,
+    }))
+
+    return [
+      ...staticRoutes,
+      ...gameRoutes,
+      ...itemListingRoutes,
+      ...currencyListingRoutes,
+      ...blogRoutes,
+      ...profileRoutes,
+      ...hallOfShameRoutes,
+    ]
   } catch (error) {
     console.error("Error generating sitemap:", error)
     // Return just static routes if database query fails

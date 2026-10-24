@@ -1,6 +1,6 @@
 "use client"
 
-import Navigation from "@/components/navigation"
+import type React from "react"
 import { useAuth } from "@/lib/auth-context"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
@@ -38,6 +38,10 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/use-toast"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Skeleton } from "@/components/ui/skeleton"
+import { FormPageSkeleton } from "@/components/site/skeletons"
+import { Container } from "@/components/site/container"
+import { cn } from "@/lib/utils"
 
 export default function SettingsPage() {
   const { user } = useAuth()
@@ -97,11 +101,9 @@ export default function SettingsPage() {
     marketingEmails: false,
   })
 
-  // Blocked users mock data
-  const [blockedUsers, setBlockedUsers] = useState([
-    { id: 1, username: "SpamUser123", avatar: "/diverse-group-avatars.png", blockedAt: "2 days ago" },
-    { id: 2, username: "FakeTrader", avatar: "/pandora-ocean-scene.png", blockedAt: "1 week ago" },
-  ])
+  // Blocking isn't stored server-side yet, so there is no real list to show. The mock entries
+  // that used to be here were displayed to every user; the section stays hidden until blocking exists.
+  const [blockedUsers, setBlockedUsers] = useState<{ id: number; username: string; avatar: string; blockedAt: string }[]>([])
 
   // Support ticket state
   const [supportTickets, setSupportTickets] = useState<any[]>([])
@@ -121,20 +123,26 @@ export default function SettingsPage() {
     setMounted(true)
   }, [])
 
+  // Load profile and preferences once per user, not on every tab switch
   useEffect(() => {
     if (!user) {
       router.push("/auth/login")
-    } else {
-      // Fetch profile data on mount
-      loadProfileData()
-      // Load user preferences
-      loadUserPreferences()
-      // Load support tickets if on support tab
-      if (activeTab === "support") {
-        loadSupportTickets()
-      }
+      return
     }
-  }, [user, router, activeTab])
+    loadProfileData()
+    loadUserPreferences()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id])
+
+  // Tickets are only needed on the support tab; fetch them when it is first opened
+  const [ticketsLoaded, setTicketsLoaded] = useState(false)
+  useEffect(() => {
+    if (user && activeTab === "support" && !ticketsLoaded) {
+      setTicketsLoaded(true)
+      loadSupportTickets()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, activeTab, ticketsLoaded])
 
   useEffect(() => {
     if (selectedTicketId) {
@@ -578,593 +586,310 @@ export default function SettingsPage() {
     }
   }
 
-  if (!user) return null
+  // Session still loading (or redirecting to login): keep the page shape instead of a blank gap
+  if (!user) return <FormPageSkeleton />
+
+  const navItems = [
+    { id: "account", label: "Account", icon: User },
+    { id: "privacy", label: "Privacy", icon: Lock },
+    { id: "notifications", label: "Notifications", icon: Bell },
+    { id: "security", label: "Security", icon: Shield },
+    { id: "support", label: "Help & support", icon: HelpCircle },
+    { id: "danger", label: "Delete account", icon: Trash2 },
+  ]
+
+  const ticketBadge = (status: string) =>
+    status === "CLOSED" ? "success" : status === "OPEN" ? "default" : "warning"
+  const ticketLabel = (status: string) =>
+    ({ OPEN: "Open", IN_PROGRESS: "In progress", PENDING: "Waiting on you", CLOSED: "Resolved" })[status] || status
 
   return (
     <>
-      <Navigation />
-      <main className="container max-w-[1920px] mx-auto px-6 py-8">
-        <h1 className="text-3xl font-bold mb-8">Settings</h1>
+      <main className="min-h-screen bg-background">
+        <Container className="pt-10 pb-16 md:pt-14 md:pb-20">
+          <h1 className="text-title">Settings</h1>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          {/* Sidebar */}
-          <div className="md:col-span-1">
-            <div className="space-y-2">
-              {[
-                { id: "account", label: "Account Settings", icon: User },
-                { id: "privacy", label: "Privacy & Safety", icon: Lock },
-                { id: "blocked", label: "Blocked Users", icon: Ban },
-                { id: "notifications", label: "Notifications", icon: Bell },
-                { id: "support", label: "Support", icon: HelpCircle },
-                { id: "appearance", label: "Appearance", icon: Moon },
-                { id: "security", label: "Security", icon: Shield },
-                { id: "danger", label: "Danger Zone", icon: Trash2 },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`w-full px-4 py-2 rounded-lg text-left flex items-center gap-2 transition ${
-                    activeTab === tab.id ? "bg-primary text-primary-foreground" : "hover:bg-muted"
-                  } ${tab.id === "danger" ? "text-destructive hover:bg-destructive/10" : ""}`}
-                >
-                  <tab.icon className="w-4 h-4" />
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          <div className="mt-8 grid gap-8 md:grid-cols-[220px_minmax(0,1fr)] md:gap-12">
+            {/* Section nav: list on desktop, chips on mobile */}
+            <nav aria-label="Settings sections">
+              <div className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5 md:mx-0 md:flex-col md:gap-0.5 md:px-0">
+                {navItems.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setActiveTab(item.id)}
+                    aria-current={activeTab === item.id ? "page" : undefined}
+                    className={cn(
+                      "flex shrink-0 items-center gap-3 rounded-full px-4 py-2 text-[15px] transition-colors md:rounded-lg md:px-3",
+                      activeTab === item.id
+                        ? "bg-secondary text-foreground"
+                        : "text-muted-foreground hover:bg-white/[0.04] hover:text-foreground",
+                      item.id === "danger" && "md:mt-4 text-destructive hover:text-destructive",
+                    )}
+                  >
+                    <item.icon className="hidden size-4 md:block" strokeWidth={1.75} />
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </nav>
 
-          {/* Content */}
-          <div className="md:col-span-3">
-            {/* Account Settings */}
-            {activeTab === "account" && (
-              <Card className="p-6 space-y-6">
-                <h2 className="text-2xl font-bold">Account Settings</h2>
-
-                {profileLoading ? (
-                  <div className="text-center py-8">
-                    <p className="text-muted-foreground">Loading profile data...</p>
+            <div className="min-w-0 max-w-2xl space-y-8">
+              {/* Account */}
+              {activeTab === "account" &&
+                (profileLoading ? (
+                  <div className="space-y-8" aria-hidden="true">
+                    <Skeleton className="h-64 w-full rounded-[20px]" />
+                    <Skeleton className="h-32 w-full rounded-[20px]" />
                   </div>
                 ) : (
                   <>
-                    {/* Profile Picture */}
-                    <div>
-                      <Label className="mb-2 block">Profile Picture</Label>
-                      <FileUpload
-                        key={`avatar-${formData.avatar}`}
-                        endpoint="userAvatar"
-                        value={formData.avatar || null}
-                        onChange={(url) => handleFormChange("avatar", url || "")}
-                      />
-                      <p className="text-xs text-muted-foreground mt-1">Upload a profile picture (JPG, PNG, up to 2MB)</p>
-                    </div>
+                    <SettingsGroup title="Profile" footer="Your Discord is only shown if you allow it under Privacy.">
+                      <FieldRow label="Profile picture" hint="JPG or PNG, up to 2 MB.">
+                        <FileUpload
+                          key={`avatar-${formData.avatar}`}
+                          endpoint="userAvatar"
+                          value={formData.avatar || null}
+                          onChange={(url) => handleFormChange("avatar", url || "")}
+                        />
+                      </FieldRow>
+                      <FieldRow label="Profile banner" hint="JPG or PNG, up to 4 MB.">
+                        <FileUpload
+                          key={`banner-${formData.banner}`}
+                          endpoint="listingImage"
+                          value={formData.banner || null}
+                          onChange={(url) => handleFormChange("banner", url || "")}
+                        />
+                      </FieldRow>
+                      <FieldRow label="Bio" htmlFor="settings-bio" hint={`${formData.bio.length}/200`}>
+                        <Textarea
+                          id="settings-bio"
+                          placeholder="What do you trade? When are you online?"
+                          value={formData.bio}
+                          onChange={(e) => handleFormChange("bio", e.target.value)}
+                          maxLength={200}
+                          rows={3}
+                        />
+                      </FieldRow>
+                      <FieldRow label="Roblox username" htmlFor="settings-roblox">
+                        <Input
+                          id="settings-roblox"
+                          placeholder="Your Roblox username"
+                          value={formData.robloxProfile}
+                          onChange={(e) => handleFormChange("robloxProfile", e.target.value)}
+                        />
+                      </FieldRow>
+                      <FieldRow label="Discord" htmlFor="settings-discord">
+                        <Input
+                          id="settings-discord"
+                          placeholder="Discord username"
+                          value={formData.socialLinks?.discord || ""}
+                          onChange={(e) => handleSocialLinkChange("discord", e.target.value)}
+                        />
+                      </FieldRow>
+                    </SettingsGroup>
 
-                    {/* Profile Banner */}
-                    <div>
-                      <Label className="mb-2 block">Profile Banner</Label>
-                      <FileUpload
-                        key={`banner-${formData.banner}`}
-                        endpoint="listingImage"
-                        value={formData.banner || null}
-                        onChange={(url) => handleFormChange("banner", url || "")}
-                      />
-                      <p className="text-xs text-muted-foreground mt-1">Upload a banner image (JPG, PNG, up to 4MB)</p>
-                    </div>
+                    <SettingsGroup title="Account">
+                      <SettingsRow title="Username">
+                        <span className="text-[15px] text-muted-foreground">{user?.username}</span>
+                      </SettingsRow>
+                      <SettingsRow title="Email">
+                        <span className="truncate text-[15px] text-muted-foreground">{user?.email}</span>
+                      </SettingsRow>
+                    </SettingsGroup>
 
-                    <div>
-                      <Label className="mb-2 block">Username</Label>
-                      <Input type="text" value={user?.username || ""} readOnly className="bg-muted" />
-                      <p className="text-xs text-muted-foreground mt-1">You can change your username once every 30 days</p>
-                    </div>
-
-                    <div>
-                      <Label className="mb-2 block">Email</Label>
-                      <Input type="email" value={user?.email || ""} readOnly className="bg-muted" />
-                    </div>
-
-                    <div>
-                      <Label className="mb-2 block">Bio</Label>
-                      <textarea
-                        className="w-full px-3 py-2 border rounded-lg bg-background text-foreground min-h-[100px]"
-                        placeholder="Tell us about yourself..."
-                        value={formData.bio}
-                        onChange={(e) => handleFormChange("bio", e.target.value)}
-                        maxLength={200}
-                      />
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {formData.bio.length}/200 characters
-                      </p>
-                    </div>
-
-                    {/* Roblox Profile */}
-                    <div>
-                      <Label className="mb-2 block">Roblox Profile</Label>
-                      <Input
-                        placeholder="Your Roblox username"
-                        value={formData.robloxProfile}
-                        onChange={(e) => handleFormChange("robloxProfile", e.target.value)}
-                      />
-                    </div>
-
-                    {/* Social Links */}
-                    <div>
-                      <Label className="mb-2 block">Social Links (Optional)</Label>
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2">
-                          <LinkIcon className="w-4 h-4 text-muted-foreground" />
-                          <Input
-                            placeholder="Discord username (e.g., username#1234)"
-                            value={formData.socialLinks?.discord || ""}
-                            onChange={(e) => handleSocialLinkChange("discord", e.target.value)}
-                          />
-                        </div>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">Only shown if you enable it in privacy settings</p>
-                    </div>
-
-                    <Button
-                      onClick={handleSaveProfile}
-                      disabled={saveLoading}
-                      className="w-full"
-                    >
-                      {saveLoading ? "Saving..." : "Save Changes"}
-                    </Button>
-                  </>
-                )}
-              </Card>
-            )}
-
-            {/* Privacy & Safety */}
-            {activeTab === "privacy" && (
-              <Card className="p-6 space-y-6">
-                <h2 className="text-2xl font-bold">Privacy & Safety</h2>
-                <p className="text-muted-foreground">Control who can see your information and interact with you</p>
-
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between p-4 border rounded-lg">
-                    <div>
-                      <p className="font-semibold">Profile Visibility</p>
-                      <p className="text-sm text-muted-foreground">Make your profile visible to others</p>
-                    </div>
-                    <Switch
-                      checked={settings.profileVisibility}
-                      onCheckedChange={(checked) => setSettings({ ...settings, profileVisibility: checked })}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between p-4 border rounded-lg">
-                    <div>
-                      <p className="font-semibold">Show Email</p>
-                      <p className="text-sm text-muted-foreground">Display email on your profile</p>
-                    </div>
-                    <Switch
-                      checked={settings.showEmail}
-                      onCheckedChange={(checked) => setSettings({ ...settings, showEmail: checked })}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between p-4 border rounded-lg">
-                    <div>
-                      <p className="font-semibold">Show Roblox Profile</p>
-                      <p className="text-sm text-muted-foreground">Display your Roblox profile link</p>
-                    </div>
-                    <Switch
-                      checked={settings.showRobloxProfile}
-                      onCheckedChange={(checked) => setSettings({ ...settings, showRobloxProfile: checked })}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between p-4 border rounded-lg">
-                    <div>
-                      <p className="font-semibold flex items-center gap-2">
-                        Activity Status
-                        {settings.showActivityStatus && (
-                          <Badge variant="secondary" className="text-xs">
-                            <span className="w-2 h-2 bg-green-500 rounded-full mr-1" />
-                            Online
-                          </Badge>
-                        )}
-                      </p>
-                      <p className="text-sm text-muted-foreground">Show when you're active on the platform</p>
-                    </div>
-                    <Switch
-                      checked={settings.showActivityStatus}
-                      onCheckedChange={(checked) => setSettings({ ...settings, showActivityStatus: checked })}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between p-4 border rounded-lg">
-                    <div>
-                      <p className="font-semibold">Allow Message Requests</p>
-                      <p className="text-sm text-muted-foreground">Let anyone send you messages</p>
-                    </div>
-                    <Switch
-                      checked={settings.allowMessageRequests}
-                      onCheckedChange={(checked) => setSettings({ ...settings, allowMessageRequests: checked })}
-                    />
-                  </div>
-                </div>
-
-                <Button onClick={handleSavePrivacySettings} disabled={saveLoading || settingsLoading}>
-                  {saveLoading ? "Saving..." : "Save Changes"}
-                </Button>
-              </Card>
-            )}
-
-            {/* Blocked Users */}
-            {activeTab === "blocked" && (
-              <Card className="p-6 space-y-6">
-                <h2 className="text-2xl font-bold">Blocked Users</h2>
-                <p className="text-muted-foreground">
-                  Blocked users cannot message you, see your listings, or interact with your profile
-                </p>
-
-                {blockedUsers.length === 0 ? (
-                  <div className="text-center py-12">
-                    <Ban className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                    <p className="text-muted-foreground">You haven't blocked anyone yet</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {blockedUsers.map((blockedUser) => (
-                      <div key={blockedUser.id} className="flex items-center justify-between p-4 border rounded-lg">
-                        <div className="flex items-center gap-3">
-                          <img
-                            src={blockedUser.avatar || "/placeholder.svg"}
-                            alt={blockedUser.username}
-                            className="w-10 h-10 rounded-full"
-                          />
-                          <div>
-                            <p className="font-semibold">{blockedUser.username}</p>
-                            <p className="text-xs text-muted-foreground">Blocked {blockedUser.blockedAt}</p>
-                          </div>
-                        </div>
-                        <Button variant="outline" size="sm" onClick={() => handleUnblock(blockedUser.id)}>
-                          Unblock
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </Card>
-            )}
-
-            {/* Notifications */}
-            {activeTab === "notifications" && (
-              <Card className="p-6 space-y-6">
-                <h2 className="text-2xl font-bold">Notifications</h2>
-                <p className="text-muted-foreground">Choose what notifications you want to receive</p>
-
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between p-4 border rounded-lg">
-                    <div>
-                      <p className="font-semibold">New Messages</p>
-                      <p className="text-sm text-muted-foreground">Get notified when you receive messages</p>
-                    </div>
-                    <Switch
-                      checked={settings.newMessages}
-                      onCheckedChange={(checked) => setSettings({ ...settings, newMessages: checked })}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between p-4 border rounded-lg">
-                    <div>
-                      <p className="font-semibold">Listing Views</p>
-                      <p className="text-sm text-muted-foreground">Get notified of new views on your listings</p>
-                    </div>
-                    <Switch
-                      checked={settings.listingViews}
-                      onCheckedChange={(checked) => setSettings({ ...settings, listingViews: checked })}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between p-4 border rounded-lg">
-                    <div>
-                      <p className="font-semibold">Vouch Notifications</p>
-                      <p className="text-sm text-muted-foreground">Get notified when someone vouches for you</p>
-                    </div>
-                    <Switch
-                      checked={settings.vouchNotifications}
-                      onCheckedChange={(checked) => setSettings({ ...settings, vouchNotifications: checked })}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between p-4 border rounded-lg">
-                    <div>
-                      <p className="font-semibold">Trade Updates</p>
-                      <p className="text-sm text-muted-foreground">Get notified about trade status changes</p>
-                    </div>
-                    <Switch
-                      checked={settings.tradeUpdates}
-                      onCheckedChange={(checked) => setSettings({ ...settings, tradeUpdates: checked })}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between p-4 border rounded-lg">
-                    <div>
-                      <p className="font-semibold">Price Alerts</p>
-                      <p className="text-sm text-muted-foreground">Get alerts when items you want go on sale</p>
-                    </div>
-                    <Switch
-                      checked={settings.priceAlerts}
-                      onCheckedChange={(checked) => setSettings({ ...settings, priceAlerts: checked })}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between p-4 border rounded-lg">
-                    <div>
-                      <p className="font-semibold">Marketing Emails</p>
-                      <p className="text-sm text-muted-foreground">Receive updates about new features and promotions</p>
-                    </div>
-                    <Switch
-                      checked={settings.marketingEmails}
-                      onCheckedChange={(checked) => setSettings({ ...settings, marketingEmails: checked })}
-                    />
-                  </div>
-                </div>
-
-                <Button onClick={handleSaveNotificationSettings} disabled={saveLoading || settingsLoading}>
-                  {saveLoading ? "Saving..." : "Save Changes"}
-                </Button>
-              </Card>
-            )}
-
-            {/* Appearance */}
-            {activeTab === "appearance" && (
-              <Card className="p-6 space-y-6">
-                <h2 className="text-2xl font-bold">Appearance</h2>
-                <p className="text-muted-foreground">Customize how RbMarket looks on your device</p>
-
-                <div className="space-y-4">
-                  <h3 className="font-semibold">Theme</h3>
-                  <div className="grid grid-cols-3 gap-4">
-                    <button
-                      onClick={() => setTheme("light")}
-                      className={`p-4 border rounded-lg flex flex-col items-center gap-2 transition ${
-                        mounted && theme === "light" ? "border-primary bg-primary/10" : "hover:border-primary/50"
-                      }`}
-                    >
-                      <div className="w-12 h-12 rounded-full bg-white border flex items-center justify-center">
-                        <Sun className="w-6 h-6 text-yellow-500" />
-                      </div>
-                      <span className="font-medium">Light</span>
-                      {mounted && theme === "light" && <span className="text-xs text-primary">Active</span>}
-                    </button>
-
-                    <button
-                      onClick={() => setTheme("dark")}
-                      className={`p-4 border rounded-lg flex flex-col items-center gap-2 transition ${
-                        mounted && theme === "dark" ? "border-primary bg-primary/10" : "hover:border-primary/50"
-                      }`}
-                    >
-                      <div className="w-12 h-12 rounded-full bg-gray-900 border flex items-center justify-center">
-                        <Moon className="w-6 h-6 text-blue-400" />
-                      </div>
-                      <span className="font-medium">Dark</span>
-                      {mounted && theme === "dark" && <span className="text-xs text-primary">Active</span>}
-                    </button>
-
-                    <button
-                      onClick={() => setTheme("system")}
-                      className={`p-4 border rounded-lg flex flex-col items-center gap-2 transition ${
-                        mounted && theme === "system" ? "border-primary bg-primary/10" : "hover:border-primary/50"
-                      }`}
-                    >
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-white to-gray-900 border flex items-center justify-center">
-                        <Monitor className="w-6 h-6 text-gray-500" />
-                      </div>
-                      <span className="font-medium">System</span>
-                      {mounted && theme === "system" && <span className="text-xs text-primary">Active</span>}
-                    </button>
-                  </div>
-
-                  <p className="text-sm text-muted-foreground mt-4">
-                    {mounted && theme === "system"
-                      ? "Theme will automatically match your system preferences."
-                      : mounted && theme === "dark"
-                        ? "Dark mode is easier on the eyes in low-light environments."
-                        : "Light mode provides better visibility in bright environments."}
-                  </p>
-                </div>
-              </Card>
-            )}
-
-            {/* Security */}
-            {activeTab === "security" && (
-              <Card className="p-6 space-y-6">
-                <h2 className="text-2xl font-bold">Security</h2>
-                <p className="text-muted-foreground">Manage your account security settings</p>
-
-                <div className="space-y-4">
-                  <div className="p-4 border rounded-lg">
-                    <div className="flex items-center justify-between mb-2">
-                      <div>
-                        <p className="font-semibold">Password</p>
-                        <p className="text-sm text-muted-foreground">Last changed 30 days ago</p>
-                      </div>
-                      <Button variant="outline" onClick={() => setShowPasswordDialog(true)}>
-                        Change Password
+                    <div className="flex justify-end">
+                      <Button onClick={handleSaveProfile} disabled={saveLoading}>
+                        {saveLoading ? "Saving…" : "Save changes"}
                       </Button>
                     </div>
-                  </div>
+                  </>
+                ))}
 
-                  <div className="p-4 border rounded-lg">
-                    <div className="flex items-center justify-between mb-2">
-                      <div>
-                        <p className="font-semibold">Two-Factor Authentication</p>
-                        <p className="text-sm text-muted-foreground">Add an extra layer of security</p>
-                      </div>
-                      <Button variant="outline">Enable 2FA</Button>
-                    </div>
-                  </div>
+              {/* Privacy */}
+              {activeTab === "privacy" && (
+                <>
+                  <SettingsGroup title="Your profile">
+                    <ToggleRow
+                      id="privacy-visible"
+                      title="Public profile"
+                      description="Anyone can see your profile and listings."
+                      checked={settings.profileVisibility}
+                      onChange={(checked) => setSettings({ ...settings, profileVisibility: checked })}
+                    />
+                    <ToggleRow
+                      id="privacy-email"
+                      title="Show email"
+                      description="Display your email address on your profile."
+                      checked={settings.showEmail}
+                      onChange={(checked) => setSettings({ ...settings, showEmail: checked })}
+                    />
+                    <ToggleRow
+                      id="privacy-roblox"
+                      title="Show Roblox profile"
+                      description="Link your Roblox account on your profile."
+                      checked={settings.showRobloxProfile}
+                      onChange={(checked) => setSettings({ ...settings, showRobloxProfile: checked })}
+                    />
+                  </SettingsGroup>
 
-                  <div className="p-4 border rounded-lg">
-                    <div className="flex items-center justify-between mb-2">
-                      <div>
-                        <p className="font-semibold">Active Sessions</p>
-                        <p className="text-sm text-muted-foreground">Manage your logged-in devices</p>
-                      </div>
-                      <Button variant="outline">View Sessions</Button>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            )}
+                  <SettingsGroup title="Activity and messages">
+                    <ToggleRow
+                      id="privacy-activity"
+                      title="Show when you're online"
+                      description="Buyers see a green dot when you're active."
+                      checked={settings.showActivityStatus}
+                      onChange={(checked) => setSettings({ ...settings, showActivityStatus: checked })}
+                    />
+                    <ToggleRow
+                      id="privacy-messages"
+                      title="Message requests"
+                      description="Let anyone start a conversation with you."
+                      checked={settings.allowMessageRequests}
+                      onChange={(checked) => setSettings({ ...settings, allowMessageRequests: checked })}
+                    />
+                  </SettingsGroup>
 
-            {/* Support */}
-            {activeTab === "support" && (
-              <div className="space-y-6">
-                <Card className="p-6">
-                  <h2 className="text-2xl font-bold mb-4">Submit Support Ticket</h2>
-                  <p className="text-muted-foreground mb-6">
-                    Need help? Create a support ticket and our team will get back to you as soon as possible.
-                  </p>
-                  
-                  <div className="space-y-4">
-                    <div>
-                      <Label>Subject</Label>
-                      <Input
-                        placeholder="Brief description of your issue"
-                        value={ticketSubject}
-                        onChange={(e) => setTicketSubject(e.target.value)}
-                        disabled={ticketLoading}
-                      />
-                    </div>
-
-                    <div>
-                      <Label>Category</Label>
-                      <Select value={ticketCategory} onValueChange={setTicketCategory} disabled={ticketLoading}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="GENERAL">General</SelectItem>
-                          <SelectItem value="TECHNICAL">Technical Issue</SelectItem>
-                          <SelectItem value="ACCOUNT">Account Issue</SelectItem>
-                          <SelectItem value="PAYMENT">Payment/Billing</SelectItem>
-                          <SelectItem value="REPORT">Report User/Listing</SelectItem>
-                          <SelectItem value="OTHER">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div>
-                      <Label>Message</Label>
-                      <Textarea
-                        placeholder="Describe your issue in detail..."
-                        value={ticketMessage}
-                        onChange={(e) => setTicketMessage(e.target.value)}
-                        disabled={ticketLoading}
-                        rows={6}
-                      />
-                    </div>
-
-                    <Button onClick={handleSubmitTicket} disabled={ticketLoading} className="w-full">
-                      {ticketLoading ? "Submitting..." : "Submit Ticket"}
-                      <Send className="w-4 h-4 ml-2" />
+                  <div className="flex justify-end">
+                    <Button onClick={handleSavePrivacySettings} disabled={saveLoading || settingsLoading}>
+                      {saveLoading ? "Saving…" : "Save changes"}
                     </Button>
                   </div>
-                </Card>
+                </>
+              )}
 
-                <Card className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-2xl font-bold">My Support Tickets</h2>
-                    <Select value={ticketStatusFilter} onValueChange={setTicketStatusFilter}>
-                      <SelectTrigger className="w-[150px]">
-                        <SelectValue placeholder="Filter by status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Tickets</SelectItem>
-                        <SelectItem value="OPEN">Open</SelectItem>
-                        <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                        <SelectItem value="PENDING">Pending</SelectItem>
-                        <SelectItem value="CLOSED">Closed</SelectItem>
-                      </SelectContent>
-                    </Select>
+              {/* Notifications */}
+              {activeTab === "notifications" && (
+                <>
+                  <SettingsGroup title="Trading">
+                    <ToggleRow
+                      id="notify-messages"
+                      title="New messages"
+                      description="When a buyer or seller messages you."
+                      checked={settings.newMessages}
+                      onChange={(checked) => setSettings({ ...settings, newMessages: checked })}
+                    />
+                    <ToggleRow
+                      id="notify-trades"
+                      title="Trade updates"
+                      description="When a trade's status changes."
+                      checked={settings.tradeUpdates}
+                      onChange={(checked) => setSettings({ ...settings, tradeUpdates: checked })}
+                    />
+                    <ToggleRow
+                      id="notify-vouches"
+                      title="Vouches"
+                      description="When someone vouches for you."
+                      checked={settings.vouchNotifications}
+                      onChange={(checked) => setSettings({ ...settings, vouchNotifications: checked })}
+                    />
+                    <ToggleRow
+                      id="notify-views"
+                      title="Listing views"
+                      description="When people view your listings."
+                      checked={settings.listingViews}
+                      onChange={(checked) => setSettings({ ...settings, listingViews: checked })}
+                    />
+                  </SettingsGroup>
+
+                  <SettingsGroup title="Deals and news">
+                    <ToggleRow
+                      id="notify-prices"
+                      title="Price alerts"
+                      description="When items you're watching drop in price."
+                      checked={settings.priceAlerts}
+                      onChange={(checked) => setSettings({ ...settings, priceAlerts: checked })}
+                    />
+                    <ToggleRow
+                      id="notify-marketing"
+                      title="RbMarket news"
+                      description="New features, giveaways and the weekly market digest by email."
+                      checked={settings.marketingEmails}
+                      onChange={(checked) => setSettings({ ...settings, marketingEmails: checked })}
+                    />
+                  </SettingsGroup>
+
+                  <div className="flex justify-end">
+                    <Button onClick={handleSaveNotificationSettings} disabled={saveLoading || settingsLoading}>
+                      {saveLoading ? "Saving…" : "Save changes"}
+                    </Button>
                   </div>
-                  
-                  {loadingTickets ? (
-                    <div className="text-center py-8 text-muted-foreground">Loading tickets...</div>
-                  ) : supportTickets.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <HelpCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                      <p>No support tickets yet</p>
-                    </div>
-                  ) : selectedTicketId ? (
-                    // Detailed ticket view
+                </>
+              )}
+
+              {/* Security */}
+              {activeTab === "security" && (
+                <SettingsGroup title="Sign-in and security">
+                  <SettingsRow title="Password" description="Change the password you use to log in.">
+                    <Button variant="secondary" size="sm" onClick={() => setShowPasswordDialog(true)}>
+                      Change
+                    </Button>
+                  </SettingsRow>
+                  <SettingsRow title="Two-factor authentication" description="Add a code from your phone when you log in.">
+                    <Badge variant="secondary">Coming soon</Badge>
+                  </SettingsRow>
+                  <SettingsRow title="Active sessions" description="See and sign out devices that are logged in.">
+                    <Badge variant="secondary">Coming soon</Badge>
+                  </SettingsRow>
+                </SettingsGroup>
+              )}
+
+              {/* Support */}
+              {activeTab === "support" && (
+                <>
+                  {selectedTicketId ? (
                     (() => {
-                      const ticket = supportTickets.find(t => t.id === selectedTicketId)
+                      const ticket = supportTickets.find((t) => t.id === selectedTicketId)
                       if (!ticket) return null
-                      
                       return (
-                        <div className="space-y-4">
-                          <Button variant="outline" size="sm" onClick={() => setSelectedTicketId(null)}>
-                            ← Back to all tickets
-                          </Button>
-                          
-                          <div className="border rounded-lg p-4">
-                            <div className="flex items-start justify-between mb-4">
-                              <div>
-                                <h3 className="font-semibold text-lg">{ticket.subject}</h3>
-                                <p className="text-sm text-muted-foreground">
-                                  Created {new Date(ticket.createdAt).toLocaleString()}
-                                </p>
-                              </div>
-                              <Badge
-                                className={
-                                  ticket.status === "OPEN"
-                                    ? "bg-blue-500"
-                                    : ticket.status === "IN_PROGRESS"
-                                      ? "bg-yellow-500"
-                                      : ticket.status === "PENDING"
-                                        ? "bg-orange-500"
-                                        : "bg-green-500"
-                                }
-                              >
-                                {ticket.status}
-                              </Badge>
+                        <div className="space-y-5">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedTicketId(null)}
+                            className="text-[15px] text-link hover:underline underline-offset-2"
+                          >
+                            ‹ All tickets
+                          </button>
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <h2 className="text-[22px] font-semibold tracking-[-0.02em]">{ticket.subject}</h2>
+                              <p className="text-[13px] text-muted-foreground">
+                                Opened {new Date(ticket.createdAt).toLocaleString()}
+                              </p>
                             </div>
-                            
-                            {/* Conversation */}
-                            <ScrollArea className="h-[400px] border rounded-lg p-4">
+                            <Badge variant={ticketBadge(ticket.status)}>{ticketLabel(ticket.status)}</Badge>
+                          </div>
+
+                          <div className="rounded-[20px] bg-card p-4">
+                            <ScrollArea className="h-[420px] pr-2">
                               <div className="space-y-3">
-                                {/* Initial ticket message */}
                                 <div className="flex justify-end">
-                                  <div className="bg-muted p-4 rounded-lg w-fit max-w-[85%]">
-                                    <div className="flex items-start gap-3">
-                                      <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-semibold shrink-0">
-                                        {user?.username?.charAt(0).toUpperCase() || 'U'}
-                                      </div>
-                                      <div>
-                                        <p className="text-sm font-medium">{user?.username}</p>
-                                        <p className="text-sm text-muted-foreground">{new Date(ticket.createdAt).toLocaleString()}</p>
-                                        <p className="text-sm mt-2 whitespace-pre-wrap">{ticket.message}</p>
-                                      </div>
-                                    </div>
+                                  <div className="max-w-[85%] rounded-[20px] rounded-br-md bg-primary px-4 py-2.5 text-white">
+                                    <p className="whitespace-pre-wrap text-[15px]">{ticket.message}</p>
+                                    <p className="mt-1 text-[11px] text-white/70">
+                                      {new Date(ticket.createdAt).toLocaleString()}
+                                    </p>
                                   </div>
                                 </div>
-
-                                {/* Replies */}
                                 {messagesLoading ? (
-                                  <div className="text-center py-4">
-                                    <p className="text-sm text-muted-foreground">Loading messages...</p>
+                                  <div className="space-y-2 py-2" aria-hidden="true">
+                                    <Skeleton className="h-10 w-2/3 rounded-[20px]" />
+                                    <Skeleton className="ml-auto h-10 w-1/2 rounded-[20px]" />
                                   </div>
                                 ) : (
                                   ticketMessages.map((msg) => (
-                                    <div key={msg.id} className={`flex ${msg.isAdmin ? "justify-start" : "justify-end"}`}>
-                                      <div className={`w-fit max-w-[85%] ${msg.isAdmin ? "bg-primary/10 p-4 rounded-lg" : "bg-muted p-4 rounded-lg"}`}>
-                                        <div className="flex items-start gap-3">
-                                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold shrink-0 ${
-                                            msg.isAdmin ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"
-                                          }`}>
-                                            {msg.isAdmin ? 'A' : msg.user.username.charAt(0).toUpperCase()}
-                                          </div>
-                                          <div>
-                                            <p className="text-sm font-medium">{msg.isAdmin ? 'Support Team' : msg.user.username}</p>
-                                            <p className="text-sm text-muted-foreground">{new Date(msg.createdAt).toLocaleString()}</p>
-                                            <p className="text-sm mt-2 whitespace-pre-wrap">{msg.message}</p>
-                                          </div>
-                                        </div>
+                                    <div key={msg.id} className={cn("flex", msg.isAdmin ? "justify-start" : "justify-end")}>
+                                      <div
+                                        className={cn(
+                                          "max-w-[85%] rounded-[20px] px-4 py-2.5",
+                                          msg.isAdmin ? "rounded-bl-md bg-secondary" : "rounded-br-md bg-primary text-white",
+                                        )}
+                                      >
+                                        {msg.isAdmin && <p className="mb-0.5 text-[13px] font-semibold">Support team</p>}
+                                        <p className="whitespace-pre-wrap text-[15px]">{msg.message}</p>
+                                        <p className={cn("mt-1 text-[11px]", msg.isAdmin ? "text-muted-foreground" : "text-white/70")}>
+                                          {new Date(msg.createdAt).toLocaleString()}
+                                        </p>
                                       </div>
                                     </div>
                                   ))
@@ -1173,117 +898,162 @@ export default function SettingsPage() {
                             </ScrollArea>
                           </div>
 
-                          {ticket.status !== "CLOSED" && (
-                            <div className="border rounded-lg p-4">
-                              <Label className="mb-2 block">Reply to Support</Label>
+                          {ticket.status !== "CLOSED" ? (
+                            <div className="space-y-3">
                               <Textarea
-                                placeholder="Type your message..."
+                                aria-label="Reply to support"
+                                placeholder="Write a reply…"
                                 value={ticketReply}
                                 onChange={(e) => setTicketReply(e.target.value)}
                                 disabled={replyLoading}
-                                rows={4}
-                                className="mb-2"
+                                rows={3}
                               />
-                              <Button 
-                                onClick={handleSendReply}
-                                disabled={replyLoading || !ticketReply.trim()}
-                                size="sm"
-                              >
-                                {replyLoading ? "Sending..." : "Send Reply"}
-                                <Send className="w-4 h-4 ml-2" />
-                              </Button>
-                              <p className="text-xs text-muted-foreground mt-2">
-                                Note: Our support team will be notified of your reply
-                              </p>
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-[13px] text-muted-foreground">The support team is notified when you reply.</p>
+                                <Button size="sm" onClick={handleSendReply} disabled={replyLoading || !ticketReply.trim()}>
+                                  {replyLoading ? "Sending…" : "Send reply"}
+                                </Button>
+                              </div>
                             </div>
-                          )}
-
-                          {ticket.status === "CLOSED" && (
-                            <div className="border border-green-500/20 bg-green-500/10 rounded-lg p-4 text-center">
-                              <p className="text-sm text-green-700 dark:text-green-400">
-                                ✓ This ticket has been resolved. If you need further assistance, please create a new ticket.
-                              </p>
-                            </div>
+                          ) : (
+                            <p className="rounded-[20px] bg-success/10 px-5 py-4 text-[15px] text-success">
+                              This ticket is resolved. Open a new one if you still need help.
+                            </p>
                           )}
                         </div>
                       )
                     })()
                   ) : (
-                    <div className="space-y-4">
-                      {supportTickets
-                        .filter(ticket => ticketStatusFilter === "all" || ticket.status === ticketStatusFilter)
-                        .length === 0 ? (
-                          <div className="text-center py-8 text-muted-foreground">
-                            <HelpCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                            <p>No tickets found with this status</p>
-                          </div>
-                        ) : (
-                          supportTickets
-                            .filter(ticket => ticketStatusFilter === "all" || ticket.status === ticketStatusFilter)
-                            .map((ticket) => (
-                            <button
-                              key={ticket.id}
-                              onClick={() => setSelectedTicketId(ticket.id)}
-                              className="w-full border rounded-lg p-4 text-left hover:bg-muted/50 transition"
-                            >
-                              <div className="flex items-start justify-between mb-2">
-                                <div className="flex-1">
-                                  <h3 className="font-semibold">{ticket.subject}</h3>
-                                  <p className="text-sm text-muted-foreground">
-                                    {new Date(ticket.createdAt).toLocaleDateString()}
-                                  </p>
-                                </div>
-                                <Badge
-                                  className={
-                                    ticket.status === "OPEN"
-                                      ? "bg-blue-500"
-                                      : ticket.status === "IN_PROGRESS"
-                                        ? "bg-yellow-500"
-                                        : ticket.status === "PENDING"
-                                          ? "bg-orange-500"
-                                          : "bg-green-500"
-                                  }
-                                >
-                                  {ticket.status}
-                                </Badge>
-                              </div>
-                              <p className="text-sm text-muted-foreground line-clamp-2">{ticket.message}</p>
-                            </button>
-                          ))
-                        )
-                      }
-                    </div>
-                  )}
-                </Card>
-              </div>
-            )}
-
-            {/* Danger Zone */}
-            {activeTab === "danger" && (
-              <Card className="p-6 space-y-6 border-destructive">
-                <h2 className="text-2xl font-bold text-destructive">Danger Zone</h2>
-                <p className="text-muted-foreground">These actions are irreversible. Please proceed with caution.</p>
-
-                <div className="space-y-4">
-                  <div className="p-4 border border-destructive/50 rounded-lg bg-destructive/5">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-semibold">Delete Account</p>
-                        <p className="text-sm text-muted-foreground">
-                          Permanently delete your account and all associated data
-                        </p>
+                    <>
+                      <SettingsGroup title="Contact support" footer="We usually reply within a day.">
+                        <FieldRow label="Subject" htmlFor="ticket-subject">
+                          <Input
+                            id="ticket-subject"
+                            placeholder="What do you need help with?"
+                            value={ticketSubject}
+                            onChange={(e) => setTicketSubject(e.target.value)}
+                            disabled={ticketLoading}
+                          />
+                        </FieldRow>
+                        <FieldRow label="Topic">
+                          <Select value={ticketCategory} onValueChange={setTicketCategory} disabled={ticketLoading}>
+                            <SelectTrigger className="w-full">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="GENERAL">General</SelectItem>
+                              <SelectItem value="TECHNICAL">Something isn't working</SelectItem>
+                              <SelectItem value="ACCOUNT">My account</SelectItem>
+                              <SelectItem value="PAYMENT">Payments and billing</SelectItem>
+                              <SelectItem value="REPORT">Report a user or listing</SelectItem>
+                              <SelectItem value="OTHER">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </FieldRow>
+                        <FieldRow label="Message" htmlFor="ticket-message">
+                          <Textarea
+                            id="ticket-message"
+                            placeholder="Describe what happened, with usernames or listing links if you have them."
+                            value={ticketMessage}
+                            onChange={(e) => setTicketMessage(e.target.value)}
+                            disabled={ticketLoading}
+                            rows={5}
+                          />
+                        </FieldRow>
+                      </SettingsGroup>
+                      <div className="flex justify-end">
+                        <Button onClick={handleSubmitTicket} disabled={ticketLoading}>
+                          <Send strokeWidth={1.75} />
+                          {ticketLoading ? "Sending…" : "Send ticket"}
+                        </Button>
                       </div>
-                      <Button variant="destructive" onClick={() => setShowDeleteDialog(true)}>
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Delete Account
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            )}
+
+                      <section>
+                        <div className="mb-2 flex items-center justify-between gap-3 px-1">
+                          <h2 className="text-[13px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            Your tickets
+                          </h2>
+                          <Select value={ticketStatusFilter} onValueChange={setTicketStatusFilter}>
+                            <SelectTrigger className="h-8 w-[150px] text-[13px]">
+                              <SelectValue placeholder="Filter by status" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All tickets</SelectItem>
+                              <SelectItem value="OPEN">Open</SelectItem>
+                              <SelectItem value="IN_PROGRESS">In progress</SelectItem>
+                              <SelectItem value="PENDING">Waiting on you</SelectItem>
+                              <SelectItem value="CLOSED">Resolved</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        {loadingTickets ? (
+                          <div className="space-y-2" aria-hidden="true">
+                            {[1, 2, 3].map((i) => (
+                              <Skeleton key={i} className="h-16 w-full rounded-[20px]" />
+                            ))}
+                          </div>
+                        ) : (() => {
+                            const visible = supportTickets.filter(
+                              (t) => ticketStatusFilter === "all" || t.status === ticketStatusFilter,
+                            )
+                            if (visible.length === 0) {
+                              return (
+                                <p className="rounded-[20px] bg-card px-5 py-8 text-center text-[15px] text-muted-foreground">
+                                  {supportTickets.length === 0 ? "You haven't opened any tickets." : "No tickets with this status."}
+                                </p>
+                              )
+                            }
+                            return (
+                              <ul className="divide-y divide-white/[0.06] overflow-hidden rounded-[20px] bg-card">
+                                {visible.map((ticket) => (
+                                  <li key={ticket.id}>
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedTicketId(ticket.id)}
+                                      className="flex w-full items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-white/[0.03]"
+                                    >
+                                      <span className="min-w-0 flex-1">
+                                        <span className="block truncate text-[15px] font-medium">{ticket.subject}</span>
+                                        <span className="block truncate text-[13px] text-muted-foreground">
+                                          {new Date(ticket.createdAt).toLocaleDateString()} · {ticket.message}
+                                        </span>
+                                      </span>
+                                      <Badge variant={ticketBadge(ticket.status)}>{ticketLabel(ticket.status)}</Badge>
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            )
+                          })()}
+                      </section>
+                    </>
+                  )}
+                </>
+              )}
+
+              {/* Delete account */}
+              {activeTab === "danger" && (
+                <SettingsGroup
+                  title="Delete account"
+                  footer="Deleting removes your profile, listings and messages. Some trade and report records are kept for safety, as explained in our Privacy Policy."
+                >
+                  <SettingsRow
+                    title="Delete your account"
+                    description="Email support from the address on your account and we'll delete it within 15 days."
+                  >
+                    <Button asChild variant="destructive" size="sm">
+                      <a
+                        href={`mailto:support@rbmarket.app?subject=${encodeURIComponent("Delete my RbMarket account")}&body=${encodeURIComponent(`Please delete my account (${user?.username || ""}).`)}`}
+                      >
+                        Email support
+                      </a>
+                    </Button>
+                  </SettingsRow>
+                </SettingsGroup>
+              )}
+            </div>
           </div>
-        </div>
+        </Container>
       </main>
 
       {/* Change Password Dialog */}
@@ -1298,7 +1068,7 @@ export default function SettingsPage() {
               <Label>Current Password</Label>
               <Input
                 type="password"
-                className={`mt-1 ${passwordErrors.currentPassword ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                className={`mt-1 ${passwordErrors.currentPassword ? "border-destructive/40 focus-visible:ring-red-500" : ""}`}
                 value={passwordData.currentPassword}
                 onChange={(e) => {
                   setPasswordData({ ...passwordData, currentPassword: e.target.value })
@@ -1308,14 +1078,14 @@ export default function SettingsPage() {
                 }}
               />
               {passwordErrors.currentPassword && (
-                <p className="text-sm text-red-500 mt-1">{passwordErrors.currentPassword}</p>
+                <p className="text-sm text-destructive mt-1">{passwordErrors.currentPassword}</p>
               )}
             </div>
             <div>
               <Label>New Password</Label>
               <Input
                 type="password"
-                className={`mt-1 ${passwordErrors.newPassword ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                className={`mt-1 ${passwordErrors.newPassword ? "border-destructive/40 focus-visible:ring-red-500" : ""}`}
                 placeholder="At least 8 characters"
                 value={passwordData.newPassword}
                 onChange={(e) => {
@@ -1326,14 +1096,14 @@ export default function SettingsPage() {
                 }}
               />
               {passwordErrors.newPassword && (
-                <p className="text-sm text-red-500 mt-1">{passwordErrors.newPassword}</p>
+                <p className="text-sm text-destructive mt-1">{passwordErrors.newPassword}</p>
               )}
             </div>
             <div>
               <Label>Confirm New Password</Label>
               <Input
                 type="password"
-                className={`mt-1 ${passwordErrors.confirmPassword ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                className={`mt-1 ${passwordErrors.confirmPassword ? "border-destructive/40 focus-visible:ring-red-500" : ""}`}
                 value={passwordData.confirmPassword}
                 onChange={(e) => {
                   setPasswordData({ ...passwordData, confirmPassword: e.target.value })
@@ -1343,7 +1113,7 @@ export default function SettingsPage() {
                 }}
               />
               {passwordErrors.confirmPassword && (
-                <p className="text-sm text-red-500 mt-1">{passwordErrors.confirmPassword}</p>
+                <p className="text-sm text-destructive mt-1">{passwordErrors.confirmPassword}</p>
               )}
             </div>
           </div>
@@ -1396,5 +1166,86 @@ export default function SettingsPage() {
         </AlertDialogContent>
       </AlertDialog>
     </>
+  )
+}
+
+/** iOS-style grouped list: small section title, rounded card of rows, optional footnote. */
+function SettingsGroup({ title, footer, children }: { title: string; footer?: string; children: React.ReactNode }) {
+  return (
+    <section>
+      <h2 className="mb-2 px-1 text-[13px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</h2>
+      <div className="divide-y divide-white/[0.06] overflow-hidden rounded-[20px] bg-card">{children}</div>
+      {footer && <p className="mt-2 px-1 text-[13px] text-muted-foreground">{footer}</p>}
+    </section>
+  )
+}
+
+/** A single row: label and description on the left, a control or value on the right. */
+function SettingsRow({
+  title,
+  description,
+  htmlFor,
+  children,
+}: {
+  title: string
+  description?: string
+  htmlFor?: string
+  children?: React.ReactNode
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 px-5 py-4">
+      <div className="min-w-0">
+        <label htmlFor={htmlFor} className="block text-[15px] font-medium">
+          {title}
+        </label>
+        {description && <p className="mt-0.5 text-[13px] text-muted-foreground">{description}</p>}
+      </div>
+      {children && <div className="flex min-w-0 shrink-0 justify-end">{children}</div>}
+    </div>
+  )
+}
+
+function ToggleRow({
+  id,
+  title,
+  description,
+  checked,
+  onChange,
+}: {
+  id: string
+  title: string
+  description?: string
+  checked: boolean
+  onChange: (checked: boolean) => void
+}) {
+  return (
+    <SettingsRow title={title} description={description} htmlFor={id}>
+      <Switch id={id} checked={checked} onCheckedChange={onChange} />
+    </SettingsRow>
+  )
+}
+
+/** A row with the label on top and a full-width input below, for text and uploads. */
+function FieldRow({
+  label,
+  hint,
+  htmlFor,
+  children,
+}: {
+  label: string
+  hint?: string
+  htmlFor?: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="space-y-2 px-5 py-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <label htmlFor={htmlFor} className="text-[15px] font-medium">
+          {label}
+        </label>
+        {hint && <span className="text-[12px] text-muted-foreground">{hint}</span>}
+      </div>
+      {children}
+    </div>
   )
 }

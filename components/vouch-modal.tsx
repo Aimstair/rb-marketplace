@@ -49,7 +49,7 @@ export default function VouchModal({ seller, listing, onClose, onSubmit }: Vouch
         <Card className="w-full max-w-md">
           {/* Header */}
           <div className="flex items-center justify-between p-6 border-b">
-            <h2 className="text-2xl font-bold">Vouch for {seller.username}</h2>
+            <h2 className="text-2xl font-semibold">Vouch for {seller.username}</h2>
             <button onClick={onClose} className="p-2 hover:bg-muted rounded-lg transition">
               <X className="w-5 h-5" />
             </button>
@@ -84,7 +84,7 @@ export default function VouchModal({ seller, listing, onClose, onSubmit }: Vouch
                   >
                     <Star
                       className={`w-8 h-8 transition ${
-                        star <= (hoveredRating || rating) ? "fill-yellow-400 text-yellow-400" : "text-muted"
+                        star <= (hoveredRating || rating) ? "fill-warning text-warning" : "text-muted"
                       }`}
                     />
                   </button>
@@ -94,12 +94,12 @@ export default function VouchModal({ seller, listing, onClose, onSubmit }: Vouch
 
             {/* Comment */}
             <div>
-              <label className="text-sm font-semibold mb-2 block">Comment (Optional)</label>
+              <label className="mb-1.5 block text-[13px] font-medium text-muted-foreground">Comment (Optional)</label>
               <textarea
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 placeholder="Share your experience with this seller..."
-                className="w-full px-3 py-2 border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                className="w-full h-10 rounded-xl border border-input bg-card px-3.5 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/40 focus:outline-none focus:ring-2 focus:ring-primary resize-none"
                 rows={4}
               />
               <p className="text-xs text-muted-foreground mt-1">{comment.length}/500 characters</p>
