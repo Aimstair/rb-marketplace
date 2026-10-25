@@ -263,6 +263,7 @@ interface SeoListing {
   id: string
   title: string
   image?: string | null
+  images?: string[] | null
   description?: string | null
   price?: number | null
   ratePerPeso?: number | null
@@ -319,7 +320,11 @@ export function JsonLd({ listing, urlPath }: { listing: SeoListing; urlPath?: st
     "@id": `${url}#product`,
     name: listing.title,
     url,
-    ...(listing.image ? { image: absoluteUrl(listing.image) } : {}),
+    ...(listing.images && listing.images.length > 1
+      ? { image: listing.images.map((src) => absoluteUrl(src)) }
+      : listing.image
+        ? { image: absoluteUrl(listing.image) }
+        : {}),
     description: listing.description?.trim() || `${listing.title}${listing.gameName ? ` for ${listing.gameName}` : ""}, sold on ${SITE_NAME}.`,
     ...(listing.gameName ? { category: `Roblox > ${listing.gameName}` } : {}),
     offers: offer,

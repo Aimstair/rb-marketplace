@@ -11,6 +11,7 @@ import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
 import { JsonLd } from "@/components/json-ld"
 import { gamePath } from "@/lib/seo"
+import { ListingGallery } from "@/components/listing/listing-gallery"
 import { getListing, toggleListingVote, reportListing, getListingViewers, nudgeViewer } from "@/app/actions/listings"
 import {
   Dialog,
@@ -49,7 +50,6 @@ export default function ListingClient({ id, initialResult }: ListingClientProps)
   const [listing] = useState<any>(initialListing)
   const loading = false
   const [error] = useState<string | null>(initialErrorFor(initialResult))
-  const [selectedImage, setSelectedImage] = useState<string>(initialListing?.image || "")
   const [isSaved, setIsSaved] = useState(false)
   const [userVote, setUserVote] = useState<"up" | "down" | null>(
     initialListing?.userVote ? (initialListing.userVote.toLowerCase() as "up" | "down") : null,
@@ -394,6 +394,7 @@ export default function ListingClient({ id, initialResult }: ListingClientProps)
                 id: listing.id,
                 title: listing.title,
                 image: listing.image,
+                images: listing.images,
                 description: listing.description,
                 price: listing.price,
                 stock: listing.stock,
@@ -452,36 +453,10 @@ export default function ListingClient({ id, initialResult }: ListingClientProps)
             <div className="grid items-start gap-10 lg:grid-cols-[1.1fr_1fr]">
               {/* Gallery */}
               <div className="lg:sticky lg:top-[76px]">
-                <div className="relative aspect-square overflow-hidden rounded-[24px] bg-card">
-                  <img
-                    src={selectedImage || listing.image || "/placeholder.jpg"}
-                    alt={listing.title}
-                    className="absolute inset-0 h-full w-full object-contain p-[10%]"
-                    onError={(e) => {
-                      ;(e.target as HTMLImageElement).src = "/placeholder.jpg"
-                    }}
-                  />
-                </div>
-                {listing.image && (
-                  <div className="mt-3 flex gap-2.5">
-                    <button
-                      onClick={() => setSelectedImage(listing.image)}
-                      aria-label="Show main image"
-                      className={`size-16 overflow-hidden rounded-xl bg-card p-1.5 transition ${
-                        selectedImage === listing.image ? "ring-2 ring-link" : "hover:ring-1 hover:ring-border"
-                      }`}
-                    >
-                      <img
-                        src={listing.image || "/placeholder.jpg"}
-                        alt=""
-                        className="h-full w-full object-contain"
-                        onError={(e) => {
-                          ;(e.target as HTMLImageElement).src = "/placeholder.jpg"
-                        }}
-                      />
-                    </button>
-                  </div>
-                )}
+                <ListingGallery
+                  images={listing.images?.length ? listing.images : listing.image ? [listing.image] : []}
+                  alt={listing.title}
+                />
               </div>
 
               {/* Buy panel */}

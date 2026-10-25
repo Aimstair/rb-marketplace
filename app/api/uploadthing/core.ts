@@ -41,7 +41,7 @@ async function enforceUploadRateLimit(
 }
 
 export const ourFileRouter = {
-  listingImage: f({ image: { maxFileSize: "4MB", maxFileCount: 1 } })
+  listingImage: f({ image: { maxFileSize: "4MB", maxFileCount: 8 } })
     .middleware(async ({ req }) => {
       try {
         debugLog("listingImage", "Middleware started")

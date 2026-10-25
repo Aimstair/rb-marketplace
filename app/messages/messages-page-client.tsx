@@ -48,7 +48,7 @@ import {
 import { getConversations, getMessages, sendMessage, markMessagesAsRead, getOrCreateConversation, acceptCounterOffer, declineCounterOffer } from "@/app/actions/messages"
 import { getSubscriptionBadge as getSubBadge } from "@/lib/subscription-utils"
 import type { ConversationWithLatestMessage, MessageData } from "@/app/actions/messages"
-import { getPusherClient } from "@/lib/pusher-client"
+import { subscribeToChannel, watchRealtimeHealth } from "@/lib/pusher-client"
 import { isRealtimeMessagingFeatureEnabled } from "@/lib/feature-flags"
 import { buildMessagingChannel, buildPrivateChatChannel } from "@/lib/pusher-channels"
 import {
@@ -186,6 +186,63 @@ function mapRealtimeMessageToUi(data: any, userId?: string): Message {
   }
 }
 
+/** Maps a conversation from getConversations() to the sidebar contact shape. */
+function conversationToContact(conv: any, userId: string): Contact {
+  let transactionData = {
+    buyerConfirmed: false,
+    sellerConfirmed: false,
+    buyerVouched: false,
+    sellerVouched: false,
+  }
+  
+  // Use conversation-specific transaction data if available
+  let contactStatus: "ongoing" | "completed" | "sold" | "cancelled" = "ongoing"
+  if ((conv as any).transaction) {
+    const tx = (conv as any).transaction
+    transactionData = {
+      buyerConfirmed: tx.buyerConfirmed || false,
+      sellerConfirmed: tx.sellerConfirmed || false,
+      buyerVouched: false, // Would need additional query
+      sellerVouched: false, // Would need additional query
+    }
+    // Set status based on actual transaction status
+    if (tx.status === "COMPLETED") {
+      contactStatus = "completed"
+    } else if (tx.status === "CANCELLED") {
+      contactStatus = "cancelled"
+    } else {
+      contactStatus = "ongoing"
+    }
+  }
+  
+  return {
+    id: conv.id,
+    otherUserId: conv.otherUser.id,
+    name: conv.otherUser.username,
+    subscriptionTier: (conv.otherUser as any).subscriptionTier,
+    lastMessage: conv.latestMessage?.attachmentUrl 
+      ? "Sent a photo." 
+      : (conv.latestMessage?.content || "No messages yet"),
+    timestamp: conv.latestMessage
+      ? formatContactTimestamp(conv.latestMessage.createdAt)
+      : "",
+    online: false,
+    role: conv.buyerId === userId ? "seller" : "buyer",
+    status: contactStatus,
+    blocked: false,
+    unreadCount: (conv as any).unreadCount || 0,
+    item: conv.listing || {
+      id: "unknown",
+      title: "Unknown Item",
+      price: 0,
+      image: "/placeholder.svg",
+    },
+    transactionStatus: transactionData,
+    transaction: (conv as any).transaction || null,
+    _sortDate: conv.latestMessage?.createdAt || conv.createdAt,
+  }
+}
+
 const reportReasons = [
   "Scammer / Fraud",
   "Inappropriate behavior",
@@ -242,6 +299,25 @@ export default function MessagesPage() {
   const realtimeChatUnavailableRef = useRef(false)
   const realtimeMessagingUnavailableRef = useRef(false)
   const latestContactMessageIdRef = useRef<string | null>(null)
+  const contactsRef = useRef<Contact[]>([])
+  contactsRef.current = contacts
+
+  // Reloads the conversation list, e.g. when a message arrives for a chat that isn't listed yet.
+  // Kept in a ref so realtime handlers always call the version with the current user.
+  const refreshConversationsRef = useRef<() => Promise<void>>(async () => {})
+  refreshConversationsRef.current = async () => {
+    if (!user?.id) return
+    try {
+      const result = await getConversations()
+      if (!result.success || !result.conversations) return
+      const next = result.conversations
+        .map((conv) => conversationToContact(conv, user.id))
+        .sort((a, b) => new Date(b._sortDate || 0).getTime() - new Date(a._sortDate || 0).getTime())
+      setContacts(next)
+    } catch (error) {
+      console.error("Error refreshing conversations:", error)
+    }
+  }
 
   const sellerIdParam = searchParams.get("sellerId")
   const itemIdParam = searchParams.get("itemId")
@@ -310,63 +386,7 @@ export default function MessagesPage() {
         const result = await getConversations()
         if (result.success && result.conversations) {
           // Load transactions for all conversations to get accurate status
-          const convertedContacts: Contact[] = await Promise.all(
-            result.conversations.map(async (conv) => {
-              let transactionData = {
-                buyerConfirmed: false,
-                sellerConfirmed: false,
-                buyerVouched: false,
-                sellerVouched: false,
-              }
-              
-              // Use conversation-specific transaction data if available
-              let contactStatus: "ongoing" | "completed" | "sold" | "cancelled" = "ongoing"
-              if ((conv as any).transaction) {
-                const tx = (conv as any).transaction
-                transactionData = {
-                  buyerConfirmed: tx.buyerConfirmed || false,
-                  sellerConfirmed: tx.sellerConfirmed || false,
-                  buyerVouched: false, // Would need additional query
-                  sellerVouched: false, // Would need additional query
-                }
-                // Set status based on actual transaction status
-                if (tx.status === "COMPLETED") {
-                  contactStatus = "completed"
-                } else if (tx.status === "CANCELLED") {
-                  contactStatus = "cancelled"
-                } else {
-                  contactStatus = "ongoing"
-                }
-              }
-              
-              return {
-                id: conv.id,
-                otherUserId: conv.otherUser.id,
-                name: conv.otherUser.username,
-                subscriptionTier: (conv.otherUser as any).subscriptionTier,
-                lastMessage: conv.latestMessage?.attachmentUrl 
-                  ? "Sent a photo." 
-                  : (conv.latestMessage?.content || "No messages yet"),
-                timestamp: conv.latestMessage
-                  ? formatContactTimestamp(conv.latestMessage.createdAt)
-                  : "",
-                online: false,
-                role: conv.buyerId === user.id ? "seller" : "buyer",
-                status: contactStatus,
-                blocked: false,
-                unreadCount: (conv as any).unreadCount || 0,
-                item: conv.listing || {
-                  id: "unknown",
-                  title: "Unknown Item",
-                  price: 0,
-                  image: "/placeholder.svg",
-                },
-                transactionStatus: transactionData,
-                transaction: (conv as any).transaction || null,
-                _sortDate: conv.latestMessage?.createdAt || conv.createdAt,
-              }
-            })
-          )
+          const convertedContacts: Contact[] = result.conversations.map((conv) => conversationToContact(conv, user.id))
           // Sort contacts by most recent message first
           convertedContacts.sort((a, b) => {
             const dateA = new Date(a._sortDate || 0).getTime()
@@ -411,7 +431,6 @@ export default function MessagesPage() {
     const bufferedEvents: any[] = []
     const chatChannelName = buildPrivateChatChannel(selectedConversationId)
     const realtimeEnabled = isRealtimeMessagingFeatureEnabled() && !realtimeChatUnavailableRef.current
-    const pusher = realtimeEnabled ? getPusherClient() : null
 
     const sortContactsByRecency = (list: Contact[]) => {
       list.sort((a, b) => {
@@ -580,6 +599,12 @@ export default function MessagesPage() {
         void syncMessages()
       }, 4000)
     }
+    const stopFallbackPolling = () => {
+      if (fallbackPollTimer) {
+        clearInterval(fallbackPollTimer)
+        fallbackPollTimer = null
+      }
+    }
 
     const applyIncomingMessage = (data: any) => {
       if (!isActive || data.senderId === user.id) {
@@ -604,31 +629,38 @@ export default function MessagesPage() {
         })
     }
 
-    let chatChannel: any = null
+    let releaseChatChannel: (() => void) | null = null
+    let stopWatchingHealth: (() => void) | null = null
 
-    if (pusher) {
-      chatChannel = pusher.subscribe(chatChannelName)
-      chatChannel.bind("new-message", (data: any) => {
-        if (!initialFetchCompleted) {
-          bufferedEvents.push(data)
-          return
-        }
+    if (realtimeEnabled) {
+      releaseChatChannel = subscribeToChannel(chatChannelName, {
+        "new-message": (data: any) => {
+          if (!initialFetchCompleted) {
+            bufferedEvents.push(data)
+            return
+          }
 
-        applyIncomingMessage(data)
+          applyIncomingMessage(data)
+        },
+        "pusher:subscription_error": (status: unknown) => {
+          console.error("Chat realtime subscription failed:", status)
+          realtimeChatUnavailableRef.current = true
+          releaseChatChannel?.()
+          releaseChatChannel = null
+          startFallbackPolling()
+        },
       })
 
-      chatChannel.bind("pusher:subscription_error", (status: number) => {
-        console.error("Chat realtime subscription failed:", status)
-        realtimeChatUnavailableRef.current = true
-
-        if (chatChannel && pusher) {
-          chatChannel.unbind("new-message")
-          chatChannel.unbind("pusher:subscription_error")
-          pusher.unsubscribe(chatChannelName)
-          chatChannel = null
-        }
-
-        startFallbackPolling()
+      // Catch up on anything sent while the socket was down or the tab was hidden, and poll
+      // while there is no live connection at all
+      stopWatchingHealth = watchRealtimeHealth({
+        onResync: () => {
+          if (initialFetchCompleted) void syncMessages()
+        },
+        onConnectedChange: (connected) => {
+          if (connected && releaseChatChannel) stopFallbackPolling()
+          else startFallbackPolling()
+        },
       })
     } else {
       startFallbackPolling()
@@ -638,16 +670,9 @@ export default function MessagesPage() {
 
     return () => {
       isActive = false
-
-      if (fallbackPollTimer) {
-        clearInterval(fallbackPollTimer)
-      }
-
-      if (chatChannel && pusher) {
-        chatChannel.unbind("new-message")
-        chatChannel.unbind("pusher:subscription_error")
-        pusher.unsubscribe(chatChannelName)
-      }
+      stopFallbackPolling()
+      stopWatchingHealth?.()
+      releaseChatChannel?.()
     }
   }, [selectedConversationId, user?.id])
 
@@ -660,11 +685,13 @@ export default function MessagesPage() {
       return
     }
 
-    const pusher = getPusherClient()
-    if (!pusher) return
-
     const messagingChannelName = buildMessagingChannel(user.id)
-    const messagingChannel = pusher.subscribe(messagingChannelName)
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null
+    let pollTimer: ReturnType<typeof setInterval> | null = null
+    const scheduleRefresh = () => {
+      if (refreshTimer) clearTimeout(refreshTimer)
+      refreshTimer = setTimeout(() => void refreshConversationsRef.current(), 250)
+    }
 
     const sortContactsByRecency = (list: Contact[]) => {
       list.sort((a, b) => {
@@ -677,6 +704,12 @@ export default function MessagesPage() {
 
     const onConversationUpdated = (data: any) => {
       if (!data?.conversationId) {
+        return
+      }
+
+      // A chat we don't have yet (someone just messaged about a listing): load it into the list
+      if (!contactsRef.current.some((contact) => contact.id === data.conversationId)) {
+        scheduleRefresh()
         return
       }
 
@@ -756,20 +789,39 @@ export default function MessagesPage() {
       })
     }
 
-    messagingChannel.bind("conversation-updated", onConversationUpdated)
-    const onSubscriptionError = (status: number) => {
-      console.error("Messaging realtime subscription failed:", status)
-      realtimeMessagingUnavailableRef.current = true
-      messagingChannel.unbind("conversation-updated", onConversationUpdated)
-      messagingChannel.unbind("pusher:subscription_error", onSubscriptionError)
-      pusher.unsubscribe(messagingChannelName)
+    const startPolling = () => {
+      if (!pollTimer) pollTimer = setInterval(() => void refreshConversationsRef.current(), 15000)
     }
-    messagingChannel.bind("pusher:subscription_error", onSubscriptionError)
+    const stopPolling = () => {
+      if (pollTimer) clearInterval(pollTimer)
+      pollTimer = null
+    }
+
+    // Reference-counted: the header listens on this same channel for the unread badge
+    let releaseMessaging: (() => void) | null = subscribeToChannel(messagingChannelName, {
+      "conversation-updated": onConversationUpdated,
+      "pusher:subscription_error": (status: unknown) => {
+        console.error("Messaging realtime subscription failed:", status)
+        realtimeMessagingUnavailableRef.current = true
+        releaseMessaging?.()
+        releaseMessaging = null
+        startPolling()
+      },
+    })
+
+    const stopWatchingHealth = watchRealtimeHealth({
+      onResync: scheduleRefresh,
+      onConnectedChange: (connected) => {
+        if (connected && releaseMessaging) stopPolling()
+        else startPolling()
+      },
+    })
 
     return () => {
-      messagingChannel.unbind("conversation-updated", onConversationUpdated)
-      messagingChannel.unbind("pusher:subscription_error", onSubscriptionError)
-      pusher.unsubscribe(messagingChannelName)
+      if (refreshTimer) clearTimeout(refreshTimer)
+      stopPolling()
+      stopWatchingHealth()
+      releaseMessaging?.()
     }
   }, [user?.id])
 
@@ -1041,75 +1093,7 @@ export default function MessagesPage() {
 
       // If new conversation was created, refresh contacts list
       if (messageResult?.conversationId && messageResult.conversationId !== selectedConversationId) {
-        console.log("🔄 New conversation created, refreshing contacts...")
-        const conversationsResult = await getConversations()
-        if (conversationsResult.success && conversationsResult.conversations) {
-          // Load transactions for all conversations to get accurate status
-          const convertedContacts: Contact[] = await Promise.all(
-            conversationsResult.conversations.map(async (conv) => {
-              let transactionData = {
-                buyerConfirmed: false,
-                sellerConfirmed: false,
-                buyerVouched: false,
-                sellerVouched: false,
-              }
-              
-              // Use conversation-specific transaction data if available
-              let contactStatus: "ongoing" | "completed" | "sold" | "cancelled" = "ongoing"
-              if ((conv as any).transaction) {
-                const tx = (conv as any).transaction
-                transactionData = {
-                  buyerConfirmed: tx.buyerConfirmed || false,
-                  sellerConfirmed: tx.sellerConfirmed || false,
-                  buyerVouched: false, // Would need additional query
-                  sellerVouched: false, // Would need additional query
-                }
-                // Set status based on actual transaction status
-                if (tx.status === "COMPLETED") {
-                  contactStatus = "completed"
-                } else if (tx.status === "CANCELLED") {
-                  contactStatus = "cancelled"
-                } else {
-                  contactStatus = "ongoing"
-                }
-              }
-              
-              return {
-                id: conv.id,
-                otherUserId: conv.otherUser.id,
-                name: conv.otherUser.username,
-                subscriptionTier: (conv.otherUser as any).subscriptionTier,
-                lastMessage: conv.latestMessage?.attachmentUrl 
-                  ? "Sent a photo." 
-                  : (conv.latestMessage?.content || "No messages yet"),
-                timestamp: conv.latestMessage
-                  ? formatContactTimestamp(conv.latestMessage.createdAt)
-                  : "",
-                online: false,
-                role: conv.buyerId === user?.id ? "seller" : "buyer",
-                status: contactStatus,
-                blocked: false,
-                unreadCount: (conv as any).unreadCount || 0,
-                item: conv.listing || {
-                  id: "unknown",
-                  title: "Unknown Item",
-                  price: 0,
-                  image: "/placeholder.svg",
-                },
-                transactionStatus: transactionData,
-                transaction: (conv as any).transaction || null,
-                _sortDate: conv.latestMessage?.createdAt || conv.createdAt,
-              }
-            })
-          )
-          // Sort contacts by most recent message first
-          convertedContacts.sort((a, b) => {
-            const dateA = new Date(a._sortDate || 0).getTime()
-            const dateB = new Date(b._sortDate || 0).getTime()
-            return dateB - dateA
-          })
-          setContacts(convertedContacts)
-        }
+        await refreshConversationsRef.current()
       }
 
       setMessageText("")
