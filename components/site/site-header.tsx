@@ -32,7 +32,7 @@ import { SiteSearch } from "@/components/site/site-search"
 import { getNotifications, markAsRead, markAllAsRead } from "@/app/actions/notifications"
 import type { NotificationData } from "@/app/actions/notifications"
 import { getHeaderCounts } from "@/app/actions/header"
-import { getPusherClient } from "@/lib/pusher-client"
+import { subscribeToChannel, watchRealtimeHealth } from "@/lib/pusher-client"
 import { isRealtimeMessagingFeatureEnabled } from "@/lib/feature-flags"
 import { buildMessagingChannel, buildPrivateNotificationsChannel } from "@/lib/pusher-channels"
 import { cn } from "@/lib/utils"
@@ -82,31 +82,27 @@ export function SiteHeader() {
     return () => window.removeEventListener("keydown", onKey)
   }, [])
 
-  // Initial unread/message snapshot on authenticated load
+  // Unread snapshot on authenticated load, and again whenever realtime events may have been missed
   useEffect(() => {
     if (status !== "authenticated" || !session?.user?.id) return
 
     // One request for both badges instead of two sequential server actions
-    getHeaderCounts()
-      .then((counts) => {
-        if (!counts) return
-        setUnreadCount(counts.notifications)
-        setUnreadMessageCount(counts.messages)
-      })
-      .catch((err) => console.error("Failed to fetch header counts:", err))
+    const refreshCounts = () =>
+      getHeaderCounts()
+        .then((counts) => {
+          if (!counts) return
+          setUnreadCount(counts.notifications)
+          setUnreadMessageCount(counts.messages)
+        })
+        .catch((err) => console.error("Failed to fetch header counts:", err))
+
+    refreshCounts()
+    return watchRealtimeHealth({ onResync: refreshCounts })
   }, [status, session?.user?.id])
 
   useEffect(() => {
     if (status !== "authenticated" || !session?.user?.id) return
     if (!isRealtimeMessagingFeatureEnabled()) return
-
-    const pusher = getPusherClient()
-    if (!pusher) return
-
-    const notificationsChannelName = buildPrivateNotificationsChannel(session.user.id)
-    const messagingChannelName = buildMessagingChannel(session.user.id)
-    const notificationsChannel = pusher.subscribe(notificationsChannelName)
-    const messagingChannel = pusher.subscribe(messagingChannelName)
 
     const onNotificationUpdated = (data: any) => {
       if (typeof data?.unreadCount === "number") {
@@ -139,16 +135,18 @@ export function SiteHeader() {
       }
     }
 
-    notificationsChannel.bind("notification-updated", onNotificationUpdated)
-    messagingChannel.bind("unread-message-count-updated", onUnreadMessageCountUpdated)
-    messagingChannel.bind("conversation-updated", onConversationUpdated)
+    // The messages page shares the messaging channel, so subscriptions are reference-counted
+    const releaseNotifications = subscribeToChannel(buildPrivateNotificationsChannel(session.user.id), {
+      "notification-updated": onNotificationUpdated,
+    })
+    const releaseMessaging = subscribeToChannel(buildMessagingChannel(session.user.id), {
+      "unread-message-count-updated": onUnreadMessageCountUpdated,
+      "conversation-updated": onConversationUpdated,
+    })
 
     return () => {
-      notificationsChannel.unbind("notification-updated", onNotificationUpdated)
-      messagingChannel.unbind("unread-message-count-updated", onUnreadMessageCountUpdated)
-      messagingChannel.unbind("conversation-updated", onConversationUpdated)
-      pusher.unsubscribe(notificationsChannelName)
-      pusher.unsubscribe(messagingChannelName)
+      releaseNotifications()
+      releaseMessaging()
     }
   }, [status, session?.user?.id])
 

@@ -161,3 +161,43 @@ export const getGameListings = unstable_cache(
   ["seo-game-listings-v1"],
   { revalidate: 60, tags: ["games"] },
 )
+
+export interface SellGameOption {
+  name: string
+  displayName: string
+  /** Sellable item types; category "Accounts" marks the account option */
+  itemTypes: { name: string; displayName: string; category: string }[]
+  currencies: { name: string; displayName: string }[]
+}
+
+/**
+ * Games with their item types and currencies for the sell form, loaded in one query on the
+ * server. Errors are not caught, so a failed query is never cached as an empty list.
+ */
+export const getSellOptions = unstable_cache(
+  async (): Promise<SellGameOption[]> => {
+    const games = await prisma.game.findMany({
+      where: { isActive: true },
+      orderBy: { order: "asc" },
+      select: {
+        name: true,
+        displayName: true,
+        items: {
+          where: { isActive: true },
+          orderBy: [{ order: "asc" }, { displayName: "asc" }],
+          select: { name: true, displayName: true, category: true },
+        },
+        currencies: {
+          where: { isActive: true },
+          orderBy: { order: "asc" },
+          select: { name: true, displayName: true },
+        },
+      },
+    })
+    return games
+      .map((g) => ({ name: g.name, displayName: g.displayName, itemTypes: g.items, currencies: g.currencies }))
+      .filter((g) => g.itemTypes.length > 0 || g.currencies.length > 0)
+  },
+  ["sell-options-v1"],
+  { revalidate: 300, tags: ["games"] },
+)
