@@ -3,7 +3,26 @@ import { Resend } from 'resend'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
+export type EmailKind =
+  | "verification"
+  | "password-reset"
+  | "message"
+  | "transaction"
+  | "weekly-digest"
+  | "inactivity"
+  | "giveaway"
+  | "campaign"
+
+// Only account emails (codes and reset links) are sent. The rest are switched off to stay
+// within the Resend plan's sending limit; add a kind here to turn it back on.
+const ENABLED_EMAIL_KINDS: ReadonlySet<EmailKind> = new Set<EmailKind>(["verification", "password-reset"])
+
+export function isEmailEnabled(kind: EmailKind): boolean {
+  return ENABLED_EMAIL_KINDS.has(kind)
+}
+
 interface EmailOptions {
+  kind: EmailKind
   to: string
   subject: string
   html: string
@@ -11,6 +30,10 @@ interface EmailOptions {
 }
 
 export async function sendEmail(options: EmailOptions): Promise<boolean> {
+  if (!isEmailEnabled(options.kind)) {
+    return false
+  }
+
   try {
     const { data, error } = await resend.emails.send({
       from: process.env.EMAIL_FROM || 'RbMarket <onboarding@resend.dev>',

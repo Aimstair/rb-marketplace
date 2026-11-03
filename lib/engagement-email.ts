@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma"
-import { sendEmail } from "@/lib/email"
+import { isEmailEnabled, sendEmail } from "@/lib/email"
 import {
   clearCampaignDispatchGuard,
   markCampaignDispatchDelivered,
@@ -128,12 +128,23 @@ export async function sendCampaignEmailToRecipient(input: {
   html: string
   maxAttempts?: number
 }): Promise<CampaignDeliveryResult> {
+  if (!isEmailEnabled("campaign")) {
+    return {
+      sent: false,
+      deduped: false,
+      skipped: true,
+      attempts: 0,
+      retries: 0,
+    }
+  }
+
   return sendCampaignEmailWithGuards({
     campaignKey: input.campaignKey,
     recipientUserId: input.recipientUserId,
     maxAttempts: input.maxAttempts,
     send: () =>
       sendEmail({
+        kind: "campaign",
         to: input.to,
         subject: input.subject,
         html: input.html,
@@ -221,6 +232,8 @@ export async function sendMessageInteractionEmail(input: {
   messagePreview: string
   conversationId: string
 }): Promise<boolean> {
+  if (!isEmailEnabled("message")) return false
+
   const recipient = await resolveEmailRecipient(input.recipientUserId, "message")
   if (!recipient) {
     logInfo("email.message.skipped", { recipientUserId: input.recipientUserId })
@@ -232,6 +245,7 @@ export async function sendMessageInteractionEmail(input: {
   const conversationUrl = toAbsolutePath(`/messages?id=${input.conversationId}`)
 
   const sent = await sendEmail({
+    kind: "message",
     to: recipient.email,
     subject: `New message from ${input.senderUsername} on RB Marketplace`,
     html: `
@@ -261,6 +275,8 @@ export async function sendTransactionCompletedEmail(input: {
   listingTitle: string
   role: "buyer" | "seller"
 }): Promise<boolean> {
+  if (!isEmailEnabled("transaction")) return false
+
   const recipient = await resolveEmailRecipient(input.recipientUserId, "trade")
   if (!recipient) {
     logInfo("email.transaction.skipped", { recipientUserId: input.recipientUserId })
@@ -272,6 +288,7 @@ export async function sendTransactionCompletedEmail(input: {
   const transactionsUrl = toAbsolutePath("/my-transactions")
 
   const sent = await sendEmail({
+    kind: "transaction",
     to: recipient.email,
     subject: `Transaction completed: ${input.listingTitle}`,
     html: `
@@ -296,6 +313,16 @@ export async function sendTransactionCompletedEmail(input: {
 export async function sendWeeklyDigestWithHighlightsEmail(
   input: WeeklyDigestContext
 ): Promise<CampaignDeliveryResult> {
+  if (!isEmailEnabled("weekly-digest")) {
+    return {
+      sent: false,
+      deduped: false,
+      skipped: true,
+      attempts: 0,
+      retries: 0,
+    }
+  }
+
   const recipient = await resolveEmailRecipient(input.recipientUserId, "marketing")
   if (!recipient) {
     logInfo("email.weekly_digest.skipped", { recipientUserId: input.recipientUserId })
@@ -341,6 +368,7 @@ export async function sendWeeklyDigestWithHighlightsEmail(
     maxAttempts: 3,
     send: () =>
       sendEmail({
+        kind: "weekly-digest",
         to: recipient.email,
         subject: `Your RB Marketplace Weekly Report (${input.unreadCount} updates)`,
         html: `
@@ -407,6 +435,10 @@ export async function sendGiveawayAnnouncementCampaign(
   emailsDeduped: number
   retryAttempts: number
 }> {
+  if (!isEmailEnabled("giveaway")) {
+    return { usersEvaluated: 0, emailsQueued: 0, emailsSent: 0, emailsFailed: 0, emailsDeduped: 0, retryAttempts: 0 }
+  }
+
   const batchLimit = Math.min(Math.max(input.batchLimit ?? 100, 1), 500)
   const users = await prisma.user.findMany({
     where: {
@@ -457,6 +489,7 @@ export async function sendGiveawayAnnouncementCampaign(
       maxAttempts: 3,
       send: () =>
         sendEmail({
+          kind: "giveaway",
           to: user.email,
           subject: `New giveaway live: ${input.title}`,
           html: `
@@ -513,6 +546,16 @@ export async function sendInactivityComebackEmail(input: {
   recipientUserId: string
   inactivityDays: number
 }): Promise<CampaignDeliveryResult> {
+  if (!isEmailEnabled("inactivity")) {
+    return {
+      sent: false,
+      deduped: false,
+      skipped: true,
+      attempts: 0,
+      retries: 0,
+    }
+  }
+
   const recipient = await resolveEmailRecipient(input.recipientUserId, "marketing")
   if (!recipient) {
     return {
@@ -533,6 +576,7 @@ export async function sendInactivityComebackEmail(input: {
     maxAttempts: 3,
     send: () =>
       sendEmail({
+        kind: "inactivity",
         to: recipient.email,
         subject: "You have new opportunities waiting on RB Marketplace",
         html: `
