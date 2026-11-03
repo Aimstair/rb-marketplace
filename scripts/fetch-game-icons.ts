@@ -1,7 +1,7 @@
 /**
  * Downloads each game's official icon from Roblox's thumbnail API into public/games/<slug>.webp
  * and points Game.image at it. Universe ids were matched by hand against Roblox search
- * (October 2026). Games without a Roblox listing get a generated tile instead.
+ * (October and November 2026). Games without a Roblox listing get a generated tile instead.
  *
  *   pnpm tsx scripts/fetch-game-icons.ts           # dry run
  *   pnpm tsx scripts/fetch-game-icons.ts --apply   # download icons and update the database
@@ -48,6 +48,33 @@ const UNIVERSE_IDS: Record<string, number> = {
   Forsaken: 6331902150,
   "Dress to Impress": 5203828273,
   "Brookhaven RP": 1686885941,
+  "Anime Adventures": 3183403065,
+  "Tower Defense Simulator": 1176784616,
+  "Garden Tower Defense": 7703614594,
+  "All Star Tower Defense": 1720936166,
+  "Five Nights TD 2": 7934320560,
+  "Tower Defense X": 3541611379,
+  "Tower Heroes": 1531130248,
+  "Tap Simulator Reborn": 10629695169,
+  "Rebirth Champions Ultimate": 7178032757,
+  "Ride A Pet": 10035204815,
+  "Arm Wrestle Simulator": 4582358979,
+  "Creatures of Sonaria": 1831550657,
+  "Royale High": 321778215,
+  "The Strongest Battlegrounds": 3808081382,
+  "Blue Lock Rivals": 6325068386,
+  "Volleyball Legends": 6931042565,
+  BedWars: 2619619496,
+  Doors: 2440500124,
+  "Sol's RNG": 5361032378,
+  "Arise Crossover": 7074860883,
+  "Ink Game": 7008097940,
+  "Welcome to Bloxburg": 88070565,
+  "Build A Boat For Treasure": 210851291,
+  "King Legacy": 1451439645,
+  Arsenal: 111958650,
+  "Basketball Zero": 7028566528,
+  "Shindo Life": 1511883870,
 }
 
 // Games whose icon is currently a temporary update countdown: use this gallery thumbnail
