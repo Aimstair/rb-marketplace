@@ -339,6 +339,9 @@ export default function MessagesPage() {
   }
 
   const sellerIdParam = searchParams.get("sellerId")
+  // The "Message seller" link is acted on once; re-running it later (e.g. when the session
+  // refreshes on tab focus) used to open a second chat after the deal had completed
+  const handledSellerLinkRef = useRef<string | null>(null)
   const itemIdParam = searchParams.get("itemId")
   const typeParam = searchParams.get("type")
   const amountParam = searchParams.get("amount")
@@ -368,7 +371,11 @@ export default function MessagesPage() {
         // Auto-open conversation BEFORE loading list if sellerId is in searchParams
         const listingType = typeParam === "currency" ? "CURRENCY" : "ITEM"
 
-        if (sellerIdParam) {
+        const sellerLinkKey = sellerIdParam ? [sellerIdParam, itemIdParam, typeParam, amountParam, costParam].join("|") : null
+        const isNewSellerLink = Boolean(sellerLinkKey && handledSellerLinkRef.current !== sellerLinkKey)
+        if (sellerLinkKey) handledSellerLinkRef.current = sellerLinkKey
+
+        if (sellerIdParam && isNewSellerLink) {
           try {
             // Try to read transaction details from URL: `amount` and `cost`
             let txDetails: { price: number; amount: number } | undefined = undefined
@@ -422,6 +429,11 @@ export default function MessagesPage() {
 
             if (targetContact) {
               handleSelectContact(targetContact)
+            }
+
+            // Drop the link parameters so a reload doesn't start the flow again
+            if (isNewSellerLink) {
+              router.replace("/messages", { scroll: false })
             }
           }
         }
@@ -816,9 +828,25 @@ export default function MessagesPage() {
       pollTimer = null
     }
 
+    // The other side confirmed, completed or cancelled an order: update the open panel and the list
+    const onTransactionUpdated = (data: any) => {
+      if (!data?.transactionId) return
+      setTransaction((prev) =>
+        prev && prev.id === data.transactionId
+          ? { ...prev, status: data.status, buyerConfirmed: data.buyerConfirmed, sellerConfirmed: data.sellerConfirmed }
+          : prev
+      )
+      const contactStatus = data.status === "COMPLETED" ? "completed" : data.status === "CANCELLED" ? "cancelled" : "ongoing"
+      setSelectedContact((prev) =>
+        prev && data.conversationId && prev.id === data.conversationId ? { ...prev, status: contactStatus } : prev
+      )
+      scheduleRefresh()
+    }
+
     // Reference-counted: the header listens on this same channel for the unread badge
     let releaseMessaging: (() => void) | null = subscribeToChannel(messagingChannelName, {
       "conversation-updated": onConversationUpdated,
+      "transaction-updated": onTransactionUpdated,
       "pusher:subscription_error": (status: unknown) => {
         console.error("Messaging realtime subscription failed:", status)
         realtimeMessagingUnavailableRef.current = true
