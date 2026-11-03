@@ -10,6 +10,8 @@ vi.mock("@/lib/prisma", () => ({
 
 vi.mock("@/lib/email", () => ({
   sendEmail: vi.fn(),
+  // Campaign emails are switched off in production; these tests cover delivery when enabled
+  isEmailEnabled: vi.fn(() => true),
 }))
 
 vi.mock("@/lib/observability", () => ({
@@ -18,11 +20,12 @@ vi.mock("@/lib/observability", () => ({
   logError: vi.fn(),
 }))
 
-import { sendEmail } from "@/lib/email"
+import { isEmailEnabled, sendEmail } from "@/lib/email"
 import { clearCampaignDispatchGuard } from "@/lib/campaign-idempotency"
 import { sendCampaignEmailToRecipient } from "@/lib/engagement-email"
 
 const mockedSendEmail = vi.mocked(sendEmail)
+const mockedIsEmailEnabled = vi.mocked(isEmailEnabled)
 
 describe("campaign delivery guards", () => {
   beforeEach(() => {
@@ -94,5 +97,21 @@ describe("campaign delivery guards", () => {
     expect(mockedSendEmail).toHaveBeenCalledTimes(1)
 
     await clearCampaignDispatchGuard(`${campaignKey}:${recipientUserId}`)
+  })
+
+  it("skips without sending or retrying when campaign emails are switched off", async () => {
+    mockedIsEmailEnabled.mockReturnValueOnce(false)
+
+    const result = await sendCampaignEmailToRecipient({
+      campaignKey: `disabled-${Date.now()}`,
+      recipientUserId: "user-disabled-1",
+      to: "disabled@example.com",
+      subject: "Disabled",
+      html: "<p>Disabled</p>",
+      maxAttempts: 3,
+    })
+
+    expect(result).toMatchObject({ sent: false, skipped: true, attempts: 0 })
+    expect(mockedSendEmail).not.toHaveBeenCalled()
   })
 })

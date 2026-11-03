@@ -761,14 +761,9 @@ export default function SettingsPage() {
               {/* Notifications */}
               {activeTab === "notifications" && (
                 <>
+                  {/* New messages and email news are no longer sent (the header shows unread chats and
+                      only account emails go out), so their toggles are hidden; saved choices are kept */}
                   <SettingsGroup title="Trading">
-                    <ToggleRow
-                      id="notify-messages"
-                      title="New messages"
-                      description="When a buyer or seller messages you."
-                      checked={settings.newMessages}
-                      onChange={(checked) => setSettings({ ...settings, newMessages: checked })}
-                    />
                     <ToggleRow
                       id="notify-trades"
                       title="Trade updates"
@@ -792,20 +787,13 @@ export default function SettingsPage() {
                     />
                   </SettingsGroup>
 
-                  <SettingsGroup title="Deals and news">
+                  <SettingsGroup title="Deals">
                     <ToggleRow
                       id="notify-prices"
                       title="Price alerts"
                       description="When items you're watching drop in price."
                       checked={settings.priceAlerts}
                       onChange={(checked) => setSettings({ ...settings, priceAlerts: checked })}
-                    />
-                    <ToggleRow
-                      id="notify-marketing"
-                      title="RbMarket news"
-                      description="New features, giveaways and the weekly market digest by email."
-                      checked={settings.marketingEmails}
-                      onChange={(checked) => setSettings({ ...settings, marketingEmails: checked })}
                     />
                   </SettingsGroup>
 

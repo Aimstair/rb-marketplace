@@ -146,6 +146,7 @@ export async function signUp(input: SignUpInput): Promise<SignUpResult> {
 
     // Send verification email
     await sendEmail({
+      kind: "verification",
       to: validatedData.email,
       subject: "Verify Your Email - RbMarket",
       html: generateVerificationEmail(verificationCode, validatedData.username),
@@ -371,6 +372,7 @@ export async function resendVerificationCode(email: string): Promise<{ success: 
 
     // Send verification email
     await sendEmail({
+      kind: "verification",
       to: normalizedEmail,
       subject: "Verify Your Email - RbMarket",
       html: generateVerificationEmail(verificationCode, user.username),
@@ -446,6 +448,7 @@ export async function sendPasswordResetLink(email: string): Promise<{ success: b
 
     // Send password reset email
     await sendEmail({
+      kind: "password-reset",
       to: normalizedEmail,
       subject: "Reset Your Password - RbMarket",
       html: generatePasswordResetEmail(resetLink, user.username),
