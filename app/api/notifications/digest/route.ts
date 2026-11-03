@@ -177,6 +177,7 @@ export async function POST(request: NextRequest) {
       by: ["userId"],
       where: {
         isRead: false,
+        type: { not: "MESSAGE" },
         createdAt: { gte: since },
       },
       _count: {
@@ -257,6 +258,7 @@ export async function POST(request: NextRequest) {
           where: {
             userId: { in: userIds },
             isRead: false,
+            type: { not: "MESSAGE" },
             createdAt: { gte: since },
           },
           select: {

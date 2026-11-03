@@ -3,7 +3,6 @@
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import { getSessionUser } from "@/lib/session-user"
-import { createNotification } from "./notifications"
 import { unstable_noStore } from "next/cache"
 import { headers } from "next/headers"
 import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit"
@@ -425,6 +424,16 @@ export async function getMessages(conversationId: string): Promise<GetMessagesRe
   }
 }
 
+/** Whether a chat attachment URL points at a file uploaded through UploadThing. */
+function isUploadedImageUrl(url: string): boolean {
+  try {
+    const { protocol, hostname } = new URL(url)
+    return protocol === "https:" && (hostname === "utfs.io" || hostname.endsWith(".ufs.sh"))
+  } catch {
+    return false
+  }
+}
+
 /**
  * Send a message to a conversation
  * If conversationId is not provided, attempts to find or create one based on otherUserId and optional listingId
@@ -496,14 +505,27 @@ export async function sendMessage(
       }
     }
 
-    // Check for prohibited content after low-cost auth/rate-limit gates.
-    const { moderateContent } = await import("@/lib/moderation")
-    const moderationCheck = await moderateContent(content, "message")
-
-    if (!moderationCheck.isAllowed) {
+    // Images must come from our uploader; older clients sent whole base64 images as the message
+    if (options.attachmentUrl && !isUploadedImageUrl(options.attachmentUrl)) {
       return {
         success: false,
-        error: `Your message contains prohibited content: ${moderationCheck.reason}`,
+        error: "Images must be uploaded through the chat. Please refresh the page and try again.",
+      }
+    }
+
+    // Check for prohibited content after low-cost auth/rate-limit gates. An image-only message's
+    // text is just its URL, which the text filters can't judge (random characters in it can look
+    // like a phone number), so only typed text is checked.
+    const isImageOnly = Boolean(options.attachmentUrl) && content === options.attachmentUrl
+    if (!isImageOnly) {
+      const { moderateContent } = await import("@/lib/moderation")
+      const moderationCheck = await moderateContent(content, "message")
+
+      if (!moderationCheck.isAllowed) {
+        return {
+          success: false,
+          error: `Your message contains prohibited content: ${moderationCheck.reason}`,
+        }
       }
     }
 
@@ -843,18 +865,8 @@ export async function sendMessage(
       data: { updatedAt: new Date() },
     })
 
-    // Create notification for the recipient
+    // No in-app notification: the header's messages icon already shows unread chats
     const recipientId = conversation.buyerId === currentUser.id ? conversation.sellerId : conversation.buyerId
-    await createNotification(
-      recipientId,
-      "MESSAGE",
-      `New message from ${currentUser.username}`,
-      content.substring(0, 100), // Preview first 100 chars
-      `/messages?id=${conversationId}`
-    ).catch((error) => {
-      console.error("Failed to create message notification:", error)
-      // Don't fail the message send if notification fails
-    })
 
     await sendMessageInteractionEmail({
       recipientUserId: recipientId,
