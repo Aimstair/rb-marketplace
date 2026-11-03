@@ -8,6 +8,37 @@ import { sendTransactionCompletedEmail } from "@/lib/engagement-email"
 import { z } from "zod"
 import { headers } from "next/headers"
 import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit"
+import { isRealtimeMessagingFeatureEnabled } from "@/lib/feature-flags"
+import { buildMessagingChannel } from "@/lib/pusher-channels"
+
+/**
+ * Tells the buyer's and seller's open pages that a transaction changed (a confirmation,
+ * completion or cancellation), so the other side sees it without refreshing.
+ */
+async function emitTransactionUpdate(transactionId: string): Promise<void> {
+  if (!isRealtimeMessagingFeatureEnabled()) return
+  try {
+    const tx = await prisma.transaction.findUnique({
+      where: { id: transactionId },
+      select: { id: true, buyerId: true, sellerId: true, conversationId: true, status: true, buyerConfirmed: true, sellerConfirmed: true },
+    })
+    if (!tx) return
+
+    const payload = {
+      transactionId: tx.id,
+      conversationId: tx.conversationId,
+      status: tx.status,
+      buyerConfirmed: tx.buyerConfirmed,
+      sellerConfirmed: tx.sellerConfirmed,
+    }
+    const { pusherServer } = await import("@/lib/pusher")
+    await Promise.all(
+      [tx.buyerId, tx.sellerId].map((userId) => pusherServer.trigger(buildMessagingChannel(userId), "transaction-updated", payload))
+    )
+  } catch (error) {
+    console.error("Failed to broadcast transaction update:", error)
+  }
+}
 
 const ONE_MINUTE_MS = 60 * 1000
 const ONE_HOUR_MS = 60 * ONE_MINUTE_MS
@@ -1162,6 +1193,8 @@ export async function toggleTransactionConfirmation(
         }
       }
 
+      await emitTransactionUpdate(transactionId)
+
       // Check if current user has vouched
       const userVouch = await prisma.vouch.findFirst({
         where: {
@@ -1237,6 +1270,8 @@ export async function toggleTransactionConfirmation(
           console.error(`Failed to fetch listing ${updatedTransaction.listingId}:`, error)
         }
       }
+
+      await emitTransactionUpdate(transactionId)
 
       // Check if current user has vouched
       const userVouch = await prisma.vouch.findFirst({
@@ -1487,6 +1522,7 @@ export async function cancelTransaction(transactionId: string): Promise<{
       where: { id: transactionId },
       data: { status: "CANCELLED" },
     })
+    await emitTransactionUpdate(transactionId)
 
     return {
       success: true,

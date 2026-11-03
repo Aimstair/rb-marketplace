@@ -1023,6 +1023,7 @@ export async function getOrCreateConversation(
       include: {
         transactions: true,
       },
+      orderBy: { createdAt: "desc" },
     })
 
     let conversation = null
@@ -1052,8 +1053,12 @@ export async function getOrCreateConversation(
           }
         }
       } else {
-        // All previous transactions are COMPLETED/CANCELLED - create new conversation
-        conversation = null
+        // Every earlier deal is finished. A new chat (and order) is only for buying again from a
+        // listing that is still for sale; otherwise reopen the latest chat rather than starting
+        // an empty one with a fresh pending order.
+        const listing = listingId ? await getListingDetails(listingId, listingType) : null
+        const stillForSale = Boolean(listing && listing.status === "available" && listing.stock > 0)
+        conversation = stillForSale ? null : existingConversations[0]
       }
     }
 

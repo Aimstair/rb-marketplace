@@ -11,6 +11,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ListPageSkeleton } from "@/components/site/skeletons"
 import { SellLink } from "@/components/listing/sell-link"
 import { getTransactions } from "@/app/actions/transactions"
+import { subscribeToChannel } from "@/lib/pusher-client"
+import { buildMessagingChannel } from "@/lib/pusher-channels"
 import type { TransactionData } from "@/app/actions/transactions"
 import { TransactionCard } from "@/components/transaction-card"
 import { cn } from "@/lib/utils"
@@ -57,6 +59,14 @@ export default function MyTransactionsPage() {
     }
     loadTransactions()
   }, [user, isAuthLoading, router, loadTransactions])
+
+  // Live updates when the other side confirms, completes or cancels an order
+  useEffect(() => {
+    if (!user?.id) return
+    return subscribeToChannel(buildMessagingChannel(user.id), {
+      "transaction-updated": () => void loadTransactions(),
+    })
+  }, [user?.id, loadTransactions])
 
   // Back to the first page whenever the view changes
   useEffect(() => setVisible(PAGE_SIZE), [side, statusFilter, searchQuery])
