@@ -7,7 +7,8 @@ import { signUpSchema, type SignUpInput, type SignUpResult } from "@/lib/schemas
 import { signIn } from "@/auth"
 import { sendEmail, generateVerificationEmail, generatePasswordResetEmail } from "@/lib/email"
 import crypto from "crypto"
-import { AuthError } from "next-auth"
+import { AuthError, CredentialsSignin } from "next-auth"
+import { findUserByEmail, normalizeEmail } from "@/lib/user-email"
 import { headers } from "next/headers"
 import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit"
 
@@ -74,7 +75,7 @@ export async function signUp(input: SignUpInput): Promise<SignUpResult> {
       }
     }
 
-    const validatedData = signUpSchema.parse(input)
+    const validatedData = { ...signUpSchema.parse(input), email: normalizeEmail(input.email) }
 
     const signUpRateLimit = await rateLimitAuthAction({
       namespace: "auth-signup",
@@ -95,9 +96,7 @@ export async function signUp(input: SignUpInput): Promise<SignUpResult> {
     }
 
     // Check if email already exists
-    const existingEmail = await prisma.user.findUnique({
-      where: { email: validatedData.email },
-    })
+    const existingEmail = await findUserByEmail(validatedData.email)
 
     if (existingEmail) {
       return {
@@ -177,6 +176,15 @@ export async function signUp(input: SignUpInput): Promise<SignUpResult> {
 export interface LoginResult {
   success: boolean
   error?: string
+  /** "unverified" means the password was right but the email still needs verifying */
+  code?: "invalid_credentials" | "locked" | "banned" | "unverified" | "rate_limited"
+}
+
+const LOGIN_ERRORS: Record<string, string> = {
+  invalid_credentials: "Incorrect email or password.",
+  locked: "Too many failed attempts. Your account is locked for 15 minutes; try again later or reset your password.",
+  banned: "This account has been banned. Contact support if you think this is a mistake.",
+  unverified: "Please verify your email before logging in.",
 }
 
 export async function signInWithCredentials(
@@ -202,6 +210,7 @@ export async function signInWithCredentials(
       return {
         success: false,
         error: signInRateLimit.error,
+        code: "rate_limited",
       }
     }
 
@@ -219,13 +228,12 @@ export async function signInWithCredentials(
     
   } catch (error) {
     // 2. Handle specific Auth.js errors
+    if (error instanceof CredentialsSignin) {
+      const code = (error.code in LOGIN_ERRORS ? error.code : "invalid_credentials") as LoginResult["code"]
+      return { success: false, error: LOGIN_ERRORS[code!], code }
+    }
     if (error instanceof AuthError) {
-      switch (error.type) {
-        case "CredentialsSignin":
-          return { success: false, error: "Invalid email or password." }
-        default:
-          return { success: false, error: "Something went wrong. Please try again." }
-      }
+      return { success: false, error: "Something went wrong. Please try again." }
     }
 
     // 3. CRITICAL: Re-throw the error if it is NOT an AuthError.
@@ -261,7 +269,7 @@ export async function verifyEmail(email: string, code: string): Promise<{ succes
     // Find verification code
     const verification = await prisma.emailVerification.findFirst({
       where: {
-        email: normalizedEmail,
+        email: { equals: normalizedEmail, mode: "insensitive" },
         code,
         expiresAt: {
           gt: new Date(),
@@ -277,8 +285,12 @@ export async function verifyEmail(email: string, code: string): Promise<{ succes
     }
 
     // Update user's emailVerified field
+    const verifiedUser = await findUserByEmail(email)
+    if (!verifiedUser) {
+      return { success: false, error: "Invalid or expired verification code" }
+    }
     await prisma.user.update({
-      where: { email: normalizedEmail },
+      where: { id: verifiedUser.id },
       data: { emailVerified: new Date() },
     })
 
@@ -324,9 +336,7 @@ export async function resendVerificationCode(email: string): Promise<{ success: 
     }
 
     // Check if user exists
-    const user = await prisma.user.findUnique({
-      where: { email: normalizedEmail },
-    })
+    const user = await findUserByEmail(email)
 
     if (!user) {
       return {
@@ -404,9 +414,7 @@ export async function sendPasswordResetLink(email: string): Promise<{ success: b
     }
 
     // Check if user exists
-    const user = await prisma.user.findUnique({
-      where: { email: normalizedEmail },
-    })
+    const user = await findUserByEmail(email)
 
     // Return error if user doesn't exist
     if (!user) {
@@ -512,8 +520,12 @@ export async function resetPassword(token: string, newPassword: string): Promise
     const hashedPassword = await bcrypt.hash(newPassword, 12)
 
     // Update user's password and verify email (since they proved ownership via email link)
+    const resetUser = await findUserByEmail(resetToken.email)
+    if (!resetUser) {
+      return { success: false, error: "Invalid or expired reset token" }
+    }
     await prisma.user.update({
-      where: { email: resetToken.email },
+      where: { id: resetUser.id },
       data: { 
         password: hashedPassword,
         emailVerified: new Date(), // Mark email as verified
@@ -537,30 +549,3 @@ export async function resetPassword(token: string, newPassword: string): Promise
   }
 }
 
-// Check if user email is verified
-export async function checkEmailVerification(email: string): Promise<{ verified: boolean }> {
-  try {
-    const user = await prisma.user.findUnique({
-      where: { email },
-      select: { emailVerified: true },
-    })
-
-    return {
-      verified: !!user?.emailVerified,
-    }
-  } catch (error) {
-    console.error("Error checking email verification:", error)
-    return {
-      verified: false,
-    }
-  }
-  
-}
-
-export async function doesUserExist(email: string): Promise<boolean> {
-  const user = await prisma.user.findUnique({
-    where: { email },
-    select: { id: true },
-  })
-  return !!user
-}

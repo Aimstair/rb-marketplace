@@ -87,6 +87,8 @@ export interface TransactionData {
   buyer: { id: string; username: string }
   seller: { id: string; username: string }
   listing: { id: string; title: string; price: number; image: string }
+  /** "ITEM" or "CURRENCY" (older rows may be "OLD"), for linking to the listing page */
+  listingType?: string
   price: number
   amount?: number
   status: "PENDING" | "COMPLETED" | "CANCELLED"
@@ -366,6 +368,7 @@ export async function getTransactions(
         buyer: tx.buyer,
         seller: tx.seller,
         listing,
+        listingType: tx.listingType,
         price: tx.price,
         amount: tx.amount,
         status: tx.status,

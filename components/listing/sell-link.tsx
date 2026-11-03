@@ -25,13 +25,10 @@ function loadSlot() {
 export function showListingLimitToast(slot: ListingSlot, onUpgrade: () => void) {
   toast({
     variant: "destructive",
-    title: `You've used all ${slot.max} active listings`,
-    description: slot.upgrade
-      ? `Your ${slot.plan} plan allows ${slot.max}. Hide or delete a listing, or upgrade to ${slot.upgrade.plan} for up to ${slot.upgrade.max}.`
-      : `Your ${slot.plan} plan allows ${slot.max}. Hide or delete a listing to add another.`,
+    title: `Listing limit reached (${slot.active}/${slot.max})`,
     action: slot.upgrade ? (
       <ToastAction altText={`Upgrade to ${slot.upgrade.plan}`} onClick={onUpgrade}>
-        Upgrade to {slot.upgrade.plan}
+        Upgrade
       </ToastAction>
     ) : undefined,
   })

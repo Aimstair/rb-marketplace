@@ -1,8 +1,24 @@
-import NextAuth from "next-auth"
+import NextAuth, { CredentialsSignin } from "next-auth"
 import Credentials from "next-auth/providers/credentials"
 import { PrismaAdapter } from "@auth/prisma-adapter"
 import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
+import { findUserByEmail } from "@/lib/user-email"
+
+// Auth.js only passes CredentialsSignin errors (and their `code`) back to the sign-in action;
+// anything else surfaces as a generic configuration error.
+class InvalidLogin extends CredentialsSignin {
+  code = "invalid_credentials"
+}
+class LockedLogin extends CredentialsSignin {
+  code = "locked"
+}
+class BannedLogin extends CredentialsSignin {
+  code = "banned"
+}
+class UnverifiedLogin extends CredentialsSignin {
+  code = "unverified"
+}
 
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -15,53 +31,30 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials, _request) {
-        // Validate credentials object
+        // Wrong email and wrong password get the same error so the form never reveals which
+        // emails have accounts. Ban and verification status only show once the password is right.
         if (!credentials?.email || !credentials?.password) {
-          throw new Error("Email and password required")
+          throw new InvalidLogin()
         }
 
-        // Find user by email
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email as string },
-        })
-
+        const user = await findUserByEmail(credentials.email as string)
         if (!user) {
-          throw new Error("Invalid credentials")
+          throw new InvalidLogin()
         }
 
-        // Check if user is banned
-        if (user.isBanned) {
-          throw new Error("Your account has been banned")
-        }
-
-        // Check if email is verified
-        if (!user.emailVerified) {
-          throw new Error("Please verify your email before logging in")
-        }
-
-        // Check if account is locked
         if (user.lockedUntil && user.lockedUntil > new Date()) {
-          const remainingMinutes = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 1000 / 60)
-          throw new Error(`Account locked due to failed login attempts. Try again in ${remainingMinutes} minute(s)`)
+          throw new LockedLogin()
         }
 
-        // Verify password
-        const passwordMatch = await bcrypt.compare(
-          credentials.password as string,
-          user.password || ""
-        )
+        const passwordMatch = await bcrypt.compare(credentials.password as string, user.password || "")
 
         if (!passwordMatch) {
-          // Get failed login lockout setting
           const lockoutSetting = await prisma.systemSettings.findUnique({
             where: { key: "failed_login_lockout" },
           })
           const maxAttempts = lockoutSetting ? parseInt(lockoutSetting.value) : 5
-
-          // Increment failed login attempts
           const failedAttempts = (user.failedLoginAttempts || 0) + 1
-          
-          // Lock account if max attempts reached
+
           if (failedAttempts >= maxAttempts) {
             await prisma.user.update({
               where: { id: user.id },
@@ -70,15 +63,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 lockedUntil: new Date(Date.now() + 15 * 60 * 1000), // Lock for 15 minutes
               },
             })
-            throw new Error("Too many failed attempts. Account locked for 15 minutes")
-          } else {
-            // Just increment the counter
-            await prisma.user.update({
-              where: { id: user.id },
-              data: { failedLoginAttempts: failedAttempts },
-            })
-            throw new Error(`Invalid password. ${maxAttempts - failedAttempts} attempt(s) remaining`)
+            throw new LockedLogin()
           }
+
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { failedLoginAttempts: failedAttempts },
+          })
+          throw new InvalidLogin()
+        }
+
+        if (user.isBanned) {
+          throw new BannedLogin()
+        }
+
+        if (!user.emailVerified) {
+          throw new UnverifiedLogin()
         }
 
         // Reset failed login attempts on successful login

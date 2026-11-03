@@ -7,14 +7,14 @@ import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { AuthError, AuthField, AuthInput, AuthShell, PasswordInput } from "@/components/site/auth-shell"
-import { signIn } from "next-auth/react"
-import { signInWithCredentials, doesUserExist, resendVerificationCode, checkEmailVerification } from "@/app/actions/auth"
+import { signInWithCredentials, resendVerificationCode, type LoginResult } from "@/app/actions/auth"
 import { useToast } from "@/hooks/use-toast"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
+  const [errorCode, setErrorCode] = useState<LoginResult["code"]>()
   const [loading, setLoading] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -25,70 +25,35 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
+    setErrorCode(undefined)
     setLoading(true)
 
     try {
-      // Check if user exists first
-    const userExists = await doesUserExist(email)
-    if (!userExists) {
-      setError("Account not found. Please sign up.")
-      setLoading(false)
-      return
-    }
-      // First, check if email is verified
-      const verificationStatus = await checkEmailVerification(email)
-      
-      if (!verificationStatus.verified) {
-        // Email not verified - resend code and redirect
-        toast({
-          title: "Email Not Verified",
-          description: "Please verify your email. We're sending you a new verification code.",
-        })
-        
-        // Resend verification code
-        await resendVerificationCode(email)
-        
-        // Redirect to verification page
-        router.push(`/auth/verify?email=${encodeURIComponent(email)}`)
-        setLoading(false)
+      const result = await signInWithCredentials(email, password)
+
+      if (result?.success) {
+        router.refresh()
+        window.location.href = redirectUrl
         return
       }
 
-      // Use NextAuth signIn with credentials provider
-      const result = await signInWithCredentials(email, password)
-      if (result && result.success) {
-        // 1. Refresh the router to clear the cache and update the session state
-        router.refresh(); 
-        // 2. Navigate to the marketplace
-        window.location.href = redirectUrl;
-      } else if (result && !result.success && result.error) {
-      let errorMessage = result.error
-      
-      // Keep your custom error mapping logic here
-      if (result.error.includes("locked") || result.error.includes("Too many failed attempts")) {
-        errorMessage = result.error
-      } else if (result.error.includes("Invalid password")) {
-        errorMessage = result.error
-      } else if (result.error.includes("Invalid credentials")) {
-        errorMessage = "Invalid email or password. Please try again."
-      } else if (result.error.includes("banned")) {
-        errorMessage = "Your account has been banned. Please contact support."
-      } else if (result.error === "CredentialsSignin" || result.error === "Configuration") {
-        errorMessage = "Invalid email or password. Please try again."
+      // Right password, unverified email: send a fresh code and continue on the verify page
+      if (result?.code === "unverified") {
+        toast({
+          title: "Verify your email",
+          description: "We've sent you a new verification code.",
+        })
+        await resendVerificationCode(email)
+        router.push(`/auth/verify?email=${encodeURIComponent(email.trim())}`)
+        return
       }
-      
-      setError(errorMessage)
-      setLoading(false) // Only stop loading if there is an error
-    } 
-    
-    // NOTE: You don't need 'else if (result.success)' with router.push here
-    // because the Server Action will trigger a redirect automatically.
-    // If it reaches here without an error, the browser will navigate away.
 
+      setError(result?.error || "Incorrect email or password.")
+      setErrorCode(result?.code)
+      setLoading(false)
     } catch (err: any) {
-      // 4. Handle unexpected errors
-      // If the error is a Next.js redirect, don't show it as a login failure
-      if (err.message === "NEXT_REDIRECT") return;
+      // A Next.js redirect is a successful sign-in, not a failure
+      if (err?.message === "NEXT_REDIRECT") return
 
       setError("Login failed. Please try again.")
       setLoading(false)
@@ -108,7 +73,22 @@ export default function LoginPage() {
         </>
       }
     >
-      <AuthError>{error}</AuthError>
+      <AuthError>
+        {error && (
+          <>
+            {error}
+            {errorCode === "invalid_credentials" && (
+              <>
+                {" "}
+                Don&apos;t have an account?{" "}
+                <Link href="/auth/signup" className="font-medium underline underline-offset-2">
+                  Sign up
+                </Link>
+              </>
+            )}
+          </>
+        )}
+      </AuthError>
       <form onSubmit={handleLogin} className="space-y-5" noValidate>
         <AuthField id="login-email" label="Email">
           <AuthInput
