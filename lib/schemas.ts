@@ -99,6 +99,8 @@ export interface ListingResponse {
 export interface GetListingsResult {
   listings: ListingResponse[]
   total: number
+  /** Visible listings across every page, the number that counts toward the plan limit */
+  activeCount?: number
   totalPages: number
   currentPage: number
 }
@@ -107,6 +109,8 @@ export interface CreateListingResult {
   success: boolean
   listingId?: string
   error?: string
+  /** Set when the seller is at their plan's active listing limit */
+  limitReached?: boolean
 }
 
 // ===== HALL OF SHAME SCHEMAS =====

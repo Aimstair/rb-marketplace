@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { getSessionUser } from "@/lib/session-user"
 import { headers } from "next/headers"
 import { checkRateLimit, getRateLimitIdentifier } from "@/lib/rate-limit"
+import { getListingLimits, limitForTier } from "@/lib/listing-limits"
 
 const ONE_MINUTE_MS = 60 * 1000
 const ONE_HOUR_MS = 60 * ONE_MINUTE_MS
@@ -288,20 +289,7 @@ export async function getSubscriptionLimitsFromSettings(): Promise<{
       return { success: false, error: limitsRate.error }
     }
 
-    const [freeSetting, proSetting, eliteSetting] = await Promise.all([
-      prisma.systemSettings.findUnique({ where: { key: "max_listings_free" } }),
-      prisma.systemSettings.findUnique({ where: { key: "max_listings_pro" } }),
-      prisma.systemSettings.findUnique({ where: { key: "max_listings_elite" } })
-    ])
-
-    return {
-      success: true,
-      limits: {
-        free: freeSetting ? parseInt(freeSetting.value) : 10,
-        pro: proSetting ? parseInt(proSetting.value) : 50,
-        elite: eliteSetting ? parseInt(eliteSetting.value) : 100
-      }
-    }
+    return { success: true, limits: await getListingLimits() }
   } catch (err) {
     console.error("Failed to get subscription limits:", err)
     return { 
@@ -339,13 +327,13 @@ export async function enforceListingLimits(userId: string): Promise<{
       where: { id: userId },
       include: {
         itemListings: {
-          where: {
-            status: { in: ["available", "pending"] }
-          },
-          orderBy: {
-            createdAt: "desc" // Most recent first
-          }
-        }
+          where: { status: "available" },
+          select: { id: true, createdAt: true },
+        },
+        currencyListings: {
+          where: { status: "available" },
+          select: { id: true, createdAt: true },
+        },
       }
     })
 
@@ -353,23 +341,13 @@ export async function enforceListingLimits(userId: string): Promise<{
       return { success: false, error: "User not found" }
     }
 
-    // Get current listing limit from system settings
-    const limitsResult = await getSubscriptionLimitsFromSettings()
-    if (!limitsResult.success || !limitsResult.limits) {
-      return { success: false, error: "Failed to get listing limits" }
-    }
+    const maxListings = limitForTier(user.subscriptionTier, await getListingLimits())
 
-    // Determine max listings based on subscription tier
-    const tier = user.subscriptionTier
-    let maxListings = limitsResult.limits.free
-
-    if (tier === "ELITE") {
-      maxListings = limitsResult.limits.elite
-    } else if (tier === "PRO") {
-      maxListings = limitsResult.limits.pro
-    }
-
-    const currentListings = user.itemListings
+    // Visible item and currency listings, most recent first
+    const currentListings = [
+      ...user.itemListings.map((l) => ({ ...l, kind: "ITEM" as const })),
+      ...user.currencyListings.map((l) => ({ ...l, kind: "CURRENCY" as const })),
+    ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     const excessCount = currentListings.length - maxListings
 
     // If user is within limits, do nothing
@@ -379,16 +357,16 @@ export async function enforceListingLimits(userId: string): Promise<{
 
     // Hide excess listings (most recent ones)
     const listingsToHide = currentListings.slice(0, excessCount)
-    const hiddenListingIds = listingsToHide.map(l => l.id)
-
-    await prisma.itemListing.updateMany({
-      where: {
-        id: { in: hiddenListingIds }
-      },
-      data: {
-        status: "hidden"
-      }
-    })
+    await Promise.all([
+      prisma.itemListing.updateMany({
+        where: { id: { in: listingsToHide.filter((l) => l.kind === "ITEM").map((l) => l.id) } },
+        data: { status: "hidden" },
+      }),
+      prisma.currencyListing.updateMany({
+        where: { id: { in: listingsToHide.filter((l) => l.kind === "CURRENCY").map((l) => l.id) } },
+        data: { status: "hidden" },
+      }),
+    ])
 
     // Create notification for user
     await prisma.notification.create({

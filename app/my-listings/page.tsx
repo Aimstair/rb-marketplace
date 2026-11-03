@@ -28,6 +28,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import Link from "next/link"
+import { SellLink } from "@/components/listing/sell-link"
 import { useSession } from "next-auth/react"
 import { getUserListings } from "@/app/actions/listings"
 import { deleteListingSoft, toggleListingStatus } from "@/app/actions/listings-management"
@@ -50,6 +51,8 @@ export default function MyListingsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isDeleting, setIsDeleting] = useState(false)
   const [totalListings, setTotalListings] = useState(0)
+  // Visible listings across all pages (the current page only holds a few of them)
+  const [activeListingsCount, setActiveListingsCount] = useState(0)
   const [subscriptionTier, setSubscriptionTier] = useState("FREE")
   const [customLimits, setCustomLimits] = useState<{ free?: number; pro?: number; elite?: number }>()
   const [searchQuery, setSearchQuery] = useState("")
@@ -57,7 +60,6 @@ export default function MyListingsPage() {
   const [typeFilter, setTypeFilter] = useState<string>("all")
   
   const subscriptionLimit = getSubscriptionLimits(subscriptionTier, customLimits)
-  const activeListingsCount = listings.filter((l) => l.status === "available").length
   const canCreateMore = activeListingsCount < subscriptionLimit.maxListings
   const listingsRemaining = subscriptionLimit.maxListings - activeListingsCount
 
@@ -87,6 +89,7 @@ export default function MyListingsPage() {
           
           setListings(listingsResult.listings)
           setTotalListings(listingsResult.total)
+          setActiveListingsCount(listingsResult.activeCount ?? 0)
           
           if (subscriptionResult.success && subscriptionResult.data) {
             setSubscriptionTier(subscriptionResult.data.tier)
@@ -146,7 +149,8 @@ export default function MyListingsPage() {
   })
 
   const getListingType = (listing: ListingResponse): "ITEM" | "CURRENCY" => {
-    if (listing.listingType) return listing.listingType
+    // Listings store "Item" / "Currency"; the management actions expect "ITEM" / "CURRENCY"
+    if (listing.listingType) return listing.listingType.toUpperCase() === "CURRENCY" ? "CURRENCY" : "ITEM"
     return listing.category === "Currency" ? "CURRENCY" : "ITEM"
   }
 
@@ -180,6 +184,7 @@ export default function MyListingsPage() {
         // Remove listing from local state
         setListings(listings.filter((l) => l.id !== listingToDelete))
         setTotalListings((prev) => prev - 1)
+        if (listing.status === "available") setActiveListingsCount((prev) => Math.max(prev - 1, 0))
 
         toast({
           title: "Listing Deleted",
@@ -229,6 +234,7 @@ export default function MyListingsPage() {
             l.id === listingId ? { ...l, status: newStatus } : l
           )
         )
+        setActiveListingsCount((prev) => Math.max(prev + (newStatus === "available" ? 1 : -1), 0))
 
         toast({
           title: "Status Updated",
@@ -255,12 +261,12 @@ export default function MyListingsPage() {
       <main className="mx-auto w-full max-w-[1440px] px-5 md:px-8 lg:px-10 pt-10 pb-16 md:pt-14 md:pb-20">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-title">My Listings</h1>
-          <Link href="/sell">
-            <Button disabled={!canCreateMore}>
+          <Button asChild>
+            <SellLink>
               <Plus className="w-4 h-4 mr-2" />
               Create New Listing
-            </Button>
-          </Link>
+            </SellLink>
+          </Button>
         </div>
 
         <Card className="p-4 mb-6">

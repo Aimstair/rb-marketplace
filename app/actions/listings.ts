@@ -7,6 +7,7 @@ import { headers } from "next/headers"
 import { after } from "next/server"
 import { unstable_cache } from "next/cache"
 import { moderateContent, logModerationAction } from "@/lib/moderation"
+import { checkListingSlot } from "@/lib/listing-limits"
 import {
   createItemListingSchema,
   createCurrencyListingSchema,
@@ -614,7 +615,7 @@ export async function getUserListings(
     // Item and currency listings are independent: fetch both in one round trip
     const [itemListings, currencyListings] = await Promise.all([
       prisma.itemListing.findMany({
-      where: { sellerId },
+      where: { sellerId, status: { not: "deleted" } },
       include: {
         seller: {
           select: {
@@ -637,7 +638,7 @@ export async function getUserListings(
       orderBy: { createdAt: "desc" },
     }),
       prisma.currencyListing.findMany({
-      where: { sellerId },
+      where: { sellerId, status: { not: "deleted" } },
       include: {
         seller: {
           select: {
@@ -667,6 +668,7 @@ export async function getUserListings(
       ...currencyListings.map((listing: any) => ({ kind: "CURRENCY" as const, listing })),
     ]
     const total = ordered.length
+    const activeCount = ordered.filter((e) => e.listing.status === "available").length
     const totalPages = Math.ceil(total / safeItemsPerPage)
     const queryPage = totalPages > 0 ? Math.min(safePage, totalPages) : 1
     const startIndex = (queryPage - 1) * safeItemsPerPage
@@ -751,6 +753,7 @@ export async function getUserListings(
     return {
       listings: allListings,
       total,
+      activeCount,
       totalPages,
       currentPage: queryPage,
     }
@@ -914,16 +917,7 @@ export async function createListing(input: CreateItemListingInput): Promise<Crea
 
     // Find the seller by email from session
     const seller = await prisma.user.findUnique({
-      where: { 
-        email: session.user.email 
-      },
-      include: {
-        itemListings: {
-          where: {
-            status: { not: "banned" }
-          }
-        }
-      }
+      where: { email: session.user.email },
     })
 
     if (!seller) {
@@ -949,32 +943,10 @@ export async function createListing(input: CreateItemListingInput): Promise<Crea
       }
     }
 
-    // Check max listings based on subscription tier and system settings
-    const [maxListingsFreeSetting, maxListingsProSetting, maxListingsEliteSetting] = await Promise.all([
-      prisma.systemSettings.findUnique({ where: { key: "max_listings_free" } }),
-      prisma.systemSettings.findUnique({ where: { key: "max_listings_pro" } }),
-      prisma.systemSettings.findUnique({ where: { key: "max_listings_elite" } })
-    ])
-
-    const maxListingsFree = maxListingsFreeSetting ? parseInt(maxListingsFreeSetting.value) : 10
-    const maxListingsPro = maxListingsProSetting ? parseInt(maxListingsProSetting.value) : 50
-    const maxListingsElite = maxListingsEliteSetting ? parseInt(maxListingsEliteSetting.value) : 100
-
-    const userTier = seller.subscriptionTier || "FREE"
-    const currentListingsCount = seller.itemListings.length
-    let maxAllowed = maxListingsFree
-
-    if (userTier === "ELITE") {
-      maxAllowed = maxListingsElite
-    } else if (userTier === "PRO") {
-      maxAllowed = maxListingsPro
-    }
-
-    if (currentListingsCount >= maxAllowed) {
-      return {
-        success: false,
-        error: `You have reached the maximum of ${maxAllowed} listings for your ${userTier.toLowerCase()} plan. ${userTier === "FREE" ? "Upgrade to Pro for more listings!" : ""}`
-      }
+    // Only visible listings use up a plan slot
+    const slot = await checkListingSlot(seller.id, seller.subscriptionTier)
+    if (!slot.allowed) {
+      return { success: false, error: slot.error, limitReached: true }
     }
 
     // Validate input
@@ -1582,6 +1554,11 @@ export async function createNewCurrencyListing(input: CreateCurrencyListingInput
         success: false,
         error: createRateLimit.error,
       }
+    }
+
+    const slot = await checkListingSlot(seller.id, seller.subscriptionTier)
+    if (!slot.allowed) {
+      return { success: false, error: slot.error, limitReached: true }
     }
 
     const validatedData = createCurrencyListingSchema.parse(input)

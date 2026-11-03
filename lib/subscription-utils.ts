@@ -2,11 +2,11 @@
  * Utility functions for subscription management
  */
 
-// Default limits (fallback if system settings not available)
+// Default limits, matching the plans page (fallback if system settings not available)
 export const DEFAULT_SUBSCRIPTION_LIMITS = {
-  FREE: { maxListings: 10, featuredListings: 0 },
-  PRO: { maxListings: 50, featuredListings: 1 },
-  ELITE: { maxListings: 100, featuredListings: 3 },
+  FREE: { maxListings: 3, featuredListings: 0 },
+  PRO: { maxListings: 10, featuredListings: 1 },
+  ELITE: { maxListings: 30, featuredListings: 3 },
 } as const
 
 export type SubscriptionTier = keyof typeof DEFAULT_SUBSCRIPTION_LIMITS
