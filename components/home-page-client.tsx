@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
+import { SellLink } from "@/components/listing/sell-link"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -325,12 +326,13 @@ export default function HomePage({ initialData }: { initialData?: HomeInitialDat
                   {spotlight ? "View item" : "Browse items"}
                 </Link>
               </Button>
-              <Link
-                href={spotlight ? "/marketplace" : "/sell"}
-                className="text-[17px] text-link hover:underline underline-offset-2"
-              >
-                {spotlight ? "Browse all items ›" : "Sell an item ›"}
-              </Link>
+              {spotlight ? (
+                <Link href="/marketplace" className="text-[17px] text-link hover:underline underline-offset-2">
+                  Browse all items ›
+                </Link>
+              ) : (
+                <SellLink className="text-[17px] text-link hover:underline underline-offset-2">Sell an item ›</SellLink>
+              )}
             </div>
           </div>
 
@@ -394,9 +396,9 @@ export default function HomePage({ initialData }: { initialData?: HomeInitialDat
           ) : (
             <p className="rounded-lg bg-card px-6 py-12 text-center text-muted-foreground">
               No listings yet. Be the first to{" "}
-              <Link href="/sell" className="text-link hover:underline">
+              <SellLink className="text-link hover:underline">
                 sell an item
-              </Link>
+              </SellLink>
               .
             </p>
           )}
@@ -572,9 +574,7 @@ export default function HomePage({ initialData }: { initialData?: HomeInitialDat
             List an item in a minute. Buyers message you directly, and every completed trade builds your vouches.
           </p>
           <Button asChild size="lg">
-            <Link href={session?.user ? "/sell" : "/auth/signup"}>
-              {session?.user ? "Sell an item" : "Create a free account"}
-            </Link>
+            {session?.user ? <SellLink>Sell an item</SellLink> : <Link href="/auth/signup">Create a free account</Link>}
           </Button>
         </Container>
       </Section>

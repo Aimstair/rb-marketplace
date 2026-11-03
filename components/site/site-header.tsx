@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { SellLink } from "@/components/listing/sell-link"
 import {
   MessageCircle,
   User,
@@ -251,10 +252,10 @@ export function SiteHeader() {
             {status === "authenticated" && session?.user ? (
               <>
                 <Button asChild size="sm" className="hidden md:inline-flex mx-1">
-                  <Link href="/sell">
+                  <SellLink>
                     <Plus className="size-3.5" strokeWidth={2} />
                     Sell
-                  </Link>
+                  </SellLink>
                 </Button>
 
                 <div className="hidden md:flex items-center gap-1">
@@ -445,12 +446,9 @@ export function SiteHeader() {
             ))}
             {status === "authenticated" && session?.user && (
               <>
-                <Link
-                  href="/sell"
-                  className="py-2.5 text-[28px] font-semibold tracking-[-0.02em] text-link"
-                >
+                <SellLink className="py-2.5 text-[28px] font-semibold tracking-[-0.02em] text-link">
                   Sell an item
-                </Link>
+                </SellLink>
                 <div className="mt-6 border-t border-border pt-4 flex flex-col text-[17px]">
                   {isAdmin && (
                     <Link href="/admin" className="py-2.5 text-muted-foreground">

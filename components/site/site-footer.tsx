@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { SellLink } from "@/components/listing/sell-link"
 import { getSeoGames } from "@/lib/games"
 import { gamePath } from "@/lib/seo"
 
@@ -59,13 +60,16 @@ export async function SiteFooter() {
             <div key={col.title}>
               <p className="mb-3 font-semibold text-foreground/90">{col.title}</p>
               <ul className="space-y-2">
-                {col.links.map((link) => (
-                  <li key={link.href}>
-                    <Link href={link.href} className="hover:text-foreground hover:underline underline-offset-2">
-                      {link.label}
-                    </Link>
-                  </li>
-                ))}
+                {col.links.map((link) => {
+                  const LinkComponent = link.href === "/sell" ? SellLink : Link
+                  return (
+                    <li key={link.href}>
+                      <LinkComponent href={link.href} className="hover:text-foreground hover:underline underline-offset-2">
+                        {link.label}
+                      </LinkComponent>
+                    </li>
+                  )
+                })}
               </ul>
             </div>
           ))}

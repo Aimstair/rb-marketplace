@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
+import { checkListingSlot, getListingSlot, type ListingSlot } from "@/lib/listing-limits"
 
 /**
  * Toggle listing status between available and hidden
@@ -27,20 +28,9 @@ export async function toggleListingStatus(
           include: {
             seller: {
               select: {
+                id: true,
                 email: true,
                 subscriptionTier: true,
-                itemListings: {
-                  where: {
-                    status: "available",
-                  },
-                  select: { id: true },
-                },
-                currencyListings: {
-                  where: {
-                    status: "available",
-                  },
-                  select: { id: true },
-                },
               },
             },
           },
@@ -50,20 +40,9 @@ export async function toggleListingStatus(
           include: {
             seller: {
               select: {
+                id: true,
                 email: true,
                 subscriptionTier: true,
-                itemListings: {
-                  where: {
-                    status: "available",
-                  },
-                  select: { id: true },
-                },
-                currencyListings: {
-                  where: {
-                    status: "available",
-                  },
-                  select: { id: true },
-                },
               },
             },
           },
@@ -120,28 +99,9 @@ export async function toggleListingStatus(
 
     // Check listing limit when making available
     if (newStatus === "available" && listing.status === "hidden") {
-      // Get subscription limits from system settings
-      const [freeLimit, proLimit, eliteLimit] = await Promise.all([
-        prisma.systemSettings.findUnique({ where: { key: "max_listings_free" } }),
-        prisma.systemSettings.findUnique({ where: { key: "max_listings_pro" } }),
-        prisma.systemSettings.findUnique({ where: { key: "max_listings_elite" } }),
-      ])
-
-      const limits = {
-        FREE: freeLimit ? parseInt(freeLimit.value) : 10,
-        PRO: proLimit ? parseInt(proLimit.value) : 50,
-        ELITE: eliteLimit ? parseInt(eliteLimit.value) : 100,
-      }
-
-      const userTier = listing.seller.subscriptionTier as "FREE" | "PRO" | "ELITE"
-      const maxListings = limits[userTier] || limits.FREE
-      const currentActiveCount = listing.seller.itemListings.length + listing.seller.currencyListings.length
-
-      if (currentActiveCount >= maxListings) {
-        return {
-          success: false,
-          error: `You have reached your listing limit of ${maxListings} active listings for the ${userTier} plan. Upgrade your plan to list more items.`,
-        }
+      const slot = await checkListingSlot(listing.seller.id, listing.seller.subscriptionTier)
+      if (!slot.allowed) {
+        return { success: false, error: slot.error }
       }
     }
 
@@ -175,9 +135,12 @@ export async function toggleListingStatus(
  */
 export async function deleteListingSoft(
   listingId: string,
-  listingType: "ITEM" | "CURRENCY" = "ITEM"
+  requestedType: string = "ITEM"
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    // Accept the stored "Item" / "Currency" spelling as well
+    const listingType: "ITEM" | "CURRENCY" = requestedType.toUpperCase() === "CURRENCY" ? "CURRENCY" : "ITEM"
+
     const session = await auth()
     if (!session?.user?.email) {
       return {
@@ -353,4 +316,19 @@ export async function deleteListingSoft(
       error: "Failed to delete listing. Please try again.",
     }
   }
+}
+
+/**
+ * The signed-in seller's active listing usage, used to stop "Sell" links early when they are at
+ * their plan's limit. Null when signed out.
+ */
+export async function getMyListingSlot(): Promise<ListingSlot | null> {
+  const session = await auth()
+  if (!session?.user?.email) return null
+
+  const user = await prisma.user.findUnique({
+    where: { email: session.user.email },
+    select: { id: true, subscriptionTier: true },
+  })
+  return user ? getListingSlot(user.id, user.subscriptionTier) : null
 }

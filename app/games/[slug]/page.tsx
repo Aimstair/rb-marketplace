@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import Link from "next/link"
+import { SellLink } from "@/components/listing/sell-link"
 import { notFound } from "next/navigation"
 import { Check } from "lucide-react"
 import { Container, Section, SectionHeader } from "@/components/site/container"
@@ -153,7 +154,7 @@ export default async function GamePage({ params }: { params: Params }) {
                 trade earns you a vouch.
               </p>
               <Button asChild>
-                <Link href="/sell">Sell an item</Link>
+                <SellLink>Sell an item</SellLink>
               </Button>
             </div>
           )}

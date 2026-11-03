@@ -4,13 +4,14 @@ import type React from "react"
 import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Check, Coins, ImageIcon, Package, Search, ShieldCheck } from "lucide-react"
+import { Check, Coins, ImageIcon, Package, Search, ShieldCheck, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { GameIcon } from "@/components/site/game-icon"
 import { ListingImageUploader } from "@/components/listing/listing-image-uploader"
 import { createListing, createNewCurrencyListing } from "@/app/actions/listings"
 import type { SellGameOption } from "@/lib/games"
+import type { ListingSlot } from "@/lib/listing-limits"
 import { cn } from "@/lib/utils"
 
 const PAYMENT_METHODS = ["GCash", "PayPal", "Bank transfer", "Robux Gift Cards", "Cross-Trade"]
@@ -24,11 +25,13 @@ type Errors = Record<string, string>
 const fieldClass =
   "w-full rounded-xl border bg-secondary/40 px-3.5 py-2.5 text-[15px] outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/40"
 
-export function SellForm({ games }: { games: SellGameOption[] }) {
+export function SellForm({ games, slot }: { games: SellGameOption[]; slot: ListingSlot }) {
   const router = useRouter()
   const [kind, setKind] = useState<ListingKind>("item")
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  // Also set if the server rejects a publish for the limit (e.g. a listing was unhidden in another tab)
+  const [atLimit, setAtLimit] = useState(slot.active >= slot.max)
   const [errors, setErrors] = useState<Errors>({})
 
   const [item, setItem] = useState({
@@ -110,6 +113,7 @@ export function SellForm({ games }: { games: SellGameOption[] }) {
       paymentMethods: item.paymentMethods,
       pricingMode: item.pricingMode,
     })
+    if (result.limitReached) return setAtLimit(true)
     if (!result.success) throw new Error(result.error || "Failed to create listing")
     router.push(`/listing/${result.listingId}`)
   }
@@ -136,6 +140,7 @@ export function SellForm({ games }: { games: SellGameOption[] }) {
       paymentMethods: currency.paymentMethods,
       pricingMode: currency.pricingMode,
     })
+    if (result.limitReached) return setAtLimit(true)
     if (!result.success) throw new Error(result.error || "Failed to create listing")
     router.push(`/currency/${result.listingId}`)
   }
@@ -206,6 +211,8 @@ export function SellForm({ games }: { games: SellGameOption[] }) {
             ))}
           </div>
         </header>
+
+        {atLimit && <ListingLimitNotice slot={slot} />}
 
         {formError && (
           <div role="alert" className="mb-6 rounded-[14px] bg-destructive/10 px-5 py-4 text-[15px] text-destructive">
@@ -502,8 +509,8 @@ export function SellForm({ games }: { games: SellGameOption[] }) {
                 ))}
               </ol>
 
-              <Button type="submit" size="lg" className="mt-5 w-full" disabled={submitting}>
-                {submitting ? "Publishing…" : ready ? "Publish listing" : "Review and publish"}
+              <Button type="submit" size="lg" className="mt-5 w-full" disabled={submitting || atLimit}>
+                {atLimit ? "Listing limit reached" : submitting ? "Publishing…" : ready ? "Publish listing" : "Review and publish"}
               </Button>
               <Button asChild variant="ghost" size="lg" className="mt-1.5 w-full text-muted-foreground">
                 <Link href={kind === "item" ? "/marketplace" : "/currency"}>Cancel</Link>
@@ -564,6 +571,36 @@ function Field({
       </div>
       {children}
       <ErrorText message={error} />
+    </div>
+  )
+}
+
+function ListingLimitNotice({ slot }: { slot: ListingSlot }) {
+  return (
+    <div role="alert" className="mb-6 flex flex-col gap-4 rounded-[20px] bg-card p-5 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <p className="text-[17px] font-semibold">
+          You&apos;ve used all {slot.max} active listings on the {slot.plan} plan
+        </p>
+        <p className="mt-1 text-[15px] text-muted-foreground">
+          {slot.upgrade
+            ? `Hide, delete or sell a listing to free up a spot, or upgrade to ${slot.upgrade.plan} for up to ${slot.upgrade.max} active listings.`
+            : "Hide, delete or sell a listing to free up a spot."}
+        </p>
+      </div>
+      <div className="flex shrink-0 flex-wrap gap-2">
+        {slot.upgrade && (
+          <Button asChild>
+            <Link href="/subscriptions">
+              <Sparkles className="size-4" strokeWidth={1.75} />
+              Upgrade to {slot.upgrade.plan}
+            </Link>
+          </Button>
+        )}
+        <Button asChild variant="secondary">
+          <Link href="/my-listings">Manage listings</Link>
+        </Button>
+      </div>
     </div>
   )
 }
