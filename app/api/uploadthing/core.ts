@@ -145,7 +145,7 @@ export const ourFileRouter = {
       }
     }),
 
-  chatAttachment: f({ image: { maxFileSize: "4MB", maxFileCount: 1 } })
+  chatAttachment: f({ image: { maxFileSize: "4MB", maxFileCount: 4 } })
     .middleware(async ({ req }) => {
       try {
         debugLog("chatAttachment", "Middleware started")

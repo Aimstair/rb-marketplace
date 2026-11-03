@@ -24,6 +24,7 @@ import {
   Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { useUploadThing } from "@/lib/uploadthing-client"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import {
@@ -107,6 +108,19 @@ type Message = {
   offerAmount?: number
   offerStatus?: "pending" | "accepted" | "rejected" | "declined"
   imageUrl?: string
+  /** Stable React key for messages shown before the server confirms them */
+  clientKey?: string
+  /** Set while an optimistically shown message is being delivered, or if delivery failed */
+  status?: "sending" | "failed"
+  /** What to resend when the user retries a failed message */
+  retry?: PendingSend
+}
+
+type PendingSend = {
+  clientKey: string
+  content: string
+  attachmentUrl?: string
+  amount?: number
 }
 
 const getStatusBadge = (status: "ongoing" | "completed" | "sold" | "cancelled") => {
@@ -281,7 +295,10 @@ export default function MessagesPage() {
   const [conversationSearch, setConversationSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<"all" | "ongoing" | "completed" | "sold" | "cancelled">("all")
   const [showBlockModal, setShowBlockModal] = useState(false)
+  // Uploaded image URLs waiting to be sent, plus how many are still uploading
   const [attachedImages, setAttachedImages] = useState<string[]>([])
+  const [uploadingImages, setUploadingImages] = useState(0)
+  const { startUpload } = useUploadThing("chatAttachment")
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [showSearchBar, setShowSearchBar] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
@@ -292,6 +309,8 @@ export default function MessagesPage() {
   const [loadingConversations, setLoadingConversations] = useState(true)
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [sendingMessage, setSendingMessage] = useState(false)
+  // Sends run one after another so messages arrive in the order they were typed
+  const sendQueueRef = useRef<Promise<void>>(Promise.resolve())
   const [vouchSubmitting, setVouchSubmitting] = useState(false)
   const [amountQueryParam, setAmountQueryParam] = useState<number | null>(null)
   const [contactWindow, setContactWindow] = useState({ start: 0, end: 30 })
@@ -921,75 +940,89 @@ export default function MessagesPage() {
     return <MessagesSkeleton />
   }
 
-  const handleSendMessage = async () => {
-    if (!selectedConversationId || (!messageText.trim() && attachedImages.length === 0)) return
-
-    setSendingMessage(true)
-    try {
-      let messageResult: any = null
-
-      // Send attached images first
-      for (const imgUrl of attachedImages) {
-        const result = await sendMessage(imgUrl, {
-          conversationId: selectedConversationId,
-          attachmentUrl: imgUrl,
-        })
-        if (!result.success) {
-          console.error("Error sending image:", result.error)
-          toast({
-            title: "Error",
-            description: result.error || "Failed to send image.",
-            variant: "destructive",
-          })
-        } else {
-          messageResult = result // Track the last result
-          // Add optimistic image message update
-          const newImageMessage: Message = {
-            id: result.messageId || `temp-img-${Date.now()}`,
-            sender: "buyer",
-            text: imgUrl,
-            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-            createdAt: new Date(),
-            type: "image",
-            imageUrl: imgUrl,
+  // Move this conversation to the top of the list with the new last message
+  const updateContactAfterSend = (lastMessageText: string) => {
+    if (selectedConversationId && selectedContact) {
+      const newTimestamp = new Date()
+      
+      // Update the current contact in the list with new last message and timestamp
+      setContacts((prev) => {
+        const updated = prev.map((contact) => {
+          if (contact.id === selectedConversationId) {
+            return {
+              ...contact,
+              lastMessage: lastMessageText,
+              timestamp: formatContactTimestamp(newTimestamp),
+              _sortDate: newTimestamp,
+            }
           }
-          setMessages((prev) => [...prev, newImageMessage])
-        }
-      }
+          return contact
+        })
+        
+        // Re-sort to move updated conversation to top
+        updated.sort((a, b) => {
+          const dateA = new Date(a._sortDate || a.timestamp).getTime()
+          const dateB = new Date(b._sortDate || b.timestamp).getTime()
+          return dateB - dateA
+        })
+        
+        return updated
+      })
 
-      // Then send text message if any
-      if (messageText.trim()) {
-        const result = await sendMessage(messageText, {
-          conversationId: selectedConversationId,
-          amount: amountQueryParam || undefined,
+      // Also update selectedContact to reflect new message
+      setSelectedContact((prev) => {
+        if (!prev || prev.id !== selectedConversationId) return prev
+        return {
+          ...prev,
+          lastMessage: lastMessageText,
+          timestamp: formatContactTimestamp(newTimestamp),
+          _sortDate: newTimestamp,
+        }
+      })
+    }
+  }
+
+  const markSendFailed = (item: PendingSend, error?: string) => {
+    setMessages((prev) => prev.map((m) => (m.clientKey === item.clientKey ? { ...m, status: "failed" } : m)))
+    toast({ title: error || "Message not sent", variant: "destructive" })
+  }
+
+  // Delivers messages that are already showing in the chat, then swaps in the saved copies
+  const deliverMessages = async (conversationId: string, items: PendingSend[]) => {
+    let messageResult: any = null
+
+    for (const item of items) {
+      try {
+        const result = await sendMessage(item.content, {
+          conversationId,
+          attachmentUrl: item.attachmentUrl,
+          amount: item.amount,
         })
         if (!result.success) {
-          console.error("Error sending message:", result.error)
-          toast({
-            title: "Error",
-            description: result.error || "Failed to send message.",
-            variant: "destructive",
-          })
-          return
+          markSendFailed(item, result.error)
+          continue
         }
 
-        messageResult = result // Track the text message result
-
-        // Add optimistic message update
-        const newMessage: Message = {
-          id: result.messageId || `temp-${Date.now()}`,
-          sender: "buyer",
-          text: messageText,
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          createdAt: new Date(),
-          type: "text",
-        }
-        setMessages((prev) => [...prev, newMessage])
-        
-        // Clear amount query param after first message
-        setAmountQueryParam(null)
+        messageResult = result
+        const savedId = result.messageId
+        setMessages((prev) => {
+          // A sync may already have brought in the saved copy; drop the placeholder then
+          if (savedId && prev.some((m) => m.id === savedId)) {
+            return prev.filter((m) => m.clientKey !== item.clientKey)
+          }
+          return prev.map((m) =>
+            m.clientKey === item.clientKey ? { ...m, id: savedId || m.id, status: undefined, retry: undefined } : m
+          )
+        })
+      } catch (error) {
+        console.error("Error sending message:", error)
+        markSendFailed(item)
       }
+    }
 
+    if (!messageResult) return
+
+    try {
       // If transaction was just created or transaction state is null, load it immediately
       if (messageResult?.transactionCreated || !transaction) {
         console.log("🔄 Loading transaction after message send...")
@@ -1050,64 +1083,64 @@ export default function MessagesPage() {
         }
       }
 
-      // Update contacts list after sending message
-      if (selectedConversationId && selectedContact) {
-        const newTimestamp = new Date()
-        const lastMessageText = messageText.trim() || (attachedImages.length > 0 ? "Sent a photo." : "")
-        
-        // Update the current contact in the list with new last message and timestamp
-        setContacts((prev) => {
-          const updated = prev.map((contact) => {
-            if (contact.id === selectedConversationId) {
-              return {
-                ...contact,
-                lastMessage: lastMessageText,
-                timestamp: formatContactTimestamp(newTimestamp),
-                _sortDate: newTimestamp,
-              }
-            }
-            return contact
-          })
-          
-          // Re-sort to move updated conversation to top
-          updated.sort((a, b) => {
-            const dateA = new Date(a._sortDate || a.timestamp).getTime()
-            const dateB = new Date(b._sortDate || b.timestamp).getTime()
-            return dateB - dateA
-          })
-          
-          return updated
-        })
-
-        // Also update selectedContact to reflect new message
-        setSelectedContact((prev) => {
-          if (!prev || prev.id !== selectedConversationId) return prev
-          return {
-            ...prev,
-            lastMessage: lastMessageText,
-            timestamp: formatContactTimestamp(newTimestamp),
-            _sortDate: newTimestamp,
-          }
-        })
-      }
-
       // If new conversation was created, refresh contacts list
       if (messageResult?.conversationId && messageResult.conversationId !== selectedConversationId) {
         await refreshConversationsRef.current()
       }
 
-      setMessageText("")
-      setAttachedImages([])
     } catch (error) {
-      console.error("Error sending message:", error)
-      toast({
-        title: "Error",
-        description: "Failed to send message. Please try again.",
-        variant: "destructive",
-      })
-    } finally {
-      setSendingMessage(false)
+      console.error("Error refreshing after send:", error)
     }
+  }
+
+  const handleSendMessage = () => {
+    if (!selectedConversationId || uploadingImages > 0 || (!messageText.trim() && attachedImages.length === 0)) return
+
+    const conversationId = selectedConversationId
+    const text = messageText.trim() ? messageText : ""
+    const now = Date.now()
+    const items: PendingSend[] = [
+      ...attachedImages.map((url, i) => ({ clientKey: `temp-img-${now}-${i}`, content: url, attachmentUrl: url })),
+      ...(text ? [{ clientKey: `temp-${now}`, content: text, amount: amountQueryParam || undefined }] : []),
+    ]
+
+    // Show the messages right away; delivery happens in the background
+    setMessages((prev) => [
+      ...prev,
+      ...items.map((item, i): Message => {
+        const createdAt = new Date(now + i)
+        return {
+          id: item.clientKey,
+          clientKey: item.clientKey,
+          sender: "buyer",
+          text: item.content,
+          timestamp: createdAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          createdAt,
+          type: item.attachmentUrl ? "image" : "text",
+          imageUrl: item.attachmentUrl,
+          status: "sending",
+          retry: item,
+        }
+      }),
+    ])
+    updateContactAfterSend(text.trim() || "Sent a photo.")
+    setMessageText("")
+    setAttachedImages([])
+    if (text) setAmountQueryParam(null)
+
+    sendQueueRef.current = sendQueueRef.current.then(() => deliverMessages(conversationId, items))
+  }
+
+  const retryMessage = (msg: Message) => {
+    if (!msg.retry || !selectedConversationId) return
+    const item = msg.retry
+    const conversationId = selectedConversationId
+    setMessages((prev) => prev.map((m) => (m.clientKey === item.clientKey ? { ...m, status: "sending" } : m)))
+    sendQueueRef.current = sendQueueRef.current.then(() => deliverMessages(conversationId, [item]))
+  }
+
+  const discardMessage = (msg: Message) => {
+    setMessages((prev) => prev.filter((m) => m.clientKey !== msg.clientKey))
   }
 
   const handleSendCounterOffer = async () => {
@@ -1158,23 +1191,34 @@ export default function MessagesPage() {
     }
   }
 
-  const handleFileAttach = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (files) {
-      Array.from(files).forEach((file) => {
-        if (file.type.startsWith("image/")) {
-          const reader = new FileReader()
-          reader.onload = (event) => {
-            if (event.target?.result) {
-              setAttachedImages((prev) => [...prev, event.target!.result as string])
-            }
-          }
-          reader.readAsDataURL(file)
-        }
-      })
-    }
+  const handleFileAttach = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const images = Array.from(e.target.files ?? []).filter((file) => file.type.startsWith("image/"))
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
+    }
+
+    const tooBig = images.filter((file) => file.size > 4 * 1024 * 1024)
+    const files = images.filter((file) => file.size <= 4 * 1024 * 1024).slice(0, 4)
+    if (tooBig.length > 0) {
+      toast({ title: "Images must be 4 MB or smaller", variant: "destructive" })
+    }
+    if (files.length === 0) return
+
+    // Upload now so the message carries a short link instead of the whole image
+    setUploadingImages((n) => n + files.length)
+    try {
+      const uploaded = await startUpload(files)
+      const urls = (uploaded ?? []).map((file) => file.url).filter(Boolean)
+      if (urls.length === 0) throw new Error("Upload failed")
+      setAttachedImages((prev) => [...prev, ...urls])
+    } catch (error) {
+      toast({
+        title: "Couldn't upload image",
+        description: error instanceof Error && error.message !== "Upload failed" ? error.message : "Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setUploadingImages((n) => Math.max(n - files.length, 0))
     }
   }
 
@@ -2036,7 +2080,7 @@ export default function MessagesPage() {
                         }
                         
                         return (
-                          <div key={msg.id}>
+                          <div key={msg.clientKey ?? msg.id}>
                             {showDateSeparator && (
                               <div className="flex items-center justify-center my-4">
                                 <div className="flex-1 border-t border-muted"></div>
@@ -2111,7 +2155,7 @@ export default function MessagesPage() {
                                 className="rounded max-w-full h-auto cursor-pointer hover:opacity-90 transition"
                                 onClick={() => setLightboxImage(msg.imageUrl || null)}
                               />
-                              <p className="text-xs mt-1 opacity-70">{msg.timestamp}</p>
+                              <MessageMeta msg={msg} onRetry={retryMessage} onDiscard={discardMessage} />
                             </div>
                           ) : (
                             <div
@@ -2120,7 +2164,7 @@ export default function MessagesPage() {
                               }`}
                             >
                               <p className="text-[15px] leading-snug whitespace-pre-wrap break-words">{msg.text}</p>
-                              <p className="text-xs mt-1 opacity-70">{msg.timestamp}</p>
+                              <MessageMeta msg={msg} onRetry={retryMessage} onDiscard={discardMessage} />
                             </div>
                           )}
                             </div>
@@ -2133,9 +2177,14 @@ export default function MessagesPage() {
                   )}
                 </div>
 
-                {attachedImages.length > 0 && (
+                {(attachedImages.length > 0 || uploadingImages > 0) && (
                   <div className="px-4 py-2 border-t bg-muted/50">
                     <div className="flex items-center gap-2 overflow-x-auto">
+                      {Array.from({ length: uploadingImages }, (_, i) => (
+                        <div key={`uploading-${i}`} className="grid w-16 h-16 shrink-0 place-items-center rounded bg-secondary" aria-label="Uploading image">
+                          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                        </div>
+                      ))}
                       {attachedImages.map((img, index) => (
                         <div key={index} className="relative shrink-0">
                           <img
@@ -2215,7 +2264,7 @@ export default function MessagesPage() {
                     className="flex-1"
                     disabled={selectedContact.blocked || selectedContact.status === "completed" || selectedContact.status === "sold" || selectedContact.status === "cancelled"}
                   />
-                  <Button onClick={handleSendMessage} size="icon" disabled={selectedContact.blocked || sendingMessage || selectedContact.status === "completed" || selectedContact.status === "sold" || selectedContact.status === "cancelled"}>
+                  <Button onClick={handleSendMessage} size="icon" disabled={selectedContact.blocked || sendingMessage || uploadingImages > 0 || selectedContact.status === "completed" || selectedContact.status === "sold" || selectedContact.status === "cancelled"}>
                     {sendingMessage ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
@@ -2413,4 +2462,29 @@ export default function MessagesPage() {
       </Dialog>
     </>
   )
+}
+
+function MessageMeta({
+  msg,
+  onRetry,
+  onDiscard,
+}: {
+  msg: Message
+  onRetry: (msg: Message) => void
+  onDiscard: (msg: Message) => void
+}) {
+  if (msg.status === "failed") {
+    return (
+      <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs">
+        <span className="font-medium">Not sent</span>
+        <button type="button" onClick={() => onRetry(msg)} className="underline underline-offset-2">
+          Retry
+        </button>
+        <button type="button" onClick={() => onDiscard(msg)} className="underline underline-offset-2 opacity-80">
+          Delete
+        </button>
+      </p>
+    )
+  }
+  return <p className="text-xs mt-1 opacity-70">{msg.status === "sending" ? "Sending…" : msg.timestamp}</p>
 }

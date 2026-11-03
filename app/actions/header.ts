@@ -15,7 +15,7 @@ export async function getHeaderCounts(): Promise<{ notifications: number; messag
   if (!user) return null
 
   const [notifications, messages] = await Promise.all([
-    prisma.notification.count({ where: { userId: user.id, isRead: false } }),
+    prisma.notification.count({ where: { userId: user.id, isRead: false, type: { not: "MESSAGE" } } }),
     prisma.conversation.count({
       where: {
         OR: [{ buyerId: user.id }, { sellerId: user.id }],

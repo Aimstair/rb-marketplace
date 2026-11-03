@@ -60,6 +60,7 @@ async function emitNotificationRealtimeUpdate(
       where: {
         userId,
         isRead: false,
+        type: { not: "MESSAGE" },
       },
     })
 
@@ -222,8 +223,9 @@ export async function getNotifications(): Promise<GetNotificationsResult> {
       }
     }
 
+    // Chat messages are shown by the header's messages icon, not as notifications
     const notifications = await (prisma.notification as any).findMany({
-      where: { userId: currentUser.id },
+      where: { userId: currentUser.id, type: { not: "MESSAGE" } },
       orderBy: { createdAt: "desc" },
       take: 50, // the dropdown shows 5 and the page a recent list; never load the full history
     })
